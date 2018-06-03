@@ -1,5 +1,5 @@
 module.exports = function setupChildListeners(instances) {
-    instances.forEach(instance => {
+    instances.map(instance => {
         const {child} = instance;
 
         child.stdout.on('data', (data) => {
@@ -13,5 +13,7 @@ module.exports = function setupChildListeners(instances) {
         child.on('close', (code) => {
             console.error(`child process exited with code ${code}`);
         });
+
+        return instance;
     });
 };
