@@ -7,11 +7,7 @@ const {path, port} = minimist(process.argv.slice(2));
 // create main app
 const staticApp = express();
 
-// staticApp.get('/', function (req, res) { res.redirect('/index.html') });
-
 staticApp.use(express.static(resolve(path)));
-
-// staticApp.use(express.static(path));
 
 staticApp.listen(port);
 
