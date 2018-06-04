@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "service": "node utils/manageService.js",
     "start": "nodemon server.js"
   },
   "author": "Krisztian Korosi",
