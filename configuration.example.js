@@ -5,7 +5,7 @@ module.exports.PORTS = {
     https: 443
 };
 
-module.exports = [
+module.exports.SERVERS = [
     {
         serverOptions: {
             hostname: 'localhost', //defines what host to provide the instance for
