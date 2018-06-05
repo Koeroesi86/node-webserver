@@ -1,5 +1,10 @@
 const {resolve} = require('path');
 
+module.exports.PORTS = {
+    http: 80,
+    https: 443
+};
+
 module.exports = [
     {
         serverOptions: {

@@ -1,6 +1,6 @@
-const http = require('http');
 const vhost = require('vhost');
 const express = require('express');
+const {PORTS} = require('../configuration');
 
 const httpServer = express();
 const httpsServer = express();
@@ -55,6 +55,6 @@ function setupVirtualHost(instance) {
 module.exports = function setupVirtualHosts(instances, app) {
     instances.map(instance => setupVirtualHost(instance, app));
 
-    httpServer.listen(80);
-    httpsServer.listen(443);
+    httpServer.listen(PORTS.http);
+    httpsServer.listen(PORTS.https);
 };
