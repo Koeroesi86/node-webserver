@@ -5,10 +5,12 @@ This package brings ability to deploy webapps a lot easier. Just copy [configura
 ### Dependencies to run
 * [NodeJS](https://nodejs.org/en/)
 * [Yarn](https://yarnpkg.com/en/)
-* Windows build tools (for Windows usage)
+* For Windows usage
     1. [Python](https://www.python.org/)
     1. [Visual C++ Build Tools](https://www.visualstudio.com/downloads/#build-tools-for-visual-studio-2017)
-    1. From an administrator terminal:
+    1. Windows build tools
+     
+        From an administrator console:
 
         ```npm install --global --production windows-build-tools```
 

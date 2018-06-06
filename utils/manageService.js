@@ -1,10 +1,9 @@
 const service = require('os-service');
 const minimist = require('minimist');
 const {resolve} = require('path');
+const {SERVICE_NAME} = require('../configuration');
 
 const {add, remove, run} = minimist(process.argv.slice(2));
-
-const SERVICE_NAME = 'node-webserver';
 
 if (add) {
     service.add(SERVICE_NAME, {programPath: resolve('../server.js')}, function(error){
@@ -20,7 +19,7 @@ if (add) {
     });
 } else if (run) {
     service.run(function () {
-        service.stop (0);
+        service.stop(0);
     });
 } else {
     console.info(`

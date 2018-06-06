@@ -1,5 +1,7 @@
 const {resolve} = require('path');
 
+module.exports.SERVICE_NAME = 'node-webserver';
+
 module.exports.PORTS = {
     http: 80,
     https: 443
