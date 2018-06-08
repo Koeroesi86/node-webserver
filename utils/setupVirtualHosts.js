@@ -15,6 +15,10 @@ function addHandler({server, proxy, hostname, proxyTarget}) {
     );
 }
 
+function getURL(protocol, hostname, port) {
+    return `${protocol}://${hostname}` + (port ? `:${port}` : '');
+}
+
 function setupVirtualHost(instance) {
     const {
         serverOptions: {
@@ -33,7 +37,7 @@ function setupVirtualHost(instance) {
                 hostname,
                 proxyTarget
             });
-            console.info(`HTTP server started for ${hostname}`);
+            console.info(`Server started for ${getURL(protocol, hostname, PORTS.http)}`);
             break;
         case 'https':
             addHandler({
@@ -42,7 +46,7 @@ function setupVirtualHost(instance) {
                 hostname,
                 proxyTarget
             });
-            console.info(`HTTPS server started for ${hostname}`);
+            console.info(`Server started for ${getURL(protocol, hostname, PORTS.https)}`);
             break;
         default:
             console.info(`unknown protocol ${protocol} for ${hostname}`);

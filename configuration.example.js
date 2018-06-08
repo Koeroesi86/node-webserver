@@ -7,10 +7,16 @@ module.exports.PORTS = {
     https: 443
 };
 
+module.exports.PORT_LOOKUP = {
+    from: 3000,
+    to: 3010,
+    address: 'localhost'
+};
+
 module.exports.SERVERS = [
     {
         serverOptions: {
-            hostname: 'localhost', //defines what host to provide the instance for
+            hostname: 'some.localhost', //defines what host to provide the instance for
             protocol: 'http', //defines what protocol to use. http/https
             // if proxyOptions doesn't have port, this will be generated
             // proxyTarget: 'http://localhost:8888'
@@ -25,7 +31,7 @@ module.exports.SERVERS = [
         },
         proxyOptions: {
             target: {
-                hostname: 'localhost',
+                // hostname: 'localhost',
                 // port: '8888'
             }
         },

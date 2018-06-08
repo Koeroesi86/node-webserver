@@ -14,6 +14,10 @@ function spawnProcess(config) {
 
     let childArgs = args;
 
+    if(!proxyOptions.hostname) {
+        proxyOptions.hostname = 'localhost';
+    }
+
     if(!proxyOptions.port) {
         const port = getFreePort();
         proxyOptions.port = port;
@@ -22,8 +26,9 @@ function spawnProcess(config) {
             childArgs = childArgs(port);
         }
 
-        serverOptions.proxyTarget = `${serverOptions.protocol}://127.0.0.1:${port}`;
+        serverOptions.proxyTarget = `${serverOptions.protocol}://${proxyOptions.hostname}:${port}`;
     }
+
     const child = spawn(command, childArgs);
 
     const proxy = new HttpProxy.createProxyServer(proxyOptions);

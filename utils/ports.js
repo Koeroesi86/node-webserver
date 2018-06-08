@@ -1,8 +1,5 @@
 const fp = require('find-free-port');
-
-const FROM_PORT = 3000;
-const TO_PORT = 3010;
-const ADDRESS = '127.0.0.1';
+const {PORT_LOOKUP} = require('../configuration');
 
 let PORTS = [];
 
@@ -18,8 +15,10 @@ module.exports.getFreePort = getFreePort;
 
 /** return Promise */
 const findPorts = () => {
+    const {from, to, address} = PORT_LOOKUP;
+
     return new Promise((resolve, reject) => {
-        fp(FROM_PORT, TO_PORT, ADDRESS, TO_PORT - FROM_PORT)
+        fp(from, to, address, to - from)
             .then(ports => {
                 PORTS = ports;
                 resolve(PORTS);

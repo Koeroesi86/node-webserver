@@ -14,4 +14,7 @@ findPorts()
 
         /** proxy listener vhosts */
         setupVirtualHosts(instances);
+    })
+    .catch(error=> {
+            console.error(error);
     });

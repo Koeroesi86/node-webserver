@@ -17,6 +17,7 @@
     "find-free-port": "^1.2.0",
     "http-proxy": "^1.17.0",
     "minimist": "^1.2.0",
+    "moment": "^2.22.2",
     "nodemon": "^1.17.5",
     "os-service": "^2.1.0",
     "vhost": "^3.0.2"
