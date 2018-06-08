@@ -21,3 +21,10 @@ Please enter in a console/terminal:
     
     yarn install
     yarn start
+
+
+### Build
+
+TODO: Set up tests for build
+
+[![Build status](https://travis-ci.org/Koeroesi86/node-webserver.svg?branch=master)](https://travis-ci.org/Koeroesi86/node-webserver)
