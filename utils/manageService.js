@@ -27,21 +27,21 @@ if (add) {
         }
     });
 } else if (run) {
-    service.run(function () {
-        if (child) {
-            child.stdin.pause();
-            child.kill();
-            child = null;
-        }
-        service.stop(0);
-    });
-
     child = spawn('node', [resolve('../server.js')], (error, stdout, stderr) => {
         if (error) {
             throw error;
         }
         console.log(stdout);
         logStream.write(stdout + "\n");
+    });
+
+    service.run(child, function () {
+        if (child) {
+            child.stdin.pause();
+            child.kill();
+            child = null;
+        }
+        service.stop(0);
     });
 
 
