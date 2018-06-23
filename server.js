@@ -4,6 +4,8 @@ const setupChildListeners = require('./utils/setupChildListeners');
 const setupVirtualHosts = require('./utils/setupVirtualHosts');
 const {findPorts} = require('./utils/ports');
 
+process.chdir(__dirname);
+
 findPorts()
     .then(() => {
         /** spawn child processes */
