@@ -8,10 +8,12 @@ const fs = require ("fs");
 const {add, remove, run} = minimist(process.argv.slice(2));
 
 let child;
+process.chdir(__dirname);
 const logStream = fs.createWriteStream(resolve('../all.log'));
 
 if (add) {
     service.add(SERVICE_NAME, {
+        programPath: resolve('./manageService.js'),
         programArgs: ["--run"]
     }, function (error) {
         if (error) {
