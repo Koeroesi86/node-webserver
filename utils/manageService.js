@@ -3,10 +3,12 @@ const minimist = require('minimist');
 const {resolve} = require('path');
 const {SERVICE_NAME} = require('../configuration');
 const {spawn} = require('child_process');
+const fs = require ("fs");
 
 const {add, remove, run} = minimist(process.argv.slice(2));
 
 let child;
+const logStream = fs.createWriteStream(resolve('../all.log'));
 
 if (add) {
     service.add(SERVICE_NAME, {
@@ -32,7 +34,13 @@ if (add) {
         service.stop(0);
     });
 
-    child = spawn('node', [resolve('../server.js')]);
+    child = spawn('node', [resolve('../server.js')], (error, stdout, stderr) => {
+        if (error) {
+            throw error;
+        }
+        console.log(stdout);
+        logStream.write(stdout + "\n");
+    });
 
 
 } else {
