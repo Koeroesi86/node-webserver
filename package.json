@@ -20,6 +20,7 @@
     "moment": "^2.22.2",
     "nodemon": "^1.17.5",
     "os-service": "^2.1.0",
+    "pidusage": "^2.0.10",
     "vhost": "^3.0.2"
   }
 }

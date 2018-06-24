@@ -13,6 +13,8 @@ module.exports.PORT_LOOKUP = {
     address: 'localhost'
 };
 
+module.exports.STATS_DOMAIN = 'stats.localhost'; // set to false to disable
+
 module.exports.SERVERS = [
     {
         serverOptions: {

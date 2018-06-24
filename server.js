@@ -8,7 +8,7 @@ process.chdir(__dirname);
 
 findPorts()
     .then(() => {
-        /** spawn child processes */
+        /** @var {Array} instances */
         const instances = spawnProcesses(SERVERS);
 
         /** stdout listeners setup */
@@ -17,6 +17,6 @@ findPorts()
         /** proxy listener vhosts */
         setupVirtualHosts(instances);
     })
-    .catch(error=> {
-            console.error(error);
+    .catch(error => {
+        console.error(error);
     });
