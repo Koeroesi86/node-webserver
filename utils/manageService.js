@@ -14,7 +14,7 @@ const logStream = fs.createWriteStream(resolve('../all.log'));
 if (add) {
     service.add(SERVICE_NAME, {
         programPath: resolve('./manageService.js'),
-        programArgs: ["--runService"]
+        programArgs: ["--run"]
     }, function (error) {
         if (error) {
             console.trace(error);
@@ -34,8 +34,9 @@ if (add) {
             child = null;
         }
         service.stop(0);
+        process.exit(0);
     });
-} else if(runService) {
+
     child = spawn('node', [resolve('../server.js')]);
     child.stdout.on('data', (data) => {
         logStream.write(data + "\n");
