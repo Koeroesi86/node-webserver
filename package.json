@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node utils/testSetup.js",
     "service": "node utils/manageService.js",
     "start": "nodemon server.js"
   },
@@ -16,6 +16,8 @@
     "express": "^4.16.3",
     "find-free-port": "^1.2.0",
     "http-proxy": "^1.17.0",
+    "jasmine": "^3.1.0",
+    "jasmine-console-reporter": "^3.0.2",
     "minimist": "^1.2.0",
     "moment": "^2.22.2",
     "nodemon": "^1.17.5",
