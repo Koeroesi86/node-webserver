@@ -5,7 +5,7 @@ const {SERVICE_NAME} = require('../configuration');
 const {spawn} = require('child_process');
 const fs = require("fs");
 
-const {add, remove, run, runService} = minimist(process.argv.slice(2));
+const {add, remove, run} = minimist(process.argv.slice(2));
 
 let child;
 process.chdir(__dirname);
@@ -33,8 +33,8 @@ if (add) {
             child.kill();
             child = null;
         }
+        process.kill(process.pid, 'SIGINT');
         service.stop(0);
-        process.exit(0);
     });
 
     child = spawn('node', [resolve('../server.js')]);
