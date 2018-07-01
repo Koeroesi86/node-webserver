@@ -116,6 +116,9 @@ module.exports = function setupVirtualHosts(instances) {
 
     instances.map(instance => setupVirtualHost(instance));
 
+    httpServer.disable('x-powered-by');
+    httpsServer.disable('x-powered-by');
+
     httpServer.listen(PORTS.http);
     httpsServer.listen(PORTS.https);
 };

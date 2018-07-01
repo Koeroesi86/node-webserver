@@ -15,6 +15,8 @@ const staticApp = express();
 
 staticApp.use(express.static(resolved));
 
+staticApp.disable('x-powered-by');
+
 staticApp.listen(port);
 
 console.log(`Providing static files to "${resolved}" on port ${port}`);
