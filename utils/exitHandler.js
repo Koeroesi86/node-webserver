@@ -1,37 +1,37 @@
 function exitHandler(instances) {
-    instances.forEach(instance => {
-        const {child} = instance;
+  instances.forEach(instance => {
+    const { child } = instance;
 
-        child.kill('SIGTERM');
-    });
+    child.kill('SIGTERM');
+  });
 
-    process.exit(0);
+  process.exit(0);
 }
 
 function exitListener(instances, reason, event) {
-    console.log(`${reason} triggered:\n`, event);
+  console.log(`${reason} triggered:\n`, event);
 
-    exitHandler(instances);
+  exitHandler(instances);
 }
 
 function addExitListeners(instances) {
-    process.stdin.resume();
+  process.stdin.resume();
 
-    // do something when app is closing
-    process.on('exit', (e) => exitListener(instances, 'exit', e));
+  // do something when app is closing
+  process.on('exit', (e) => exitListener(instances, 'exit', e));
 
-    // catches ctrl+c event
-    process.on('SIGINT', (e) => exitListener(instances, 'SIGINT', e));
+  // catches ctrl+c event
+  process.on('SIGINT', (e) => exitListener(instances, 'SIGINT', e));
 
-    process.on('SIGHUP', (e) => exitListener(instances, 'SIGHUP', e));
-    process.on('SIGTERM', (e) => exitListener(instances, 'SIGTERM', e));
+  process.on('SIGHUP', (e) => exitListener(instances, 'SIGHUP', e));
+  process.on('SIGTERM', (e) => exitListener(instances, 'SIGTERM', e));
 
-    // catches "kill pid" (for example: nodemon restart)
-    process.on('SIGUSR1', (e) => exitListener(instances, 'SIGUSR1', e));
-    process.on('SIGUSR2', (e) => exitListener(instances, 'SIGUSR2', e));
+  // catches "kill pid" (for example: nodemon restart)
+  process.on('SIGUSR1', (e) => exitListener(instances, 'SIGUSR1', e));
+  process.on('SIGUSR2', (e) => exitListener(instances, 'SIGUSR2', e));
 
-    //catches uncaught exceptions
-    process.on('uncaughtException', (e) => exitListener(instances, 'uncaughtException', e));
+  //catches uncaught exceptions
+  process.on('uncaughtException', (e) => exitListener(instances, 'uncaughtException', e));
 
 }
 
