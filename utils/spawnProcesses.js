@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const HttpProxy = require('http-proxy');
 
 const { getFreePort } = require('./ports');
+const { PROXY_PROTOCOLS } = require('../constants');
 
 function spawnProcess(config) {
   const {
@@ -26,18 +27,13 @@ function spawnProcess(config) {
       childArgs = childArgs(port);
     }
 
-    serverOptions.proxyTarget = `${serverOptions.protocol}://${proxyOptions.hostname}:${port}`;
+    serverOptions.proxyTarget = `${PROXY_PROTOCOLS[serverOptions.protocol]}://${proxyOptions.hostname}:${port}`;
   }
 
-  const child = spawn(command, childArgs);
-
-  const proxy = new HttpProxy.createProxyServer(proxyOptions);
-
-  return { proxy, child, serverOptions };
+  config.child = spawn(command, childArgs);
+  config.proxy = new HttpProxy.createProxyServer(proxyOptions);
 }
 
-module.exports.spawnProcess = spawnProcess;
-
 module.exports = function spawnProcesses(configs) {
-  return configs.slice().map(config => spawnProcess(config))
+  return configs.forEach(spawnProcess);
 };
