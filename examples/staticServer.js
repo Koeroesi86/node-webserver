@@ -5,7 +5,9 @@ const http = require('http');
 
 const { path, port } = minimist(process.argv.slice(2));
 
-if (!port || !path) {
+let currentPort = port || process.env.PORT;
+
+if (!currentPort || !path) {
   throw new Error("Both port and path should be specified to serve.");
 }
 
@@ -15,8 +17,6 @@ const resolved = resolve(path);
 const staticApp = express();
 staticApp.use(express.static(resolved));
 staticApp.disable('x-powered-by');
-http.createServer(staticApp).listen(port);
+http.createServer(staticApp).listen(currentPort);
 
-console.log(`Providing static files to "${resolved}" on port ${port}`);
-
-
+console.log(`Providing static files to "${resolved}" on port ${currentPort}`);

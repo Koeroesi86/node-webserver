@@ -1,25 +1,11 @@
-const moment = require('moment');
+const setupChildListener = require('./setupChildListener');
 
-function getDate() {
-  return moment().format('YYYY-MM-DD HH:mm:ss');
-}
-
-module.exports = function setupChildListeners(instances) {
-  instances.map(instance => {
+module.exports = (instances = []) => {
+  instances.forEach(instance => {
     const { child } = instance;
 
-    child.stdout.on('data', (data) => {
-      console.info(`[${getDate()}] ${data}`);
-    });
-
-    child.stderr.on('data', (data) => {
-      console.warn(`[${getDate()}] ${data}`);
-    });
-
-    child.on('close', (code) => {
-      console.error(`[${getDate()}] child process exited with code ${code}`);
-    });
-
-    return instance;
+    if (child) {
+      setupChildListener(child);
+    }
   });
 };

@@ -2,10 +2,11 @@ const vHost = require('vhost');
 const pidUsage = require('pidusage');
 const { PORTS, STATS_DOMAIN } = require('../configuration');
 const getURL = require('./getURL');
+const getDate = require('./getDate');
 
 const usages = {
   overall: {},
-  child: []
+  child: {},
 };
 
 function refreshStats(instances) {
@@ -16,14 +17,40 @@ function refreshStats(instances) {
   instances.forEach((instance, index) => {
     const { child } = instance;
 
-    pidUsage(child.pid, (err, stats) => {
-      if (instance.serverOptions.url) {
-        usages.child[index] = {
-          url: instance.serverOptions.url,
-          stats
-        };
-      }
-    });
+    if (child) {
+      pidUsage(child.pid, (err, stats) => {
+        if (instance.serverOptions.url) {
+          usages.child[instance.serverOptions.url] = {
+            url: instance.serverOptions.url,
+            stats,
+            ...(instance.lambdas && { lambdas: {} }),
+          };
+
+          if (instance.lambdas) {
+            const current = usages.child[instance.serverOptions.url];
+            Object.keys(instance.lambdas).forEach(key => {
+              pidUsage(instance.lambdas[key].pid, (lambdaStatsErr, lambdaStats) => {
+                current.lambdas[lambdaStats.pid] = lambdaStats;
+              });
+            });
+          }
+        }
+      });
+    }
+
+    if (instance.lambdas) {
+      usages.child[instance.serverOptions.url] = {
+        url: instance.serverOptions.url,
+        lambdas: {},
+      };
+      const current = usages.child[instance.serverOptions.url];
+      Object.keys(instance.lambdas).forEach(key => {
+        const lambda = instance.lambdas[key];
+        pidUsage(lambda.pid, (error, stats) => {
+          current.lambdas[lambda.pid] = stats;
+        });
+      });
+    }
   });
 
   setTimeout(() => refreshStats(instances), 10000);
@@ -40,7 +67,7 @@ function setupStatsHandler(instances, httpApp) {
       })
     );
 
-    console.log(`Find stats on ${getURL('http', STATS_DOMAIN, PORTS.http)}`);
+    console.log(`[${getDate()}] Find stats on ${getURL('http', STATS_DOMAIN, PORTS.http)}`);
   }
 }
 

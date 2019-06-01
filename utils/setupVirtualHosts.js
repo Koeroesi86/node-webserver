@@ -1,6 +1,8 @@
 const vHost = require('vhost');
 const { PORTS } = require('../configuration');
 const getURL = require('./getURL');
+const setupLambda = require('./setupLambda');
+const getDate = require('./getDate');
 
 function addVHost({ server, proxy, hostname, proxyTarget }) {
   server.use(
@@ -17,34 +19,61 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
     serverOptions: {
       hostname,
       protocol,
-      proxyTarget
+      proxyTarget,
     },
+    lambdaOptions,
     proxy
   } = instance;
 
   switch (protocol) {
     case 'http':
-      addVHost({
-        server: httpApp,
-        proxy,
-        hostname,
-        proxyTarget
-      });
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.http);
-      console.info(`Server started for ${instance.serverOptions.url}`);
+      if (proxyTarget) {
+        addVHost({
+          server: httpApp,
+          proxy,
+          hostname,
+          proxyTarget
+        });
+      }
+      if (lambdaOptions) {
+        setupLambda({
+          instance,
+          server: httpApp,
+          hostname,
+          config: {
+            lambda: lambdaOptions.lambda,
+            handler: lambdaOptions.handler,
+          }
+        })
+      }
+      console.info(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     case 'https':
-      addVHost({
-        server: httpsApp,
-        proxy,
-        hostname,
-        proxyTarget
-      });
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.https);
-      console.info(`Server started for ${instance.serverOptions.url}`);
+      if (proxyTarget) {
+        addVHost({
+          server: httpsApp,
+          proxy,
+          hostname,
+          proxyTarget
+        });
+      }
+      if (lambdaOptions) {
+        setupLambda({
+          instance,
+          server: httpsApp,
+          hostname,
+          config: {
+            lambda: lambdaOptions.lambda,
+            handler: lambdaOptions.handler,
+          }
+        })
+      }
+      console.info(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     default:
-      console.info(`unknown protocol ${protocol} for ${hostname}`);
+      console.info(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);
 
   }
 

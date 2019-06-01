@@ -2,15 +2,15 @@ function exitHandler(instances) {
   instances.forEach(instance => {
     const { child } = instance;
 
-    child.kill('SIGTERM');
+    if (child) {
+      child.kill('SIGTERM');
+    }
   });
-
   process.exit(0);
 }
 
 function exitListener(instances, reason, event) {
   console.log(`${reason} triggered:\n`, event);
-
   exitHandler(instances);
 }
 
