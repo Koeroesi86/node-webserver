@@ -1,17 +1,24 @@
 const getDate = require('./getDate');
+const logger = require('./logger');
 
 module.exports = child => {
-  child.stdout.on('data', data => {
-    console.info(`[${getDate()}] ${data.toString().trim()}`);
-  });
+  const messageListener = data => {
+    logger.info(`[${getDate()}] ${data.toString().trim()}`);
+  };
+  child.stdout.off('data', messageListener);
+  child.stdout.on('data', messageListener);
 
-  child.stderr.on('data', data => {
-    console.warn(`[${getDate()}] ${data.toString().trim()}`);
-  });
+  const errorListener = data => {
+    logger.error(`[${getDate()}] ${data.toString().trim()}`);
+  };
+  child.stderr.off('data', errorListener);
+  child.stderr.on('data', errorListener);
 
-  child.on('close', code => {
+  const closeListener = code => {
     if (code) {
-      console.error(`[${getDate()}] child process exited with code ${code}`);
+      logger.error(`[${getDate()}] child process exited with code ${code}`);
     }
-  });
+  };
+  child.off('close', closeListener);
+  child.on('close', closeListener);
 };

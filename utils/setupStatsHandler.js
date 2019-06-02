@@ -3,6 +3,7 @@ const pidUsage = require('pidusage');
 const { PORTS, STATS_DOMAIN } = require('../configuration');
 const getURL = require('./getURL');
 const getDate = require('./getDate');
+const logger = require('./logger');
 
 const usages = {
   overall: {},
@@ -14,7 +15,7 @@ function refreshStats(instances) {
     usages.overall = stats;
   });
 
-  instances.forEach((instance, index) => {
+  instances.forEach(instance => {
     const { child } = instance;
 
     if (child) {
@@ -67,7 +68,7 @@ function setupStatsHandler(instances, httpApp) {
       })
     );
 
-    console.log(`[${getDate()}] Find stats on ${getURL('http', STATS_DOMAIN, PORTS.http)}`);
+    logger.system(`[${getDate()}] Find stats on ${getURL('http', STATS_DOMAIN, PORTS.http)}`);
   }
 }
 

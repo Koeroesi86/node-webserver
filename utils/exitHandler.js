@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 function exitHandler(instances) {
   instances.forEach(instance => {
     const { child } = instance;
@@ -10,7 +12,7 @@ function exitHandler(instances) {
 }
 
 function exitListener(instances, reason, event) {
-  console.log(`${reason} triggered:\n`, event);
+  logger.error(`${reason} triggered:\n`, event);
   exitHandler(instances);
 }
 

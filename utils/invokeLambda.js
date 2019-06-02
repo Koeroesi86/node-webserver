@@ -1,10 +1,16 @@
-
 const minimist = require('minimist');
 
 const {
   lambda,
   handler = 'handler'
 } = minimist(process.argv.slice(2));
+
+Promise.resolve()
+  .then(() => new Promise(resolve => {
+    const timeout = 15 * 60 * 1000; // setting to default AWS timeout
+    setTimeout(() => resolve('Shutting down lambda'), timeout);
+  }))
+  .then(message => console.log(message));
 
 /**
  * @typedef ResponseEvent

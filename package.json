@@ -11,8 +11,10 @@
   "author": "Krisztian Korosi",
   "license": "MIT",
   "dependencies": {
+    "chalk": "^2.4.2",
     "connect": "^3.6.6",
     "dotenv": "^6.0.0",
+    "etag": "^1.8.1",
     "express": "^4.16.3",
     "find-free-port": "^1.2.0",
     "http-proxy": "^1.17.0",

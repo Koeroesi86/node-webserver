@@ -9,7 +9,7 @@ const { add, remove, run } = minimist(process.argv.slice(2));
 
 let child;
 process.chdir(__dirname);
-const logStream = fs.createWriteStream(resolve('../all.log'));
+const logStream = fs.createWriteStream(resolve('../all.logger.js'));
 
 if (add) {
   service.add(SERVICE_NAME, {

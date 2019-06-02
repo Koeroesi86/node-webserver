@@ -1,8 +1,10 @@
 const vHost = require('vhost');
+const chalk = require('chalk');
 const { PORTS } = require('../configuration');
 const getURL = require('./getURL');
 const setupLambda = require('./setupLambda');
 const getDate = require('./getDate');
+const logger = require('./logger');
 
 function addVHost({ server, proxy, hostname, proxyTarget }) {
   server.use(
@@ -47,7 +49,7 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
           }
         })
       }
-      console.info(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
+      logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     case 'https':
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.https);
@@ -70,10 +72,10 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
           }
         })
       }
-      console.info(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
+      logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     default:
-      console.info(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);
+      logger.error(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);
 
   }
 

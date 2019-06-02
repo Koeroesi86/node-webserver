@@ -10,6 +10,8 @@ const { PORTS } = require('./configuration');
 const setupSecureContexts = require('./utils/setupSecureContexts');
 const setupStatsHandler = require('./utils/setupStatsHandler');
 const setupVirtualHosts = require('./utils/setupVirtualHosts');
+const setupAccessLogs = require('./utils/setupAccessLogs');
+const logger = require('./utils/logger');
 
 process.chdir(__dirname);
 
@@ -25,6 +27,10 @@ findPorts()
 
     /** stdout listeners setup */
     setupChildListeners(instances);
+
+    /** access logs */
+    setupAccessLogs(httpApp, 'http');
+    setupAccessLogs(httpsApp, 'https');
 
     /** overall stats endpoint */
     setupStatsHandler(instances, httpApp);
@@ -60,5 +66,5 @@ findPorts()
     addExitListeners(instances);
   })
   .catch(error => {
-    console.error(error);
+    logger.error(error);
   });
