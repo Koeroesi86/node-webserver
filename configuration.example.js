@@ -12,6 +12,7 @@ module.exports = {
     address: 'localhost'
   },
   STATS_DOMAIN: 'stats.localhost', // set to false to disable
+  STATS_REFRESH_INTERVAL: 10000,
   SERVERS: [
     {
       serverOptions: {

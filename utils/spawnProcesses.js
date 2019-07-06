@@ -29,7 +29,7 @@ function spawnProcess(instance) {
       }
 
       if (Array.isArray(childArgs)) {
-        childArgs = childArgs.map(childArg => childArg.replace('%PORT%', port))
+        childArgs = childArgs.map(childArg => childArg.replace(/%PORT%/gi, port))
       }
 
       serverOptions.proxyTarget = `${PROXY_PROTOCOLS[serverOptions.protocol]}://${proxyOptions.hostname}:${port}`;

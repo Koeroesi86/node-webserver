@@ -1,5 +1,4 @@
 const vHost = require('vhost');
-const chalk = require('chalk');
 const { PORTS } = require('../configuration');
 const getURL = require('./getURL');
 const setupLambda = require('./setupLambda');

@@ -1,6 +1,6 @@
 const vHost = require('vhost');
 const pidUsage = require('pidusage');
-const { PORTS, STATS_DOMAIN } = require('../configuration');
+const { PORTS, STATS_DOMAIN, STATS_REFRESH_INTERVAL } = require('../configuration');
 const getURL = require('./getURL');
 const getDate = require('./getDate');
 const logger = require('./logger');
@@ -24,16 +24,23 @@ function refreshStats(instances) {
           usages.child[instance.serverOptions.url] = {
             url: instance.serverOptions.url,
             stats,
-            ...(instance.lambdas && { lambdas: {} }),
           };
 
           if (instance.lambdas) {
             const current = usages.child[instance.serverOptions.url];
-            Object.keys(instance.lambdas).forEach(key => {
-              pidUsage(instance.lambdas[key].pid, (lambdaStatsErr, lambdaStats) => {
-                current.lambdas[lambdaStats.pid] = lambdaStats;
+            const currentLambdaStats = {};
+            Promise.resolve()
+              .then(() =>
+                Promise.all(Object.keys(instance.lambdas).map(key => {
+                  pidUsage(instance.lambdas[key].pid).then(lambdaStats => {
+                    currentLambdaStats[lambdaStats.pid] = lambdaStats;
+                    return Promise.resolve();
+                  });
+                }))
+              )
+              .then(() => {
+                current.lambdas = currentLambdaStats;
               });
-            });
           }
         }
       });
@@ -41,20 +48,28 @@ function refreshStats(instances) {
 
     if (instance.lambdas) {
       usages.child[instance.serverOptions.url] = {
+        ...usages.child[instance.serverOptions.url],
         url: instance.serverOptions.url,
-        lambdas: {},
       };
-      const current = usages.child[instance.serverOptions.url];
-      Object.keys(instance.lambdas).forEach(key => {
-        const lambda = instance.lambdas[key];
-        pidUsage(lambda.pid, (error, stats) => {
-          current.lambdas[lambda.pid] = stats;
+      const getLambda = key => instance.lambdas[key];
+      const currentLambdaStats = {};
+      Promise.resolve()
+        .then(() =>
+          Promise.all(Object.keys(instance.lambdas).map(key => {
+            const lambda = getLambda(key);
+            return pidUsage(lambda.pid).then(stats => {
+              currentLambdaStats[lambda.pid] = stats;
+              return Promise.resolve();
+            });
+          }))
+        )
+        .then(() => {
+          usages.child[instance.serverOptions.url].lambdas = currentLambdaStats
         });
-      });
     }
   });
 
-  setTimeout(() => refreshStats(instances), 10000);
+  setTimeout(() => refreshStats(instances), STATS_REFRESH_INTERVAL || 10000);
 }
 
 function setupStatsHandler(instances, httpApp) {

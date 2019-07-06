@@ -6,3 +6,5 @@ configuration.json
 *.pid
 *.log
 .certificates
+!tmp/.gitkeep
+tmp

@@ -17,6 +17,7 @@
     "etag": "^1.8.1",
     "express": "^4.16.3",
     "find-free-port": "^1.2.0",
+    "fs-extra": "^8.1.0",
     "http-proxy": "^1.17.0",
     "jasmine": "^3.1.0",
     "jasmine-console-reporter": "^3.0.2",
@@ -26,6 +27,8 @@
     "nodemon": "^1.17.5",
     "os-service": "^2.1.0",
     "pidusage": "^2.0.10",
+    "rimraf": "^2.6.3",
+    "uuid": "^3.3.2",
     "vhost": "^3.0.2"
   }
 }
