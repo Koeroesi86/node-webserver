@@ -1,5 +1,4 @@
 const minimist = require('minimist');
-const fs = require('fs');
 
 const { TMP } = process.env;
 
@@ -9,13 +8,10 @@ const {
 } = minimist(process.argv.slice(2));
 
 if (TMP) {
-  // moduleAlias.addAliases({ 'tmp': tmp });
-  console.log('env', process.env)
+  //
 }
 
-console.log('TMP', TMP)
-// console.log('tmp c', fs.readdirSync('tmp'))
-// fs.writeFileSync('tmp/test.txt', 'test', 'utf8')
+console.log('TMP', TMP);
 
 let requestInProgress;
 
