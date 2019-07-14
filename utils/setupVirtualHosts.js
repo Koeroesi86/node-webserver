@@ -1,76 +1,38 @@
 const vHost = require('vhost');
 const { PORTS } = require('../configuration');
 const getURL = require('./getURL');
-const setupLambda = require('./setupLambda');
+const proxyMiddleware = require('../middlewares/proxy');
+const lambdaMiddleware = require('../middlewares/lambda');
 const getDate = require('./getDate');
 const logger = require('./logger');
-
-function addVHost({ server, proxy, hostname, proxyTarget }) {
-  server.use(
-    vHost(hostname, (req, res) => {
-      proxy.web(req, res, {
-        target: proxyTarget
-      });
-    })
-  );
-}
 
 function setupVirtualHost(instance, httpApp, httpsApp) {
   const {
     serverOptions: {
       hostname,
       protocol,
-      proxyTarget,
     },
-    lambdaOptions,
-    proxy
   } = instance;
 
   switch (protocol) {
     case 'http':
+      if (instance.proxyOptions && instance.childOptions) {
+        httpApp.use(vHost(hostname, proxyMiddleware(instance)));
+      }
+      if (instance.lambdaOptions) {
+        httpApp.use(vHost(hostname, lambdaMiddleware(instance)));
+      }
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.http);
-      if (proxyTarget) {
-        addVHost({
-          server: httpApp,
-          proxy,
-          hostname,
-          proxyTarget
-        });
-      }
-      if (lambdaOptions) {
-        setupLambda({
-          instance,
-          server: httpApp,
-          hostname,
-          config: {
-            lambda: lambdaOptions.lambda,
-            handler: lambdaOptions.handler,
-          }
-        })
-      }
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     case 'https':
+      if (instance.proxyOptions && instance.childOptions) {
+        httpsApp.use(vHost(hostname, proxyMiddleware(instance)));
+      }
+      if (instance.lambdaOptions) {
+        httpApp.use(vHost(hostname, lambdaMiddleware(instance)));
+      }
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.https);
-      if (proxyTarget) {
-        addVHost({
-          server: httpsApp,
-          proxy,
-          hostname,
-          proxyTarget
-        });
-      }
-      if (lambdaOptions) {
-        setupLambda({
-          instance,
-          server: httpsApp,
-          hostname,
-          config: {
-            lambda: lambdaOptions.lambda,
-            handler: lambdaOptions.handler,
-          }
-        })
-      }
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     default:

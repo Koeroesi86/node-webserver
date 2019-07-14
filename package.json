@@ -2,11 +2,11 @@
   "name": "node-webserver",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "",
   "scripts": {
-    "test": "node utils/testSetup.js",
-    "service": "node utils/manageService.js",
-    "start": "nodemon server.js"
+    "test": "node scripts/tests.js",
+    "service": "node scripts/manage.js",
+    "start": "nodemon scripts/server.js"
   },
   "author": "Krisztian Korosi",
   "license": "MIT",
@@ -19,8 +19,6 @@
     "find-free-port": "^1.2.0",
     "fs-extra": "^8.1.0",
     "http-proxy": "^1.17.0",
-    "jasmine": "^3.1.0",
-    "jasmine-console-reporter": "^3.0.2",
     "mime-types": "^2.1.24",
     "minimist": "^1.2.0",
     "moment": "^2.22.2",
@@ -30,5 +28,8 @@
     "rimraf": "^2.6.3",
     "uuid": "^3.3.2",
     "vhost": "^3.0.2"
+  },
+  "devDependencies": {
+    "jest": "^24.8.0"
   }
 }

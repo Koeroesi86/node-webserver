@@ -1,17 +1,15 @@
 const express = require('express');
 const http = require('http');
 const https = require('https');
-const { SERVERS } = require('./configuration');
-const spawnProcesses = require('./utils/spawnProcesses');
-const setupChildListeners = require('./utils/setupChildListeners');
-const addExitListeners = require('./utils/exitHandler');
-const { findPorts } = require('./utils/ports');
-const { PORTS } = require('./configuration');
-const setupSecureContexts = require('./utils/setupSecureContexts');
-const setupStatsHandler = require('./utils/setupStatsHandler');
-const setupVirtualHosts = require('./utils/setupVirtualHosts');
-const setupAccessLogs = require('./utils/setupAccessLogs');
-const logger = require('./utils/logger');
+const { SERVERS } = require('../configuration');
+const addExitListeners = require('../utils/exitHandler');
+const { findPorts } = require('../utils/ports');
+const { PORTS } = require('../configuration');
+const setupSecureContexts = require('../utils/setupSecureContexts');
+const setupStatsHandler = require('../utils/setupStatsHandler');
+const setupVirtualHosts = require('../utils/setupVirtualHosts');
+const setupAccessLogs = require('../utils/setupAccessLogs');
+const logger = require('../utils/logger');
 
 process.chdir(__dirname);
 
@@ -21,13 +19,6 @@ const httpsApp = express();
 findPorts()
   .then(() => {
     const instances = SERVERS.slice();
-
-    /** @var {Array} instances */
-    spawnProcesses(instances);
-
-    /** stdout listeners setup */
-    setupChildListeners(instances);
-
     /** access logs */
     setupAccessLogs(httpApp, 'http');
     setupAccessLogs(httpsApp, 'https');

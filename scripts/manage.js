@@ -37,7 +37,7 @@ if (add) {
     service.stop(0);
   });
 
-  child = spawn('node', [resolve('../server.js')]);
+  child = spawn('node', [resolve(__dirname, './server.js')]);
   child.stdout.on('data', (data) => {
     logStream.write(data + "\n");
   });

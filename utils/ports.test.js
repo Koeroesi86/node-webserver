@@ -1,6 +1,8 @@
 const { findPorts, getFreePort, clearPorts, getPorts, addPort } = require("./ports");
 const { PORT_LOOKUP } = require('../configuration');
-const assert = require('assert');
+const fp = require('find-free-port');
+
+jest.mock('find-free-port');
 
 describe('The ports', () => {
   beforeEach(() => {
@@ -8,9 +10,11 @@ describe('The ports', () => {
   });
 
   it('should lookup free ports in the given range', done => {
+    const mockedResult = Array(PORT_LOOKUP.to - PORT_LOOKUP.from).fill(1).map((_, i) => PORT_LOOKUP.from + i);
+    fp.mockReturnValue(Promise.resolve(mockedResult));
     findPorts()
       .then(ports => {
-        assert.equal(ports.length, PORT_LOOKUP.to - PORT_LOOKUP.from);
+        expect(ports.length).toEqual(PORT_LOOKUP.to - PORT_LOOKUP.from);
         done();
       });
   });
@@ -20,7 +24,7 @@ describe('The ports', () => {
 
     const freePort = getFreePort();
 
-    assert.equal(freePort, 1000);
-    assert.equal(getPorts().length, 0);
+    expect(freePort).toEqual([1000]);
+    expect(getPorts().length).toEqual(0);
   });
 });
