@@ -8,3 +8,7 @@ configuration.json
 .certificates
 !tmp/.gitkeep
 tmp
+!requests/.gitkeep
+requests/*
+!responses/.gitkeep
+responses/*
