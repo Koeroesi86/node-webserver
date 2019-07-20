@@ -11,7 +11,7 @@
   "author": "Krisztian Korosi",
   "license": "MIT",
   "dependencies": {
-    "@koeroesi86/node-lambda-invoke": "^1.0.6-7ac85e1",
+    "@koeroesi86/node-lambda-invoke": "^1.0.9-5e55de5",
     "chalk": "^2.4.2",
     "connect": "^3.6.6",
     "dotenv": "^6.0.0",
