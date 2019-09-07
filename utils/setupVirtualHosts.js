@@ -3,6 +3,7 @@ const { PORTS } = require('../configuration');
 const getURL = require('./getURL');
 const proxyMiddleware = require('../middlewares/proxy');
 const lambdaMiddleware = require('../middlewares/lambda');
+const workerMiddleware = require('../middlewares/worker');
 const getDate = require('./getDate');
 const logger = require('./logger');
 
@@ -22,6 +23,9 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
       if (instance.lambdaOptions) {
         httpApp.use(vHost(hostname, lambdaMiddleware(instance)));
       }
+      if (instance.workerOptions) {
+        httpApp.use(vHost(hostname, workerMiddleware(instance)));
+      }
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.http);
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
@@ -30,7 +34,10 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
         httpsApp.use(vHost(hostname, proxyMiddleware(instance)));
       }
       if (instance.lambdaOptions) {
-        httpApp.use(vHost(hostname, lambdaMiddleware(instance)));
+        httpsApp.use(vHost(hostname, lambdaMiddleware(instance)));
+      }
+      if (instance.workerOptions) {
+        httpsApp.use(vHost(hostname, workerMiddleware(instance)));
       }
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.https);
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
