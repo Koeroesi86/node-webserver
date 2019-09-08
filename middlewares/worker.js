@@ -4,28 +4,31 @@ const { Worker } = require('@koeroesi86/node-lambda-invoke');
 const url = require('url');
 const send = require('send');
 const logger = require('../utils/logger');
+const getDate = require('../utils/getDate');
 
 const workers = {};
 
+const WORKER_EXPIRY = 60 * 60 * 1000;
+
 /**
  * @param {string} path
- * @returns {Worker}
+ * @returns {Promise<Worker>}
  */
 function getWorker(path) {// TODO: worker pool
   if (workers[path]) {
-    return workers[path];
+    return Promise.resolve(workers[path]);
   }
 
   const worker = new Worker(path);
   worker.createdAt = Date.now();
   workers[path] = worker;
 
-  setTimeout(() => { // make worker auto close after an hour
+  setTimeout(() => {
     worker.terminate();
     delete workers[path];
-  }, 60 * 60 * 1000);
+  }, WORKER_EXPIRY);
 
-  return worker;
+  return Promise.resolve(worker);
 }
 
 const workerMiddleware = (instance) => {
@@ -42,6 +45,8 @@ const workerMiddleware = (instance) => {
     let indexPath = resolve(rootPath, `.${path}`);
 
     // TODO: attempt to fallback to parent index on 404
+
+    // detect index for trailing slash
     if (path.lastIndexOf('/') === path.length - 1) {
       config.index.find(indexFile => {
         const checkIndexFilePath = resolve(indexPath, indexFile);
@@ -54,7 +59,7 @@ const workerMiddleware = (instance) => {
       });
     } else {
       config.index.find(indexFile => {
-        if (path.indexOf(indexFile) === path.length - 1) {
+        if (path.indexOf(indexFile) === path.length - indexFile.length) {
           isIndex = true;
           return true;
         }
@@ -69,14 +74,17 @@ const workerMiddleware = (instance) => {
       event.queryStringParameters = queryStringParameters;
       event.headers = request.headers;
 
-      logger.info('Invoking worker', indexPath);
+      logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
-      const worker = getWorker(indexPath);
-      worker.addEventListenerOnce('message', responseEvent => {
-        const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
-        response.end(Buffer.from(responseEvent.body, bufferEncoding));
-      });
-      worker.postMessage(event);
+      Promise.resolve()
+        .then(() => getWorker(indexPath))
+        .then(worker => {
+          worker.addEventListenerOnce('message', responseEvent => {
+            const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
+            response.end(Buffer.from(responseEvent.body, bufferEncoding));
+          });
+          worker.postMessage(event);
+        });
     } else {
       const stream = send(request, path, {
         maxage: 0,
