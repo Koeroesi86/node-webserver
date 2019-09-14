@@ -1,6 +1,8 @@
 const express = require('express');
 const http = require('http');
 const https = require('https');
+const path = require('path');
+const fs = require('fs');
 const { SERVERS } = require('../configuration');
 const addExitListeners = require('../utils/exitHandler');
 const { findPorts } = require('../utils/ports');
@@ -18,7 +20,18 @@ const httpsApp = express();
 
 findPorts()
   .then(() => {
-    const instances = SERVERS.slice();
+    const instances = SERVERS.slice().map(config => {
+      if (typeof config === 'string') {
+        const configPath = path.resolve(config);
+
+        if (!fs.existsSync(configPath)) {
+          return false;
+        }
+
+        return require(configPath);
+      }
+      return config;
+    }).filter(Boolean);
     /** access logs */
     setupAccessLogs(httpApp, 'http');
     setupAccessLogs(httpsApp, 'https');
