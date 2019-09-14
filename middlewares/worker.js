@@ -107,12 +107,12 @@ const workerMiddleware = (instance) => {
           });
           worker.postMessage(event);
         });
-    } else {
+    } else if (['GET', 'HEAD'].includes(request.method.toUpperCase())) {
       const stream = send(request, path, {
         maxage: 0,
         root: rootPath,
       });
-      stream.on('error', function error (err) {
+      stream.on('error', err => {
         if (!(err.statusCode < 500)) {
           next(err);
           return;
