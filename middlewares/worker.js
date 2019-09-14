@@ -55,8 +55,6 @@ const workerMiddleware = (instance) => {
 
     let indexPath = join(rootPath, ...currentPathFragments);
 
-    if (!pathExists) return next();
-
     if (currentPathFragments.length < pathFragments.length) {
       config.index.find(indexFile => {
         const checkIndexFilePath = join(rootPath, ...currentPathFragments, indexFile);
