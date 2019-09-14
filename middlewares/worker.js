@@ -9,6 +9,9 @@ const getDate = require('../utils/getDate');
 const workers = {};
 
 const WORKER_EXPIRY = 60 * 60 * 1000;
+const FORBIDDEN_PATHS = [
+  '..'
+];
 
 /**
  * @param {string} path
@@ -44,6 +47,8 @@ const workerMiddleware = (instance) => {
     let isIndex = false;
     const pathFragments = path.split(/\//gi).filter(Boolean);
     let currentPathFragments = pathFragments.slice();
+
+    if (currentPathFragments.find(p => FORBIDDEN_PATHS.includes(p))) return next();
 
     let pathExists = false;
     for (let i = currentPathFragments.length - 1; i >= 0; i--) {
