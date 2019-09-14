@@ -1,4 +1,4 @@
-const { resolve } = require('path');
+const { resolve, join } = require('path');
 const { existsSync } = require('fs');
 const { Worker } = require('@koeroesi86/node-lambda-invoke');
 const url = require('url');
@@ -42,12 +42,31 @@ const workerMiddleware = (instance) => {
     } = url.parse(request.url, true);
 
     let isIndex = false;
-    let indexPath = resolve(rootPath, `.${path}`);
+    const pathFragments = path.split(/\//gi).filter(Boolean);
+    let currentPathFragments = pathFragments.slice();
 
-    // TODO: attempt to fallback to parent index on 404
+    let pathExists = false;
+    for (let i = currentPathFragments.length - 1; i >= 0; i--) {
+      if (!pathExists) {
+        currentPathFragments.splice(i);
+        pathExists = existsSync(join(rootPath, ...currentPathFragments));
+      }
+    }
 
-    // detect index for trailing slash
-    if (path.lastIndexOf('/') === path.length - 1) {
+    let indexPath = join(rootPath, ...currentPathFragments);
+
+    if (!pathExists) return next();
+
+    if (currentPathFragments.length < pathFragments.length) {
+      config.index.find(indexFile => {
+        const checkIndexFilePath = join(rootPath, ...currentPathFragments, indexFile);
+        if (existsSync(checkIndexFilePath)) {
+          isIndex = true;
+          indexPath = checkIndexFilePath;
+          return true;
+        }
+      });
+    } else if (path.lastIndexOf('/') === path.length - 1) { // detect index for trailing slash
       config.index.find(indexFile => {
         const checkIndexFilePath = resolve(indexPath, indexFile);
 
