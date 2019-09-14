@@ -8,7 +8,6 @@ const getDate = require('../utils/getDate');
 
 const workers = {};
 
-const WORKER_EXPIRY = 60 * 60 * 1000;
 const FORBIDDEN_PATHS = [
   '..'
 ];
@@ -17,19 +16,18 @@ const FORBIDDEN_PATHS = [
  * @param {string} path
  * @returns {Promise<Worker>}
  */
-function getWorker(path) {// TODO: worker pool
+function getWorker(path, options = {}) {// TODO: worker pool
   if (workers[path]) {
     return Promise.resolve(workers[path]);
   }
 
-  const worker = new Worker(path);
+  const worker = new Worker(path, options);
   worker.createdAt = Date.now();
   workers[path] = worker;
 
-  setTimeout(() => {
-    worker.terminate();
+  worker.addEventListenerOnce('close', () => {
     delete workers[path];
-  }, WORKER_EXPIRY);
+  });
 
   return Promise.resolve(worker);
 }
@@ -43,6 +41,8 @@ const workerMiddleware = (instance) => {
       query: queryStringParameters,
       pathname: path
     } = url.parse(request.url, true);
+
+    // todo: limit request size
 
     let isIndex = false;
     const pathFragments = path.split(/\//gi).filter(Boolean);
@@ -93,13 +93,14 @@ const workerMiddleware = (instance) => {
       const event = {};
       event.httpMethod = request.method.toUpperCase();
       event.path = path;
+      event.pathFragments = pathFragments;
       event.queryStringParameters = queryStringParameters;
       event.headers = request.headers;
 
       logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
       Promise.resolve()
-        .then(() => getWorker(indexPath))
+        .then(() => getWorker(indexPath, config.options))
         .then(worker => {
           worker.addEventListenerOnce('message', responseEvent => {
             const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
