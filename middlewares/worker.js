@@ -51,10 +51,11 @@ const workerMiddleware = (instance) => {
     if (currentPathFragments.find(p => FORBIDDEN_PATHS.includes(p))) return next();
 
     let pathExists = false;
-    for (let i = currentPathFragments.length - 1; i >= 0; i--) {
+    for (let i = currentPathFragments.length; i >= 0; i--) {
       if (!pathExists) {
         currentPathFragments.splice(i);
         pathExists = existsSync(join(rootPath, ...currentPathFragments));
+        break;
       }
     }
 
@@ -103,6 +104,7 @@ const workerMiddleware = (instance) => {
         .then(() => getWorker(indexPath, config.options))
         .then(worker => {
           worker.addEventListenerOnce('message', responseEvent => {
+            response.writeHead(responseEvent.statusCode, responseEvent.headers);
             const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
             response.end(Buffer.from(responseEvent.body, bufferEncoding));
           });
