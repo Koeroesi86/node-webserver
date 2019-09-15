@@ -3,6 +3,7 @@ const http = require('http');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const bodyParser = require("body-parser");
 const { SERVERS } = require('../configuration');
 const addExitListeners = require('../utils/exitHandler');
 const { findPorts } = require('../utils/ports');
@@ -40,6 +41,8 @@ findPorts()
     setupStatsHandler(instances, httpApp);
 
     /** proxy listener vhosts */
+    httpApp.use(bodyParser.json());
+    httpsApp.use(bodyParser.json());
     setupVirtualHosts(instances, httpApp, httpsApp);
     setupSecureContexts(instances);
 

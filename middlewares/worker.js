@@ -70,16 +70,16 @@ const workerMiddleware = (instance) => {
           return true;
         }
       });
-    } else if (path.lastIndexOf('/') === path.length - 1) { // detect index for trailing slash
-      config.index.find(indexFile => {
-        const checkIndexFilePath = resolve(indexPath, indexFile);
+    } else if (config.index.find(indexFile => {
+      const checkIndexFilePath = resolve(indexPath, indexFile);
 
-        if (existsSync(checkIndexFilePath)) {
-          indexPath = checkIndexFilePath;
-          isIndex = true;
-          return true;
-        }
-      });
+      if (existsSync(checkIndexFilePath)) {
+        indexPath = checkIndexFilePath;
+        isIndex = true;
+        return true;
+      }
+    })) { // detect index for trailing slash
+
     } else {
       config.index.find(indexFile => {
         if (path.indexOf(indexFile) === path.length - indexFile.length) {
@@ -97,6 +97,7 @@ const workerMiddleware = (instance) => {
       event.pathFragments = pathFragments;
       event.queryStringParameters = queryStringParameters;
       event.headers = request.headers;
+      if (request.body) event.body = JSON.stringify(request.body);
 
       logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
