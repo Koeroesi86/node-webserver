@@ -1,14 +1,25 @@
 {
-  "name": "node-webserver",
+  "name": "@koeroesi86/node-webserver",
   "version": "1.0.0",
-  "description": "",
-  "main": "",
+  "description": "A local Lambda implementation",
+  "main": "index.js",
+  "author": {
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
+  },
+  "repository": "github:Koeroesi86/node-webserver",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin" : {
+    "node-webserver" : "./scripts/node-webserver.js"
+  },
   "scripts": {
     "test": "node scripts/tests.js",
     "service": "node scripts/manage.js",
-    "start": "nodemon scripts/server.js"
+    "start": "nodemon scripts/server.js",
+    "generate-version": "node scripts/version.js"
   },
-  "author": "Krisztian Korosi",
   "license": "MIT",
   "dependencies": {
     "@koeroesi86/node-lambda-invoke": "^1.0.9-5e55de5",
