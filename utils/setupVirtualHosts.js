@@ -1,5 +1,5 @@
 const vHost = require('vhost');
-const { PORTS } = require('../configuration');
+const { PORTS } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const getURL = require('./getURL');
 const proxyMiddleware = require('../middlewares/proxy');
 const lambdaMiddleware = require('../middlewares/lambda');

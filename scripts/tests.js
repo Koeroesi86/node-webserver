@@ -5,7 +5,7 @@ const jest = require('jest');
 process.chdir(__dirname);
 
 let argv = process.argv.slice(2);
-const configurationPath = resolve(__dirname, '../configuration.js');
+const configurationPath = process.env.NODE_WEBSERVER_CONFIG || resolve(__dirname, '../configuration.js');
 const configurationExamplePath = resolve(__dirname, '../configuration.example.js');
 
 // create config for build

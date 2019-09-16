@@ -1,5 +1,5 @@
 const { findPorts, getFreePort, clearPorts, getPorts, addPort } = require("./ports");
-const { PORT_LOOKUP } = require('../configuration');
+const { PORT_LOOKUP } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const fp = require('find-free-port');
 
 jest.mock('find-free-port');

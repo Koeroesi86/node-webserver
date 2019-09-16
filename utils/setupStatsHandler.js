@@ -1,6 +1,6 @@
 const vHost = require('vhost');
 const pidUsage = require('pidusage');
-const { PORTS, STATS_DOMAIN, STATS_REFRESH_INTERVAL } = require('../configuration');
+const { PORTS, STATS_DOMAIN, STATS_REFRESH_INTERVAL } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const getURL = require('./getURL');
 const getDate = require('./getDate');
 const logger = require('./logger');

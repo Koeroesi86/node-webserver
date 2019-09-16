@@ -1,7 +1,7 @@
 const service = require('os-service');
 const minimist = require('minimist');
 const { resolve } = require('path');
-const { SERVICE_NAME } = require('../configuration');
+const { SERVICE_NAME } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const { spawn } = require('child_process');
 const fs = require("fs");
 
