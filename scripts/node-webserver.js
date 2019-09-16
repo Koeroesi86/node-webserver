@@ -14,6 +14,7 @@ process.env.NODE_WEBSERVER_CONFIG = config;
 
 execSync(`node ${path.resolve(__dirname, './server.js')}`, {
   shell: true,
+  stdio: 'inherit',
   env: {
     NODE_WEBSERVER_CONFIG: config,
   }
