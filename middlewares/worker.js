@@ -5,6 +5,7 @@ const url = require('url');
 const send = require('send');
 const logger = require('../utils/logger');
 const getDate = require('../utils/getDate');
+const WorkerPool = require('../utils/workerPool');
 
 const workers = {};
 
@@ -35,6 +36,7 @@ function getWorker(path, options = {}) {// TODO: worker pool
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;
   const rootPath = resolve(config.root);
+  const workerPool = new WorkerPool({  overallLimit: config.limit, logger: console.log });
 
   return (request, response, next) => {
     const {
@@ -102,12 +104,14 @@ const workerMiddleware = (instance) => {
       logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
       Promise.resolve()
-        .then(() => getWorker(indexPath, config.options))
+        .then(() => workerPool.getWorker(indexPath, config.options, config.limitPerPath))
         .then(worker => {
+          worker.busy = true;
           worker.addEventListenerOnce('message', responseEvent => {
             response.writeHead(responseEvent.statusCode, responseEvent.headers);
             const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
             response.end(Buffer.from(responseEvent.body, bufferEncoding));
+            worker.busy = false;
           });
           worker.postMessage(event);
         });
