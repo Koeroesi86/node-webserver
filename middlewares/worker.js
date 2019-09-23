@@ -57,21 +57,26 @@ const workerMiddleware = (instance) => {
       if (!pathExists) {
         currentPathFragments.splice(i);
         pathExists = existsSync(join(rootPath, ...currentPathFragments));
-        break;
       }
     }
 
     let indexPath = join(rootPath, ...currentPathFragments);
 
     if (currentPathFragments.length < pathFragments.length) {
-      config.index.find(indexFile => {
-        const checkIndexFilePath = join(rootPath, ...currentPathFragments, indexFile);
-        if (existsSync(checkIndexFilePath)) {
-          isIndex = true;
-          indexPath = checkIndexFilePath;
-          return true;
+      let indexFound = false;
+      for (let i = currentPathFragments.length; i >= 0; i--) {
+        if (!indexFound) {
+          currentPathFragments.splice(i);
+          indexFound = !!config.index.find(indexFile => {
+            const checkIndexFilePath = join(rootPath, ...currentPathFragments, indexFile);
+            if (existsSync(checkIndexFilePath)) {
+              isIndex = true;
+              indexPath = checkIndexFilePath;
+              return true;
+            }
+          });
         }
-      });
+      }
     } else if (config.index.find(indexFile => {
       const checkIndexFilePath = resolve(indexPath, indexFile);
 
