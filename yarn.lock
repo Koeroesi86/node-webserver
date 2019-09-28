@@ -285,10 +285,10 @@
     "@types/istanbul-reports" "^1.1.1"
     "@types/yargs" "^12.0.9"
 
-"@koeroesi86/node-lambda-invoke@^1.0.17-928f791":
-  version "1.0.17-928f791"
-  resolved "https://registry.yarnpkg.com/@koeroesi86/node-lambda-invoke/-/node-lambda-invoke-1.0.17-928f791.tgz#1f5a2a6f33c24c6aec95c12fb1fec9bdd76d3346"
-  integrity sha512-AbEdEBaqGPbWvq8vbYAXw1DvpnPsku9COd/AJp719JIEDK1Llxt6soR397vwu93CKVtF1xfX4Zm6dXTW+btGNA==
+"@koeroesi86/node-lambda-invoke@^1.0.18-b7bb012":
+  version "1.0.18-b7bb012"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-lambda-invoke/-/node-lambda-invoke-1.0.18-b7bb012.tgz#076d84e17bd313090e9fe632b92c4998c5c9d71a"
+  integrity sha512-7DNBQN3LUs0P6Qa38YL9K98m483RcTpHYvoJE7fHgG7ocoedogWO+Lk1GkTve/ZUDvDphRp6dziN60/lycD0RA==
   dependencies:
     dotenv "^6.2.0"
     moment "^2.24.0"
