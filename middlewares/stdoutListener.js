@@ -11,10 +11,14 @@ module.exports = (childProcess, logger = () => {}) => {
   const messageListener = data => {
     logger(data.toString().trim());
   };
-  childProcess.stdout.off('data', messageListener);
-  childProcess.stdout.on('data', messageListener);
-  childProcess.stderr.off('data', messageListener);
-  childProcess.stderr.on('data', messageListener);
+  if (childProcess.stdout) {
+    childProcess.stdout.off('data', messageListener);
+    childProcess.stdout.on('data', messageListener);
+  }
+  if (childProcess.stderr) {
+    childProcess.stderr.off('data', messageListener);
+    childProcess.stderr.on('data', messageListener);
+  }
 
   const closeListener = code => {
     if (code) logger(`[${getDate()}] child process exited with code ${code}`);

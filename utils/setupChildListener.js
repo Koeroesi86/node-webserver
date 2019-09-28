@@ -5,14 +5,18 @@ module.exports = child => {
   const messageListener = data => {
     logger.info(`[${getDate()}] ${data.toString().trim()}`);
   };
-  child.stdout.off('data', messageListener);
-  child.stdout.on('data', messageListener);
+  if (child.stdout) {
+    child.stdout.off('data', messageListener);
+    child.stdout.on('data', messageListener);
+  }
 
   const errorListener = data => {
     logger.error(`[${getDate()}] ${data.toString().trim()}`);
   };
-  child.stderr.off('data', errorListener);
-  child.stderr.on('data', errorListener);
+  if (child.stderr) {
+    child.stderr.off('data', errorListener);
+    child.stderr.on('data', errorListener);
+  }
 
   const closeListener = code => {
     if (code) {

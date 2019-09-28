@@ -22,7 +22,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@koeroesi86/node-lambda-invoke": "^1.0.12-83a1866",
+    "@koeroesi86/node-lambda-invoke": "^1.0.17-928f791",
     "body-parser": "^1.19.0",
     "chalk": "^2.4.2",
     "connect": "^3.6.6",
