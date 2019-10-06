@@ -1,5 +1,5 @@
-process.on('message', event => {
-  process.send({
+module.exports = (event, callback) => {
+  callback({
     statusCode: 200,
     headers: {
       'Content-Type': 'text/html',
@@ -8,4 +8,4 @@ process.on('message', event => {
     body: '<h1>It works!</h1>',
     isBase64Encoded: false,
   });
-});
+};

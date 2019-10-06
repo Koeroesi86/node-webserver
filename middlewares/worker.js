@@ -131,7 +131,7 @@ const workerMiddleware = (instance) => {
           logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
           Promise.resolve()
-            .then(() => workerPool.getWorker(indexPath, config.options, config.limitPerPath))
+            .then(() => workerPool.getWorker(`${resolve(__dirname, './workerInvoke.js')} ${indexPath.replace(/\\/gi, '/')}`, config.options, config.limitPerPath))
             .then(worker => {
               worker.busy = true;
               worker.addEventListenerOnce('message', responseEvent => {
