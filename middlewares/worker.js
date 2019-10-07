@@ -36,7 +36,7 @@ function getWorker(path, options = {}) {// TODO: worker pool
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;
   const rootPath = resolve(config.root);
-  const workerPool = new WorkerPool({ overallLimit: config.limit, logger: console.log });
+  const workerPool = new WorkerPool({ overallLimit: config.limit, logger: logger.info });
 
   return (request, response, next) => {
     const {
