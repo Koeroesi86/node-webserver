@@ -20,6 +20,8 @@ class WorkerPool {
     this.idleCheckTimeout = idleCheckTimeout;
     this.logger = logger;
 
+    this._creating = false;
+
     this.getWorker = this.getWorker.bind(this);
     this.createWorker = this.createWorker.bind(this);
   }
@@ -39,40 +41,39 @@ class WorkerPool {
   }
 
   getWorker(workerPath, options = {}, limit = 0) {
-      const nonBusyId = getNonBusyId(workerPath);
-      // TODO: tidy up
-      if (
-        (workerInstances[workerPath] && limit > 0 && Object.keys(workerInstances[workerPath]).length >= limit)
-        || (this.overallLimit > 0 && getOverallCount() >= this.overallLimit)
-      ) {
-        return Promise.resolve()
-          .then(() => new Promise(r => setTimeout(r, this.idleCheckTimeout)))
-          .then(() => this.getWorker(workerPath, options));
-      } else if (!workerInstances[workerPath] || !nonBusyId) {
-        // TODO: do it nicely
-        if (workerInstances[workerPath] && limit > 0 && Object.keys(workerInstances[workerPath]).length >= limit) {
-          return Promise.resolve()
-            .then(() => new Promise(r =>  setTimeout(r, 1)))
-            .then(() => this.getWorker(workerPath, options, limit));
-        }
-        return Promise.resolve()
-          .then(() => this.createWorker(workerPath, options, limit))
-          .then(({ id, instance }) => {
-            workerInstances[workerPath] = {
-              ...(workerInstances[workerPath] && workerInstances[workerPath]),
-              [id]: instance,
-            };
-            instance.addEventListenerOnce('close', () => {
-              delete workerInstances[workerPath][id];
-            });
-
-            return Promise.resolve(instance);
+    const nonBusyId = getNonBusyId(workerPath);
+    // TODO: tidy up
+    if (nonBusyId !== undefined) {
+      return Promise.resolve(workerInstances[workerPath][nonBusyId]);
+    } else if (
+      (workerInstances[workerPath] && limit > 0 && Object.keys(workerInstances[workerPath]).length >= limit)
+      || (this.overallLimit > 0 && getOverallCount() >= this.overallLimit)
+      || this._creating
+    ) {
+      return Promise.resolve()
+        .then(() => new Promise(r => setTimeout(r, this.idleCheckTimeout)))
+        .then(() => this.getWorker(workerPath, options));
+    } else if (!workerInstances[workerPath]) {
+      this._creating = true;
+      return Promise.resolve()
+        .then(() => this.createWorker(workerPath, options, limit))
+        .then(({ id, instance }) => {
+          workerInstances[workerPath] = {
+            ...(workerInstances[workerPath] && workerInstances[workerPath]),
+            [id]: instance,
+          };
+          instance.addEventListenerOnce('close', () => {
+            delete workerInstances[workerPath][id];
           });
-      } else if(nonBusyId) {
-        return Promise.resolve(workerInstances[workerPath][nonBusyId]);
-      }
 
-      return Promise.reject();
+          this._creating = false;
+          return Promise.resolve(instance);
+        });
+    }
+
+    return Promise.resolve()
+      .then(() => new Promise(r => setTimeout(r, this.idleCheckTimeout)))
+      .then(() => this.getWorker(workerPath, options));
   }
 }
 
