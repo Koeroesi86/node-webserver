@@ -1,37 +1,13 @@
 const { resolve, join } = require('path');
-const { existsSync } = require('fs');
-const { Worker } = require('@koeroesi86/node-lambda-invoke');
-const url = require('url');
+const { existsSync } = require('fs');const url = require('url');
 const send = require('send');
 const logger = require('../utils/logger');
 const getDate = require('../utils/getDate');
 const WorkerPool = require('../utils/workerPool');
 
-const workers = {};
-
 const FORBIDDEN_PATHS = [
   '..'
 ];
-
-/**
- * @param {string} path
- * @returns {Promise<Worker>}
- */
-function getWorker(path, options = {}) {// TODO: worker pool
-  if (workers[path]) {
-    return Promise.resolve(workers[path]);
-  }
-
-  const worker = new Worker(path, options);
-  worker.createdAt = Date.now();
-  workers[path] = worker;
-
-  worker.addEventListenerOnce('close', () => {
-    delete workers[path];
-  });
-
-  return Promise.resolve(worker);
-}
 
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;

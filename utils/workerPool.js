@@ -49,6 +49,12 @@ class WorkerPool {
           .then(() => new Promise(r => setTimeout(r, this.idleCheckTimeout)))
           .then(() => this.getWorker(workerPath, options));
       } else if (!workerInstances[workerPath] || !nonBusyId) {
+        // TODO: do it nicely
+        if (workerInstances[workerPath] && limit > 0 && Object.keys(workerInstances[workerPath]).length >= limit) {
+          return Promise.resolve()
+            .then(() => new Promise(r =>  setTimeout(r, 1)))
+            .then(() => this.getWorker(workerPath, options, limit));
+        }
         return Promise.resolve()
           .then(() => this.createWorker(workerPath, options, limit))
           .then(({ id, instance }) => {
