@@ -1,6 +1,8 @@
+const uuid = require('uuid/v4');
 const { resolve, join } = require('path');
 const { existsSync } = require('fs');const url = require('url');
 const send = require('send');
+const { WORKER_EVENT } = require('../constants');
 const logger = require('../utils/logger');
 const getDate = require('../utils/getDate');
 const WorkerPool = require('../utils/workerPool');
@@ -110,13 +112,32 @@ const workerMiddleware = (instance) => {
             .then(() => workerPool.getWorker(`${resolve(__dirname, './workerInvoke.js')} ${indexPath.replace(/\\/gi, '/')}`, config.options, config.limitPerPath))
             .then(worker => {
               worker.busy = true;
-              worker.addEventListenerOnce('message', responseEvent => {
-                response.writeHead(responseEvent.statusCode, responseEvent.headers);
-                const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
-                response.end(Buffer.from(responseEvent.body, bufferEncoding));
-                worker.busy = false;
+              const requestId = uuid();
+              const messageListener = responseEvent => {
+                if (responseEvent.requestId === requestId) {
+                  if (responseEvent.type === WORKER_EVENT.RESPONSE) {
+                    worker.postMessage({
+                      type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE,
+                      requestId,
+                    });
+                    const { event } = responseEvent;
+                    response.writeHead(event.statusCode, event.headers);
+                    const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
+                    response.end(Buffer.from(event.body, bufferEncoding));
+                    worker.removeEventListener('message', messageListener);
+                  }
+
+                  if (responseEvent.type === WORKER_EVENT.REQUEST_ACKNOWLEDGE) {
+                    worker.busy = false;
+                  }
+                }
+              };
+              worker.addEventListener('message', messageListener);
+              worker.postMessage({
+                type: WORKER_EVENT.REQUEST,
+                requestId,
+                event,
               });
-              worker.postMessage(event);
             });
         } else if (['GET', 'HEAD'].includes(request.method.toUpperCase())) {
           const stream = send(request, path, {
