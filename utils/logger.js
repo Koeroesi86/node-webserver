@@ -6,7 +6,7 @@ const { appendFileSync } = require('fs');
 const startedAt = moment();
 
 function fileLog(filePath, args = []) {
-  if (process.env.NODEWS_ENABLE_FILE_LOGS === 'true') {
+  if (process.env.NODEWS_ENABLE_FILE_LOGS) {
     appendFileSync(filePath, `${args.join(', ')}\n`, 'utf8');
   }
 }
