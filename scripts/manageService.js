@@ -3,13 +3,11 @@ const minimist = require('minimist');
 const { resolve } = require('path');
 const { SERVICE_NAME } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const { spawn } = require('child_process');
-const fs = require("fs");
 
 const { add, remove, run } = minimist(process.argv.slice(2));
 
 let child;
 process.chdir(__dirname);
-const logStream = fs.createWriteStream(resolve('../all.logger.js'));
 
 if (add) {
   service.add(SERVICE_NAME, {
@@ -37,14 +35,7 @@ if (add) {
     service.stop(0);
   });
 
-  child = spawn('node', [resolve(__dirname, './server.js')]);
-  child.stdout.on('data', (data) => {
-    logStream.write(data + "\n");
-  });
-
-  child.stderr.on('data', (data) => {
-    logStream.write(data + "\n");
-  });
+  child = spawn('node', [resolve(__dirname, './server.js')], { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
 } else {
   console.info(`
     Usage:
