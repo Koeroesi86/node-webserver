@@ -1,13 +1,12 @@
 const getDate = require('./getDate');
 const logger = require('./logger');
 
+const parseMessage = data => logger.info(`[${getDate()}] ${data.toString().trim()}`);
+
 module.exports = child => {
-  const messageListener = data => {
-    logger.info(`[${getDate()}] ${data.toString().trim()}`);
-  };
   if (child.stdout) {
-    child.stdout.off('data', messageListener);
-    child.stdout.on('data', messageListener);
+    child.stdout.off('data', parseMessage);
+    child.stdout.on('data', parseMessage);
   }
 
   const errorListener = data => {

@@ -12,3 +12,5 @@ tmp
 requests/*
 !responses/.gitkeep
 responses/*
+!logs/.gitkeep
+logs/*
