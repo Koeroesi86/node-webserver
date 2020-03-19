@@ -25,7 +25,7 @@ if (add) {
     }
   });
 } else if (run) {
-  service.run(function () {
+  service.run(() => {
     if (child) {
       child.stdin.pause();
       child.kill();
@@ -40,6 +40,13 @@ if (add) {
     [ resolve(__dirname, './server.js') ],
     { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }
   );
+  process.on('exit', () => {
+    try {
+      child.kill();
+    } catch (e) {
+      //
+    }
+  });
 } else {
   console.info(`
     Usage:
