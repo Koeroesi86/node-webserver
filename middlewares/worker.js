@@ -11,6 +11,71 @@ const FORBIDDEN_PATHS = [
   '..'
 ];
 
+const PROTOCOLS = {
+  HTTP: 'HTTP',
+  WEBSOCKET: 'WS',
+};
+
+const isWebSocket = request => {
+  if (request.method !== 'GET') return false;
+
+  const connection = request.headers.connection || '';
+  const upgrade = request.headers.upgrade || '';
+
+  return request.method === 'GET' &&
+    connection.toLowerCase().split(/ *, */).indexOf('upgrade') >= 0 &&
+    upgrade.toLowerCase() === 'websocket';
+};
+
+/**
+ * TODO: improve
+ * @param {Buffer} data
+ * @returns {string}
+ */
+const parseWsMessage = data => {
+  const dl = data[1] & 127;
+  let ifm = 2;
+  if (dl === 126) {
+    ifm = 4;
+  } else if (dl === 127) {
+    ifm = 10;
+  }
+  let i = ifm + 4;
+  const masks = data.slice(ifm, i);
+  let index = 0;
+  let output = "";
+  const l = data.length;
+  while (i < l) {
+    output += String.fromCharCode(data[i++] ^ masks[index++ % 4]);
+  }
+  return output;
+};
+
+/**
+ * TODO: improve
+ * @param {String} text
+ * @returns {Buffer}
+ */
+const constructWsMessage = text => {
+  const jsonByteLength = Buffer.byteLength(text);
+  // Note: we're not supporting > 65535 byte payloads at this stage
+  const lengthByteCount = jsonByteLength < 126 ? 0 : 2;
+  const payloadLength = lengthByteCount === 0 ? jsonByteLength : 126;
+  const buffer = Buffer.alloc(2 + lengthByteCount + jsonByteLength);
+  // Write out the first byte, using opcode `1` to indicate that the message
+  // payload contains text data
+  buffer.writeUInt8(0b10000001, 0);
+  buffer.writeUInt8(payloadLength, 1);
+  // Write the length of the JSON payload to the second byte
+  let payloadOffset = 2;
+  if (lengthByteCount > 0) {
+    buffer.writeUInt16BE(jsonByteLength, 2); payloadOffset += lengthByteCount;
+  }
+  // Write the JSON data to the data buffer
+  buffer.write(text, payloadOffset);
+  return buffer;
+};
+
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;
   const rootPath = resolve(config.root);
@@ -100,6 +165,7 @@ const workerMiddleware = (instance) => {
           /** @var {RequestEvent} event */
           const event = {};
           event.httpMethod = request.method.toUpperCase();
+          event.protocol = isWebSocket(request) ? PROTOCOLS.WEBSOCKET : PROTOCOLS.HTTP;
           event.path = path;
           event.pathFragments = pathFragments;
           event.queryStringParameters = queryStringParameters;
@@ -113,6 +179,13 @@ const workerMiddleware = (instance) => {
             .then(worker => {
               worker.busy = true;
               const requestId = uuid();
+
+              if (event.protocol === PROTOCOLS.WEBSOCKET) {
+                request.socket.on('data', data => {
+                  logger.info(`[${getDate()}] [${requestId}] [ws data in] ${parseWsMessage(data)}`);
+                });
+              }
+
               const messageListener = responseEvent => {
                 if (responseEvent.requestId === requestId) {
                   if (responseEvent.type === WORKER_EVENT.RESPONSE) {
@@ -121,10 +194,20 @@ const workerMiddleware = (instance) => {
                       requestId,
                     });
                     const { event } = responseEvent;
-                    response.writeHead(event.statusCode, event.headers);
                     const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
-                    response.end(Buffer.from(event.body, bufferEncoding));
-                    worker.removeEventListener('message', messageListener);
+
+                    response.writeHead(event.statusCode, event.headers);
+                    response.write(Buffer.from(event.body, bufferEncoding));
+
+                    if (event.protocol === PROTOCOLS.HTTP) {
+                      worker.removeEventListener('message', messageListener);
+                    }
+                    response.end();
+                  }
+
+                  if (responseEvent.type === WORKER_EVENT.WS_MESSAGE_SEND) {
+                    logger.info(`[${getDate()}] [${requestId}] [ws data out] ${responseEvent.event.frame}`);
+                    request.socket.write(constructWsMessage(responseEvent.event.frame));
                   }
 
                   if (responseEvent.type === WORKER_EVENT.REQUEST_ACKNOWLEDGE) {
@@ -132,6 +215,13 @@ const workerMiddleware = (instance) => {
                   }
                 }
               };
+              request.socket.on('close', () => {
+                worker.postMessage({
+                  type: WORKER_EVENT.WS_CONNECTION_CLOSE,
+                  requestId,
+                  event
+                });
+              });
               worker.addEventListener('message', messageListener);
               worker.postMessage({
                 type: WORKER_EVENT.REQUEST,
