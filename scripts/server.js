@@ -3,9 +3,6 @@ const http = require('http');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
-
-require('dotenv').config();
-
 const addExitListeners = require('../utils/exitHandler');
 const { findPorts } = require('../utils/ports');
 const setupSecureContexts = require('../utils/setupSecureContexts');

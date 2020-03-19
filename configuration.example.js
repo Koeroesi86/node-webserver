@@ -2,6 +2,7 @@ const { resolve } = require('path');
 
 module.exports = {
   SERVICE_NAME: 'node-webserver',
+  ENABLE_FILE_LOGS: false,
   PORTS: {
     http: 80,
     https: 443

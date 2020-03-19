@@ -35,7 +35,11 @@ if (add) {
     service.stop(0);
   });
 
-  child = spawn('node', [resolve(__dirname, './server.js')], { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+  child = spawn(
+    'node',
+    [ resolve(__dirname, './server.js') ],
+    { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }
+  );
 } else {
   console.info(`
     Usage:
