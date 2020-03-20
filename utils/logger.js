@@ -2,7 +2,7 @@ const chalk = require('chalk');
 const moment = require('moment');
 const { resolve } = require('path');
 const { appendFileSync } = require('fs');
-const { ENABLE_FILE_LOGS, LOG_LEVELS } = require('../configuration');
+const { ENABLE_FILE_LOGS, LOG_LEVELS } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 
 const startedAt = moment();
 
