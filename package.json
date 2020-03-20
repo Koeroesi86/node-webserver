@@ -35,7 +35,7 @@
     "minimist": "^1.2.0",
     "moment": "^2.22.2",
     "nodemon": "^1.17.5",
-    "os-service": "^2.1.0",
+    "os-service": "^2.2.0",
     "pidusage": "^2.0.10",
     "rimraf": "^2.6.3",
     "send": "^0.17.1",
