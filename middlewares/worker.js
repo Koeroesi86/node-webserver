@@ -2,7 +2,7 @@ const uuid = require('uuid/v4');
 const path = require('path');
 const { existsSync } = require('fs');
 const url = require('url');
-const send = require('send');
+const os = require('os');
 const { WORKER_EVENT } = require('../constants');
 const logger = require('../utils/logger');
 const getDate = require('../utils/getDate');
@@ -80,6 +80,7 @@ const constructWsMessage = text => {
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;
   const rootPath = path.resolve(config.root);
+  const staticWorkerPool = new WorkerPool({ overallLimit: os.cpus().length, logger: logger.info });
   const workerPool = new WorkerPool({ overallLimit: config.limit, logger: logger.info });
 
   return (request, response, next) => {
@@ -162,17 +163,17 @@ const workerMiddleware = (instance) => {
           });
         }
 
-        if (isIndex) {
-          /** @var {RequestEvent} event */
-          const event = {};
-          event.httpMethod = request.method.toUpperCase();
-          event.protocol = isWebSocket(request) ? PROTOCOLS.WEBSOCKET : PROTOCOLS.HTTP;
-          event.path = pathname;
-          event.pathFragments = pathFragments;
-          event.queryStringParameters = queryStringParameters;
-          event.headers = request.headers;
-          event.body = request.body;
+        /** @var {RequestEvent} event */
+        const event = {};
+        event.httpMethod = request.method.toUpperCase();
+        event.protocol = isWebSocket(request) ? PROTOCOLS.WEBSOCKET : PROTOCOLS.HTTP;
+        event.path = pathname;
+        event.pathFragments = pathFragments;
+        event.queryStringParameters = queryStringParameters;
+        event.headers = request.headers;
+        event.body = request.body;
 
+        if (isIndex) {
           logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
           Promise.resolve()
@@ -245,20 +246,52 @@ const workerMiddleware = (instance) => {
               }
             });
         } else if (['GET', 'HEAD'].includes(request.method.toUpperCase())) {
-          const stream = send(request, pathname, {
-            maxage: 0,
-            root: rootPath,
-          });
-          stream.on('error', err => {
-            if (!(err.statusCode < 500)) {
-              next(err);
-              return;
-            }
+          logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
-            next();
-          });
+          Promise.resolve()
+            .then(() => staticWorkerPool.getWorker(`${path.resolve(__dirname, './staticWorkerInvoke.js')}`, { cwd: process.cwd(), }, 1))
+            .then(worker => {
+              const requestId = uuid();
 
-          stream.pipe(response);
+              const messageListener = responseEvent => {
+                if (responseEvent.requestId === requestId) {
+                  if (responseEvent.type === WORKER_EVENT.RESPONSE) {
+                    worker.postMessage({
+                      type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE,
+                      requestId,
+                    });
+                    const { event } = responseEvent;
+                    const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
+
+                    response.writeHead(event.statusCode, event.headers);
+                    response.write(Buffer.from(event.body, bufferEncoding));
+                    response.end();
+                  }
+
+                  if (responseEvent.type === WORKER_EVENT.REQUEST_ACKNOWLEDGE) {
+                    worker.busy = false;
+                  }
+                }
+              };
+
+              worker.addEventListener('message', messageListener);
+
+              event.rootPath = rootPath;
+              worker.postMessage({
+                type: WORKER_EVENT.REQUEST,
+                requestId,
+                event,
+              });
+
+              const cleanupConnection = () => {
+                worker.removeEventListener('message', messageListener);
+                request.off('close', cleanupConnection);
+                request.off('aborted', cleanupConnection);
+              };
+              request.on('close', cleanupConnection);
+              request.on('aborted', cleanupConnection);
+              response.on('finish', cleanupConnection)
+            });
         }
       });
   };
