@@ -1,6 +1,7 @@
 const uuid = require('uuid/v4');
-const { resolve, join } = require('path');
-const { existsSync } = require('fs');const url = require('url');
+const path = require('path');
+const { existsSync } = require('fs');
+const url = require('url');
 const send = require('send');
 const { WORKER_EVENT } = require('../constants');
 const logger = require('../utils/logger');
@@ -78,13 +79,13 @@ const constructWsMessage = text => {
 
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;
-  const rootPath = resolve(config.root);
+  const rootPath = path.resolve(config.root);
   const workerPool = new WorkerPool({ overallLimit: config.limit, logger: logger.info });
 
   return (request, response, next) => {
     const {
       query: queryStringParameters,
-      pathname: path
+      pathname
     } = url.parse(request.url, true);
 
     // todo: limit request size
@@ -112,7 +113,7 @@ const workerMiddleware = (instance) => {
       }))
       .then(() => {
         let isIndex = false;
-        const pathFragments = path.split(/\//gi).filter(Boolean);
+        const pathFragments = pathname.split(/\//gi).filter(Boolean);
         let currentPathFragments = pathFragments.slice();
 
         if (currentPathFragments.find(p => FORBIDDEN_PATHS.includes(p))) return next();
@@ -121,11 +122,11 @@ const workerMiddleware = (instance) => {
         for (let i = currentPathFragments.length; i >= 0; i--) {
           if (!pathExists) {
             currentPathFragments.splice(i);
-            pathExists = existsSync(join(rootPath, ...currentPathFragments));
+            pathExists = existsSync(path.join(rootPath, ...currentPathFragments));
           }
         }
 
-        let indexPath = join(rootPath, ...currentPathFragments);
+        let indexPath = path.join(rootPath, ...currentPathFragments);
 
         if (currentPathFragments.length < pathFragments.length) {
           let indexFound = false;
@@ -133,7 +134,7 @@ const workerMiddleware = (instance) => {
             if (!indexFound) {
               currentPathFragments.splice(i);
               indexFound = !!config.index.find(indexFile => {
-                const checkIndexFilePath = join(rootPath, ...currentPathFragments, indexFile);
+                const checkIndexFilePath = path.join(rootPath, ...currentPathFragments, indexFile);
                 if (existsSync(checkIndexFilePath)) {
                   isIndex = true;
                   indexPath = checkIndexFilePath;
@@ -143,7 +144,7 @@ const workerMiddleware = (instance) => {
             }
           }
         } else if (config.index.find(indexFile => {
-          const checkIndexFilePath = resolve(indexPath, indexFile);
+          const checkIndexFilePath = path.resolve(indexPath, indexFile);
 
           if (existsSync(checkIndexFilePath)) {
             indexPath = checkIndexFilePath;
@@ -154,7 +155,7 @@ const workerMiddleware = (instance) => {
 
         } else {
           config.index.find(indexFile => {
-            if (path.indexOf(indexFile) === path.length - indexFile.length) {
+            if (pathname.indexOf(indexFile) === pathname.length - indexFile.length) {
               isIndex = true;
               return true;
             }
@@ -166,7 +167,7 @@ const workerMiddleware = (instance) => {
           const event = {};
           event.httpMethod = request.method.toUpperCase();
           event.protocol = isWebSocket(request) ? PROTOCOLS.WEBSOCKET : PROTOCOLS.HTTP;
-          event.path = path;
+          event.path = pathname;
           event.pathFragments = pathFragments;
           event.queryStringParameters = queryStringParameters;
           event.headers = request.headers;
@@ -175,15 +176,16 @@ const workerMiddleware = (instance) => {
           logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
           Promise.resolve()
-            .then(() => workerPool.getWorker(`${resolve(__dirname, './workerInvoke.js')} ${indexPath.replace(/\\/gi, '/')}`, config.options, config.limitPerPath))
+            .then(() => workerPool.getWorker(`${path.resolve(__dirname, './workerInvoke.js')} ${indexPath.replace(/\\/gi, '/')}`, config.options, config.limitPerPath))
             .then(worker => {
               worker.busy = true;
               const requestId = uuid();
 
+              const requestSocketListener = data => {
+                logger.info(`[${getDate()}] [${requestId}] [ws data in] ${parseWsMessage(data)}`);
+              };
               if (event.protocol === PROTOCOLS.WEBSOCKET) {
-                request.socket.on('data', data => {
-                  logger.info(`[${getDate()}] [${requestId}] [ws data in] ${parseWsMessage(data)}`);
-                });
+                request.socket.on('data', requestSocketListener);
               }
 
               const messageListener = responseEvent => {
@@ -198,10 +200,6 @@ const workerMiddleware = (instance) => {
 
                     response.writeHead(event.statusCode, event.headers);
                     response.write(Buffer.from(event.body, bufferEncoding));
-
-                    if (event.protocol === PROTOCOLS.HTTP) {
-                      worker.removeEventListener('message', messageListener);
-                    }
                     response.end();
                   }
 
@@ -215,22 +213,39 @@ const workerMiddleware = (instance) => {
                   }
                 }
               };
-              request.socket.on('close', () => {
+
+              const requestCloseListener =  () => {
                 worker.postMessage({
                   type: WORKER_EVENT.WS_CONNECTION_CLOSE,
                   requestId,
                   event
                 });
-              });
+                request.socket.off('close', requestCloseListener);
+              };
+              request.socket.on('close', requestCloseListener);
+
               worker.addEventListener('message', messageListener);
               worker.postMessage({
                 type: WORKER_EVENT.REQUEST,
                 requestId,
                 event,
               });
+
+              const cleanupConnection = () => {
+                worker.removeEventListener('message', messageListener);
+                request.socket.off('data', requestSocketListener);
+                request.off('close', cleanupConnection);
+                request.off('aborted', cleanupConnection);
+                request.socket.off('close', requestCloseListener);
+              };
+              request.on('close', cleanupConnection);
+              request.on('aborted', cleanupConnection);
+              if (event.protocol === PROTOCOLS.HTTP) {
+                response.on('finish', cleanupConnection)
+              }
             });
         } else if (['GET', 'HEAD'].includes(request.method.toUpperCase())) {
-          const stream = send(request, path, {
+          const stream = send(request, pathname, {
             maxage: 0,
             root: rootPath,
           });
