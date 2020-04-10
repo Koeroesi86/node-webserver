@@ -221,7 +221,7 @@ const workerMiddleware = (instance) => {
                   requestId,
                   event
                 });
-                request.socket.off('close', requestCloseListener);
+                if (request.socket && request.socket.off) request.socket.off('close', requestCloseListener);
               };
               request.socket.on('close', requestCloseListener);
 
@@ -234,10 +234,12 @@ const workerMiddleware = (instance) => {
 
               const cleanupConnection = () => {
                 worker.removeEventListener('message', messageListener);
-                request.socket.off('data', requestSocketListener);
                 request.off('close', cleanupConnection);
                 request.off('aborted', cleanupConnection);
-                request.socket.off('close', requestCloseListener);
+                if (request.socket && request.socket.off) {
+                  request.socket.off('data', requestSocketListener);
+                  request.socket.off('close', requestCloseListener);
+                }
               };
               request.on('close', cleanupConnection);
               request.on('aborted', cleanupConnection);
