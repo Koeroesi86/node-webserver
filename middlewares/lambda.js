@@ -9,8 +9,8 @@ const lambdaMiddleware = (instance) => {
   const lambdaToInvoke = (config.lambda || '').replace(/\\/g, '/');
   const handlerKey = config.handler || 'handler';
 
-  rimraf.sync(resolve(__dirname, '../requests/*'));
-  rimraf.sync(resolve(__dirname, '../responses/*'));
+  rimraf.sync(resolve(__dirname, '../requests/*'), { glob: { silent: true }});
+  rimraf.sync(resolve(__dirname, '../responses/*'), { glob: { silent: true }});
 
   return httpMiddleware(lambdaToInvoke, handlerKey, logger.info, storageDriver);
 };

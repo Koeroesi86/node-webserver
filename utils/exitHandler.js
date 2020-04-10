@@ -6,7 +6,7 @@ const { readdirSync } = require('fs');
 function cleanTmp() {
   const tmpLocation = resolve(__dirname, '../tmp');
   if (readdirSync(tmpLocation).length > 0) {
-    rimraf.sync(`${tmpLocation}/*`);
+    rimraf.sync(`${tmpLocation}/*`, { glob: { silent: true }});
     logger.info('Tmp folder cleaned.');
   }
 }
