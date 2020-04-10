@@ -26,10 +26,10 @@ class WorkerPool {
     this.createWorker = this.createWorker.bind(this);
   }
 
-  createWorker(workerPath, handlerKey) {
+  createWorker(workerPath, options = {}) {
     return new Promise(resolve => {
       const currentId = uuid();
-      const currentWorkerInstance = new Worker(workerPath, handlerKey, this.logger);
+      const currentWorkerInstance = new Worker(workerPath, options);
 
       currentWorkerInstance.addEventListenerOnce('close', code => {
         if (code) this.logger(`[${currentId}] Worker exited with code ${code}`);
@@ -52,7 +52,7 @@ class WorkerPool {
     ) {
       return Promise.resolve()
         .then(() => new Promise(r => setTimeout(r, this.idleCheckTimeout)))
-        .then(() => this.getWorker(workerPath, options));
+        .then(() => this.getWorker(workerPath, options, limit));
     } else if (!workerInstances[workerPath]) {
       this._creating = true;
       return Promise.resolve()
@@ -73,7 +73,7 @@ class WorkerPool {
 
     return Promise.resolve()
       .then(() => new Promise(r => setTimeout(r, this.idleCheckTimeout)))
-      .then(() => this.getWorker(workerPath, options));
+      .then(() => this.getWorker(workerPath, options, limit));
   }
 }
 
