@@ -234,8 +234,11 @@ const workerMiddleware = (instance) => {
 
               const cleanupConnection = () => {
                 worker.removeEventListener('message', messageListener);
-                request.off('close', cleanupConnection);
-                request.off('aborted', cleanupConnection);
+                if (request && request.off) {
+                  request.off('close', cleanupConnection);
+                  request.off('aborted', cleanupConnection);
+                }
+
                 if (request.socket && request.socket.off) {
                   request.socket.off('data', requestSocketListener);
                   request.socket.off('close', requestCloseListener);
@@ -287,8 +290,10 @@ const workerMiddleware = (instance) => {
 
               const cleanupConnection = () => {
                 worker.removeEventListener('message', messageListener);
-                request.off('close', cleanupConnection);
-                request.off('aborted', cleanupConnection);
+                if (request && request.off) {
+                  request.off('close', cleanupConnection);
+                  request.off('aborted', cleanupConnection);
+                }
               };
               request.on('close', cleanupConnection);
               request.on('aborted', cleanupConnection);
