@@ -29,7 +29,7 @@ function exitListener(instances, reason, event) {
 
   cleanTmp();
 
-  process.kill(process.pid, reason);
+  process.kill(process.pid, reason === 'uncaughtException' ? 'SIGINT' : reason);
 }
 
 function addExitListeners(instances) {
