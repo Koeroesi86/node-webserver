@@ -24,8 +24,10 @@ module.exports = (childProcess, logger = () => {}) => {
   const closeListener = code => {
     if (code) logger(`[${getDate()}] child process exited with code ${code}`);
 
-    childProcess.stdout.off('data', messageListener);
-    childProcess.stderr.off('data', messageListener);
+    if (childProcess && childProcess.instance) {
+      if (childProcess.stdout) childProcess.stdout.off('data', messageListener);
+      if (childProcess.stderr) childProcess.stderr.off('data', messageListener);
+    }
   };
   childProcess.addEventListenerOnce('close', closeListener);
 };
