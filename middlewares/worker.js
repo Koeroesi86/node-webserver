@@ -150,7 +150,6 @@ const getClientIp = request => {
 const workerMiddleware = (instance) => {
   const { workerOptions: config } = instance;
   const rootPath = path.resolve(config.root);
-  const staticWorkerPool = new WorkerPool({ overallLimit: os.cpus().length, logger: logger.info });
   const workerPool = new WorkerPool({ overallLimit: config.limit, logger: logger.info });
 
   return (request, response, next) => {
@@ -325,7 +324,7 @@ const workerMiddleware = (instance) => {
           logger.info(`[${getDate()}] Invoking worker`, indexPath);
 
           Promise.resolve()
-            .then(() => staticWorkerPool.getWorker(`${path.resolve(__dirname, './staticWorkerInvoke.js')}`, { cwd: process.cwd(), }, 1))
+            .then(() => workerPool.getWorker(`${path.resolve(__dirname, './workerInvoke.js')} ${path.resolve(__dirname, './staticWorker.js')}`, { cwd: process.cwd(), }, 0))
             .then(worker => {
               const requestId = uuid();
 

@@ -1,7 +1,6 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { WORKER_EVENT } = require('../constants');
 
 let timer;
 
@@ -97,7 +96,7 @@ function getContentType(extension = '') {
 function etag(body) {
   if (body.length === 0) {
     // fast-path empty
-    return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"'
+    return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
   }
 
   // compute hash of entity
@@ -125,6 +124,9 @@ function getCharset(body) {
 }
 
 const staticWorker = (event, callback = () => {}) => {
+  debounce(() => {
+    // console.log('Exiting static worker.')
+  }, 5000);
   const currentPath = `${event.path.replace(/\.{2,}/, '')}${/\/$/.test(event.path) ? 'index.html' : ''}`;
   const fileName = path.resolve(event.rootPath, `.${currentPath}`);
   if (fs.existsSync(fileName)) {
@@ -136,14 +138,26 @@ const staticWorker = (event, callback = () => {}) => {
     const contentType = getContentType(extension);
     const currentEtag = etag(bodyBuffer);
     const charset = getCharset(bodyBuffer);
+    const lastModified = new Date(stats.mtime);
+    let isModified = true;
+
+    if (event.headers['if-none-match'] === currentEtag) {
+      isModified = false;
+    } else if (event.headers['if-modified-since']) {
+      const ifModifiedSince = new Date(event.headers['if-modified-since']);
+      if (ifModifiedSince.toUTCString() === lastModified.toUTCString()) {
+        isModified = false;
+      }
+    }
+
     callback({
-      statusCode: 200,
+      statusCode: isModified ? 200 : 304,
       headers: {
         'Content-Type': `${contentType}${charset ? `; charset=${charset}` : ''}`,
         'Cache-Control': 'public, max-age=0',
         'Content-Length': bodyBuffer.length,
         'ETag': currentEtag,
-        ...(stats.mtime && { 'Last-Modified': new Date(stats.mtime).toUTCString() }),
+        ...(stats.mtime && { 'Last-Modified': lastModified.toUTCString() }),
       },
       body: bodyBuffer.toString('base64'),
       isBase64Encoded: true,
@@ -161,23 +175,4 @@ const staticWorker = (event, callback = () => {}) => {
   }
 };
 
-process.on('message', message => {
-  if (message.type === WORKER_EVENT.REQUEST)  {
-    debounce(() => {
-      // console.log('Exiting static worker.')
-    }, 5000);
-    process.send({
-      type: WORKER_EVENT.REQUEST_ACKNOWLEDGE,
-      requestId: message.requestId,
-    });
-
-    const callback = responseEvent => {
-      process.send({
-        type: WORKER_EVENT.RESPONSE,
-        requestId: message.requestId,
-        event: responseEvent,
-      });
-    };
-    staticWorker(message.event, callback);
-  }
-});
+module.exports = staticWorker;
