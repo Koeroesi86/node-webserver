@@ -1,0 +1,21 @@
+{
+  "name": "@koeroesi86/node-worker",
+  "version": "1.0.0",
+  "description": "NodeJS implementation of WebWorkers",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "example": "node scripts/example.js",
+    "generate-version": "node scripts/version.js"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
+  },
+  "repository": "github:Koeroesi86/node-lambda-invoke",
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}
