@@ -15,6 +15,7 @@ interface Worker {
 ```
 
 ## Usage
+
 ```javascript
 const Worker = require('@koeroesi86/node-worker');
 
