@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "@koeroesi86/node-lambda-invoke": "^1.0.20-d1fa702",
+    "@koeroesi86/node-worker-express": "^20.4.3-913af7b",
     "chalk": "^2.4.2",
     "connect": "^3.6.6",
     "dotenv": "^6.0.0",

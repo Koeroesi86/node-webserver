@@ -296,6 +296,20 @@
     rimraf "^2.6.3"
     uuid "^3.3.2"
 
+"@koeroesi86/node-worker-express@^20.4.3-913af7b":
+  version "20.4.3-913af7b"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-20.4.3-913af7b.tgz#dd58e80342ad341bbb5cad56cbe6422f80a018b2"
+  integrity sha512-8KBFb6qRu3010cfMdE2uGhSqFCjhmhZ62kc/Hr4M4OQN6RMWza0Lf9aUHOR23IfvUSo3KK1M65O1A/pke1SRHQ==
+  dependencies:
+    "@koeroesi86/node-worker" "^1.0.3-6bc3bc7"
+    "@types/node" "^13.11.1"
+    uuid "^7.0.3"
+
+"@koeroesi86/node-worker@^1.0.3-6bc3bc7":
+  version "1.0.3-6bc3bc7"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker/-/node-worker-1.0.3-6bc3bc7.tgz#87c52c23e9b0c1dd67ceb5ef7134fc0df1e84041"
+  integrity sha512-o9rvHChVXpRC2C9+p9Ut7wAiAu0/A2VV/MFy17nhHZP4vLoCJjmS0VVAHYRbDjwbPNkD9I8+c2AcTOb9BdYLAA==
+
 "@types/babel__core@^7.1.0":
   version "7.1.2"
   resolved "https://registry.yarnpkg.com/@types/babel__core/-/babel__core-7.1.2.tgz#608c74f55928033fce18b99b213c16be4b3d114f"
@@ -348,6 +362,11 @@
   dependencies:
     "@types/istanbul-lib-coverage" "*"
     "@types/istanbul-lib-report" "*"
+
+"@types/node@^13.11.1":
+  version "13.11.1"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-13.11.1.tgz#49a2a83df9d26daacead30d0ccc8762b128d53c7"
+  integrity sha512-eWQGP3qtxwL8FGneRrC5DwrJLGN4/dH1clNTuLfN81HCrxVtxRjygDTUoZJ5ASlDEeo0ppYFQjQIlXhtXpOn6g==
 
 "@types/stack-utils@^1.0.1":
   version "1.0.1"
@@ -4215,6 +4234,11 @@ uuid@^3.3.2:
   version "3.3.2"
   resolved "https://registry.yarnpkg.com/uuid/-/uuid-3.3.2.tgz#1b4af4955eb3077c501c23872fc6513811587131"
   integrity sha512-yXJmeNaw3DnnKAOKJE51sL/ZaYfWJRl1pK9dr19YFCu0ObS231AB1/LbqTKRAQ5kw8A90rA6fr4riOUpTZvQZA==
+
+uuid@^7.0.3:
+  version "7.0.3"
+  resolved "https://registry.yarnpkg.com/uuid/-/uuid-7.0.3.tgz#c5c9f2c8cf25dc0a372c4df1441c41f5bd0c680b"
+  integrity sha512-DPSke0pXhTZgoF/d+WSt2QaKMCFSfx7QegxEWT+JOuHF5aWrKEn0G+ztjuJg/gG8/ItK+rbPCD/yNv8yyih6Cg==
 
 validate-npm-package-license@^3.0.1:
   version "3.0.4"
