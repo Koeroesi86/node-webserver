@@ -56,6 +56,20 @@ module.exports = {
           // port: '8888'
         }
       },
-    }
+    },
+    {
+      serverOptions: {
+        hostname: 'web.localhost',
+        protocol: 'http',
+        // key: resolve(__dirname, './.certificates/localhost/privkey1.pem'),
+        // cert: resolve(__dirname, './.certificates/localhost/cert1.pem'),
+      },
+      workerOptions: {
+        root: resolve('examples'),
+        index: [
+          'exampleWorker.js'
+        ]
+      },
+    },
   ]
 };
