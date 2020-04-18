@@ -30,7 +30,6 @@
     "find-free-port": "^1.2.0",
     "http-proxy": "^1.17.0",
     "moment": "^2.22.2",
-    "nodemon": "^1.17.5",
     "os-service": "^2.2.0",
     "pidusage": "^2.0.10",
     "rimraf": "^2.6.3",
@@ -39,6 +38,7 @@
   },
   "devDependencies": {
     "mime-types": "^2.1.24",
+    "nodemon": "^1.17.5",
     "etag": "^1.8.1",
     "jest": "^24.8.0"
   }
