@@ -25,12 +25,9 @@
     "@koeroesi86/node-lambda-invoke": "^1.0.20-d1fa702",
     "@koeroesi86/node-worker-express": "^20.4.7-abb005c",
     "chalk": "^2.4.2",
-    "connect": "^3.6.6",
     "dotenv": "^6.0.0",
-    "etag": "^1.8.1",
     "express": "^4.16.3",
     "find-free-port": "^1.2.0",
-    "fs-extra": "^8.1.0",
     "http-proxy": "^1.17.0",
     "mime-types": "^2.1.24",
     "minimist": "^1.2.0",
@@ -43,6 +40,7 @@
     "vhost": "^3.0.2"
   },
   "devDependencies": {
+    "etag": "^1.8.1",
     "jest": "^24.8.0"
   }
 }
