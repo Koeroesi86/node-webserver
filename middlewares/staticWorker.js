@@ -131,7 +131,6 @@ const staticWorker = (event, callback = () => {}) => {
   const fileName = path.resolve(event.rootPath, `.${currentPath}`);
   if (fs.existsSync(fileName)) {
     // TODO: range request
-    // TODO: caching/last-modified
     const bodyBuffer = fs.readFileSync(fileName);
     const stats = fs.statSync(fileName);
     const extension = path.extname(fileName);

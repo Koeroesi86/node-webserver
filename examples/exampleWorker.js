@@ -30,7 +30,8 @@ module.exports = (event, callback) => {
                 }, 5000);
               });
             }
-            connect();
+            // TODO: fix
+            // connect();
           })();
         </script>
       </body>

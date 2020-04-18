@@ -10,8 +10,9 @@ const setupStatsHandler = require('../utils/setupStatsHandler');
 const setupVirtualHosts = require('../utils/setupVirtualHosts');
 const setupAccessLogs = require('../utils/setupAccessLogs');
 const logger = require('../utils/logger');
-const { SERVERS, PORTS } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
+const Configuration = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 
+const { SERVERS, PORTS } = Configuration;
 process.chdir(__dirname);
 
 const httpApp = express();
@@ -36,10 +37,10 @@ findPorts()
     setupAccessLogs(httpsApp, 'https');
 
     /** overall stats endpoint */
-    setupStatsHandler(instances, httpApp);
+    setupStatsHandler(instances, httpApp, Configuration);
 
     /** proxy listener vhosts */
-    setupVirtualHosts(instances, httpApp, httpsApp);
+    setupVirtualHosts(instances, httpApp, httpsApp, Configuration);
     setupSecureContexts(instances);
 
     httpApp.disable('x-powered-by');

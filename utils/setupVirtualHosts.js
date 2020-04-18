@@ -1,13 +1,34 @@
 const vHost = require('vhost');
-const { PORTS } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
+const { middleware: workerMiddleware } = require('@koeroesi86/node-worker-express');
 const getURL = require('./getURL');
 const proxyMiddleware = require('../middlewares/proxy');
 const lambdaMiddleware = require('../middlewares/lambda');
-const workerMiddleware = require('../middlewares/worker');
 const getDate = require('./getDate');
 const logger = require('./logger');
 
-function setupVirtualHost(instance, httpApp, httpsApp) {
+function getMiddleware(instance) {
+  if (instance.proxyOptions && instance.childOptions) {
+    return proxyMiddleware(instance);
+  }
+  if (instance.lambdaOptions) {
+    return lambdaMiddleware(instance);
+  }
+  if (instance.workerOptions) {
+    return workerMiddleware({
+      onStdout(data) {
+        logger.info(`[${getDate()}] ${data.toString().trim()}`);
+      },
+      onStderr(data) {
+        logger.error(`[${getDate()}] ${data.toString().trim()}`);
+      },
+      ...instance.workerOptions,
+    });
+  }
+  return (req, res, next) => { next(); }
+}
+
+function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
+  const { PORTS } = Configuration;
   const {
     serverOptions: {
       hostname,
@@ -17,28 +38,12 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
 
   switch (protocol) {
     case 'http':
-      if (instance.proxyOptions && instance.childOptions) {
-        httpApp.use(vHost(hostname, proxyMiddleware(instance)));
-      }
-      if (instance.lambdaOptions) {
-        httpApp.use(vHost(hostname, lambdaMiddleware(instance)));
-      }
-      if (instance.workerOptions) {
-        httpApp.use(vHost(hostname, workerMiddleware(instance)));
-      }
+      httpApp.use(vHost(hostname, getMiddleware(instance)));
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.http);
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     case 'https':
-      if (instance.proxyOptions && instance.childOptions) {
-        httpsApp.use(vHost(hostname, proxyMiddleware(instance)));
-      }
-      if (instance.lambdaOptions) {
-        httpsApp.use(vHost(hostname, lambdaMiddleware(instance)));
-      }
-      if (instance.workerOptions) {
-        httpsApp.use(vHost(hostname, workerMiddleware(instance)));
-      }
+      httpsApp.use(vHost(hostname, getMiddleware(instance)));
       instance.serverOptions.url = getURL(protocol, hostname, PORTS.https);
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
@@ -50,6 +55,6 @@ function setupVirtualHost(instance, httpApp, httpsApp) {
   return instance;
 }
 
-module.exports = function setupVirtualHosts(instances, httpApp, httpsApp) {
-  instances.forEach(instance => setupVirtualHost(instance, httpApp, httpsApp));
+module.exports = function setupVirtualHosts(instances, httpApp, httpsApp, Configuration) {
+  instances.forEach(instance => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
 };

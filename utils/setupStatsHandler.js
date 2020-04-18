@@ -1,6 +1,5 @@
 const vHost = require('vhost');
 const pidUsage = require('pidusage');
-const { PORTS, STATS_DOMAIN, STATS_REFRESH_INTERVAL } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const getURL = require('./getURL');
 const getDate = require('./getDate');
 const logger = require('./logger');
@@ -10,7 +9,7 @@ const usages = {
   child: {},
 };
 
-function refreshStats(instances) {
+function refreshStats(instances, refreshInterval = 10000) {
   pidUsage(process.pid, (err, stats) => {
     usages.overall = stats;
   });
@@ -69,12 +68,13 @@ function refreshStats(instances) {
     }
   });
 
-  setTimeout(() => refreshStats(instances), STATS_REFRESH_INTERVAL || 10000);
+  setTimeout(() => refreshStats(instances, refreshInterval), refreshInterval);
 }
 
-function setupStatsHandler(instances, httpApp) {
+function setupStatsHandler(instances, httpApp, Configuration) {
+  const { PORTS, STATS_DOMAIN, STATS_REFRESH_INTERVAL } = Configuration;
   if (STATS_DOMAIN) {
-    refreshStats(instances);
+    refreshStats(instances, STATS_REFRESH_INTERVAL);
 
     httpApp.set('json spaces', 4);
     httpApp.use(
