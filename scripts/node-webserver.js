@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 const { execSync } = require("child_process");
-const minimist = require("minimist");
 const path = require("path");
+const parseArgv = require("../utils/parseArgv");
 
-const { config } = minimist(process.argv.slice(2));
+const { config } = parseArgv();
 
 if (!config) {
   throw new Error('use with --config </path/to/config>');

@@ -1,10 +1,10 @@
 const service = require('os-service');
-const minimist = require('minimist');
 const { resolve } = require('path');
 const { SERVICE_NAME } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 const { spawn } = require('child_process');
+const parseArgv = require('../utils/parseArgv');
 
-const { add, remove, run } = minimist(process.argv.slice(2));
+const { add, remove, run } = parseArgv();
 
 let child;
 process.chdir(__dirname);

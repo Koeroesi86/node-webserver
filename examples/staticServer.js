@@ -1,9 +1,9 @@
-const minimist = require('minimist');
 const express = require('express');
 const { resolve } = require('path');
 const http = require('http');
+const parseArgv = require('../utils/parseArgv');
 
-const { path, port } = minimist(process.argv.slice(2));
+const { path, port } = parseArgv();
 
 let currentPort = port || process.env.PORT;
 

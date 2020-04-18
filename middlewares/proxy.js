@@ -34,7 +34,7 @@ const proxyMiddleware = (instance) => {
     serverOptions.proxyTarget = `${PROXY_PROTOCOLS[serverOptions.protocol]}://${proxyOptions.hostname}:${port}`;
   }
 
-  instance.child = spawn(command, childArgs);
+  instance.child = spawn(command, childArgs, { stdio: 'pipe' });
   instance.proxy = new HttpProxy.createProxyServer(proxyOptions);
 
   return (req, res) => {
