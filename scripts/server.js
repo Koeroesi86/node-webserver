@@ -8,7 +8,7 @@ const { findPorts } = require('../utils/ports');
 const setupSecureContexts = require('../utils/setupSecureContexts');
 const setupStatsHandler = require('../utils/setupStatsHandler');
 const setupVirtualHosts = require('../utils/setupVirtualHosts');
-const setupAccessLogs = require('../utils/setupAccessLogs');
+const accessLogsMiddleware = require('../middlewares/accessLogs');
 const logger = require('../utils/logger');
 const Configuration = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 
@@ -33,13 +33,12 @@ findPorts()
       return config;
     }).filter(Boolean);
     /** access logs */
-    setupAccessLogs(httpApp, 'http');
-    setupAccessLogs(httpsApp, 'https');
+    httpApp.use(accessLogsMiddleware({ alias: 'http' }));
+    httpsApp.use(accessLogsMiddleware({ alias: 'https' }));
 
     /** overall stats endpoint */
     setupStatsHandler(instances, httpApp, Configuration);
 
-    /** proxy listener vhosts */
     setupVirtualHosts(instances, httpApp, httpsApp, Configuration);
     setupSecureContexts(instances);
 
