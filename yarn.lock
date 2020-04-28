@@ -296,13 +296,12 @@
     rimraf "^2.6.3"
     uuid "^3.3.2"
 
-"@koeroesi86/node-worker-express@^20.4.7-abb005c":
-  version "20.4.7-abb005c"
-  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-20.4.7-abb005c.tgz#c32b292fbbda7cb166d8071d10cc0dbb27b3779d"
-  integrity sha512-Xgwnd3XBLUPFure9jGhslr+FrF7YLQbkEZ+3aOH7pr7RCqNl3ZxlHoP+vReIjOzHL/cb0ntSgfDeZdygR0otSQ==
+"@koeroesi86/node-worker-express@^20.4.10-bb7fa5e":
+  version "20.4.10-bb7fa5e"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-20.4.10-bb7fa5e.tgz#66e5db9c6c02d3e56e2e99ea1ce79cdbd0c2d33b"
+  integrity sha512-7M9HFMf8xjqiP3LHhBYvvE3ziN83PKi3mx3dlDmbNKghbxnuFlraskUDgqZSULnOJFot7CgQiewd1PGbeL09Pg==
   dependencies:
     "@koeroesi86/node-worker" "^1.0.3-6bc3bc7"
-    "@types/node" "^13.11.1"
     uuid "^7.0.3"
 
 "@koeroesi86/node-worker@^1.0.3-6bc3bc7":
@@ -362,11 +361,6 @@
   dependencies:
     "@types/istanbul-lib-coverage" "*"
     "@types/istanbul-lib-report" "*"
-
-"@types/node@^13.11.1":
-  version "13.11.1"
-  resolved "https://registry.yarnpkg.com/@types/node/-/node-13.11.1.tgz#49a2a83df9d26daacead30d0ccc8762b128d53c7"
-  integrity sha512-eWQGP3qtxwL8FGneRrC5DwrJLGN4/dH1clNTuLfN81HCrxVtxRjygDTUoZJ5ASlDEeo0ppYFQjQIlXhtXpOn6g==
 
 "@types/stack-utils@^1.0.1":
   version "1.0.1"
