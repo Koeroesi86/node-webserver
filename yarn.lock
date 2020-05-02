@@ -296,10 +296,10 @@
     rimraf "^2.6.3"
     uuid "^3.3.2"
 
-"@koeroesi86/node-worker-express@^20.4.11-cce326f":
-  version "20.4.11-cce326f"
-  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-20.4.11-cce326f.tgz#981294af4c34339f7b2a2c7279784eba5dd5e419"
-  integrity sha512-YgtM/0PoFte5IbOiSpm0HAobrVm4RsJhU/nvr/aTj4idiqmha9E/x9zOrPCH9X6hI7I7RQ9VLY6/TCzW4KQY2g==
+"@koeroesi86/node-worker-express@^20.5.12-f8d3078":
+  version "20.5.12-f8d3078"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-20.5.12-f8d3078.tgz#559cc4f2711aa85302840adc4ced05a275b0e923"
+  integrity sha512-CclC+pbrLtrextnLCWqpuP+/vED1X1pJkBt7KnEcEGmO47QkNbm7s+oHBMpYI82P5fe7Y3OXDXQVy3XBPj0+TQ==
   dependencies:
     "@koeroesi86/node-worker" "^1.0.3-6bc3bc7"
     uuid "^7.0.3"
