@@ -3,6 +3,7 @@ const { resolve } = require('path');
 module.exports = {
   verbose: true,
   rootDir: resolve(__dirname),
+  cacheDirectory: "<rootDir>/.cache/jest",
   // setupFiles: [
   //   "<rootDir>/config/polyfills.js"
   // ],

@@ -5,7 +5,9 @@ cache:
   yarn: true
   directories:
     - node_modules
+    - .cache
 script:
+  - export YARN_CACHE_FOLDER=$TRAVIS_BUILD_DIR/.cache/yarn
   - export NODE_ENV=production
   - export TRAVIS_TAG="$(git rev-parse --short ${TRAVIS_COMMIT})"
   - yarn generate-version

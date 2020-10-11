@@ -27,4 +27,4 @@ Please enter in a console/terminal:
 
 TODO: Set up tests for build
 
-[![Build status](https://travis-ci.org/Koeroesi86/node-webserver.svg?branch=master)](https://travis-ci.org/Koeroesi86/node-webserver)
+[![Build Status](https://travis-ci.com/Koeroesi86/node-webserver.svg?branch=master)](https://travis-ci.com/Koeroesi86/node-webserver)
