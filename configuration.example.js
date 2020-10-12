@@ -3,6 +3,7 @@ const { resolve } = require('path');
 module.exports = {
   SERVICE_NAME: 'node-webserver',
   ENABLE_FILE_LOGS: false,
+  FILE_LOG_PATH: resolve(__dirname, './logs/'),
   LOG_LEVELS: {
     system: true,
     info: true,
