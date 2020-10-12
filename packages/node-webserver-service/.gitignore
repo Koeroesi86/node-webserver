@@ -1,6 +1,8 @@
 node_modules
 .env
 .idea
+!.logs/.gitkeep
+.logs/*
 !configuration.example.js
 configuration.*
 *.pid

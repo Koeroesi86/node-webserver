@@ -7,7 +7,7 @@ const parseArgv = require('../utils/parseArgv');
 
 const { add, remove, run, configuration } = parseArgv();
 
-const configPath = configuration || process.env.NODE_WEBSERVER_CONFIG || path.resolve(__dirname, '../configuration.js');
+const configPath = configuration || process.env.NODE_WEBSERVER_CONFIG || path.resolve(__dirname, '../configuration.example.js');
 
 if (!fs.existsSync(configPath)) {
   throw new Error(`Configuration file does not exist: ${configPath}`);

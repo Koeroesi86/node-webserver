@@ -2,7 +2,8 @@ const path = require('path');
 
 module.exports = {
   SERVICE_NAME: 'node-webserver',
-  ENABLE_FILE_LOGS: false,
+  ENABLE_FILE_LOGS: true,
+  FILE_LOG_PATH: path.resolve(__dirname, './.logs/'),
   LOG_LEVELS: {
     system: true,
     info: true,
