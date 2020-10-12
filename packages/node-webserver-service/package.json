@@ -13,7 +13,8 @@
   },
   "scripts": {
     "service": "node scripts/manageService.js",
-    "start": "nodemon scripts/start.js"
+    "start": "nodemon scripts/start.js",
+    "generate-version": "node scripts/version.js"
   },
   "dependencies": {
     "@koeroesi86/node-webserver": "^20.10.100-3ab1362",
