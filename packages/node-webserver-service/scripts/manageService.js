@@ -13,13 +13,13 @@ if (!fs.existsSync(configPath)) {
   throw new Error(`Configuration file does not exist: ${configPath}`);
 }
 
-const { SERVICE_NAME } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
+const { SERVICE_NAME } = require(configPath);
 
 if (add) {
   service.add(SERVICE_NAME, {
     programPath: path.resolve(__dirname, '../node_modules/.bin/node-webserver'),
     programArgs: [
-      `--config="${configuration || process.env.NODE_WEBSERVER_CONFIG || path.resolve(__dirname, '../configuration.js')}"`
+      `--config="${configPath}"`
     ]
   }, error => {
     if (error) {
