@@ -1,0 +1,25 @@
+{
+  "name": "@koeroesi86/node-webserver-service",
+  "version": "1.0.0",
+  "description": "OS service integration for @koeroesi86/node-webserver",
+  "license": "MIT",
+  "author": {
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
+  },
+  "repository": "github:Koeroesi86/node-webserver",
+  "bin": {
+    "node-webserver-service": "./scripts/manageService.js"
+  },
+  "scripts": {
+    "service": "node scripts/manageService.js",
+    "start": "nodemon scripts/start.js"
+  },
+  "dependencies": {
+    "@koeroesi86/node-webserver": "^20.10.100-3ab1362",
+    "os-service": "^2.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.4"
+  }
+}
