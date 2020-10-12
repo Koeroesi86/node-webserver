@@ -7,7 +7,7 @@
     "name": "Krisztian Korosi",
     "url": "https://github.com/Koeroesi86"
   },
-  "repository": "github:Koeroesi86/node-webserver",
+  "repository": "github:Koeroesi86/node-webserver-service",
   "publishConfig": {
     "access": "public"
   },
