@@ -15,13 +15,19 @@ function getMiddleware(instance) {
   }
   if (instance.workerOptions) {
     return workerMiddleware({
+      ...instance.workerOptions,
       onStdout(data) {
         logger.info(`[${getDate()}] ${data.toString().trim()}`);
+        if (instance.workerOptions.onStdout) {
+          instance.workerOptions.onStdout(data);
+        }
       },
       onStderr(data) {
         logger.error(`[${getDate()}] ${data.toString().trim()}`);
+        if (instance.workerOptions.onStderr) {
+          instance.workerOptions.onStderr(data);
+        }
       },
-      ...instance.workerOptions,
     });
   }
   return (req, res, next) => { next(); }
