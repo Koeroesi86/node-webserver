@@ -6,6 +6,10 @@ const { ENABLE_FILE_LOGS, LOG_LEVELS, FILE_LOG_PATH } = require(process.env.NODE
 
 const startedAt = moment();
 
+if (ENABLE_FILE_LOGS && !FILE_LOG_PATH) {
+  throw new Error("Please define FILE_LOG_PATH in configuration or set ENABLE_FILE_LOGS to false.");
+}
+
 if (ENABLE_FILE_LOGS && !existsSync(FILE_LOG_PATH)) {
   mkdirSync(FILE_LOG_PATH, { recursive: true });
 }
@@ -24,22 +28,22 @@ module.exports = {
   },
   info: (...args) => {
     if (LOG_LEVELS && LOG_LEVELS.info === false) return;
-    fileLog(resolve(__dirname, `./${startedAt.valueOf()}.info.log`), args);
+    fileLog(resolve(FILE_LOG_PATH, `./${startedAt.valueOf()}.info.log`), args);
     return console.log(chalk.magenta(...args));
   },
   success: (...args) => {
     if (LOG_LEVELS && LOG_LEVELS.success === false) return;
-    fileLog(resolve(__dirname, `./${startedAt.valueOf()}.success.log`), args);
+    fileLog(resolve(FILE_LOG_PATH, `./${startedAt.valueOf()}.success.log`), args);
     return console.log(chalk.green(...args));
   },
   error: (...args) => {
     if (LOG_LEVELS && LOG_LEVELS.error === false) return;
-    fileLog(resolve(__dirname, `./${startedAt.valueOf()}.error.log`), args);
+    fileLog(resolve(FILE_LOG_PATH, `./${startedAt.valueOf()}.error.log`), args);
     return console.log(chalk.red(...args));
   },
   warning: (...args) => {
     if (LOG_LEVELS && LOG_LEVELS.warning === false) return;
-    fileLog(resolve(__dirname, `./${startedAt.valueOf()}.warning.log`), args);
+    fileLog(resolve(FILE_LOG_PATH, `./${startedAt.valueOf()}.warning.log`), args);
     return console.log(chalk.yellow(...args));
   },
 };

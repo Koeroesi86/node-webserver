@@ -26,12 +26,10 @@ module.exports = ({ alias = 'APP' }) => (request, response, next) => {
   response.on('finish', () => {
     const timePrefix = `[${getDate()}]`;
     let log = message => logger.info(message);
-    if (response.statusCode >= 200 && response.statusCode < 400) {
+    if (response.statusCode < 400) {
       log = message => logger.success(message);
     } else if (response.statusCode >= 400) {
       log = message => logger.error(message);
-    } else if (response.statusCode < 200) {
-      log = message => logger.warning(message);
     }
     const logLine = [
       timePrefix,

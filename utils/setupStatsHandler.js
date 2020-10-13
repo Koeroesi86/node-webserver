@@ -10,15 +10,15 @@ const usages = {
 };
 
 function refreshStats(instances, refreshInterval = 10000) {
-  pidUsage(process.pid, (err, stats) => {
+  pidUsage(process.pid).then(stats => {
     usages.overall = stats;
-  });
+  }).catch(err => console.error(err));
 
   instances.forEach(instance => {
     const { child } = instance;
 
     if (child) {
-      pidUsage(child.pid, (err, stats) => {
+      pidUsage(child.pid).then((stats) => {
         if (instance.serverOptions.url) {
           usages.child[instance.serverOptions.url] = {
             url: instance.serverOptions.url,
@@ -42,7 +42,7 @@ function refreshStats(instances, refreshInterval = 10000) {
               });
           }
         }
-      });
+      }).catch(err => console.error(err));
     }
 
     if (instance.lambdas) {
