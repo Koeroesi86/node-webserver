@@ -13,7 +13,7 @@ const logger = require('../utils/logger');
 const Configuration = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 
 const { SERVERS, PORTS } = Configuration;
-process.chdir(__dirname);
+// process.chdir(__dirname);
 
 const httpApp = express();
 const httpsApp = express();
@@ -41,6 +41,13 @@ findPorts()
 
     setupVirtualHosts(instances, httpApp, httpsApp, Configuration);
     setupSecureContexts(instances);
+    const contexts = instances
+      .slice()
+      .filter(inst => inst.serverOptions.protocol === 'https')
+      .reduce((result, instance) => ({
+        ...result,
+        [instance.serverOptions.hostname]: instance.serverOptions.secureContext
+      }), {});
 
     httpApp.disable('x-powered-by');
     httpsApp.disable('x-powered-by');
@@ -48,10 +55,8 @@ findPorts()
     const httpServer = http.createServer(httpApp);
     const httpsServer = https.createServer({
       SNICallback: (domain, callback) => {
-        const instance = instances.find(inst => inst.serverOptions.hostname === domain && inst.serverOptions.protocol === 'https');
-        if (instance) {
-          const { secureContext } = instance.serverOptions;
-
+        const secureContext = contexts[domain];
+        if (secureContext) {
           if (callback) {
             return callback(null, secureContext);
           }
