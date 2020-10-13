@@ -20,7 +20,7 @@
     "generate-version": "node scripts/version.js"
   },
   "dependencies": {
-    "@koeroesi86/node-webserver": "^20.10.101-00f2ae9",
+    "@koeroesi86/node-webserver": "^20.10.102-a14c7de",
     "os-service": "^2.2.0"
   },
   "devDependencies": {
