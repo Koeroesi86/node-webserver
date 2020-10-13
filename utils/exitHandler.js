@@ -1,11 +1,11 @@
 const logger = require('./logger');
 const rimraf = require('rimraf');
 const { resolve } = require('path');
-const { readdirSync } = require('fs');
+const { readdirSync, existsSync } = require('fs');
 
 function cleanTmp() {
   const tmpLocation = resolve(__dirname, '../tmp');
-  if (readdirSync(tmpLocation).length > 0) {
+  if (existsSync(tmpLocation) && readdirSync(tmpLocation).length > 0) {
     rimraf.sync(`${tmpLocation}/*`, { glob: { silent: true }});
     logger.info('Tmp folder cleaned.');
   }
