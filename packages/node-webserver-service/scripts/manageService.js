@@ -3,9 +3,10 @@
 const service = require('os-service');
 const path = require('path');
 const fs = require('fs');
+const {spawn} = require('child_process');
 const parseArgv = require('../utils/parseArgv');
 
-const { add, remove, run, configuration } = parseArgv();
+const {add, remove, run, configuration} = parseArgv();
 
 const configPath = configuration || process.env.NODE_WEBSERVER_CONFIG || path.resolve(__dirname, '../configuration.example.js');
 
@@ -13,13 +14,15 @@ if (!fs.existsSync(configPath)) {
   throw new Error(`Configuration file does not exist: ${configPath}`);
 }
 
-const { SERVICE_NAME } = require(configPath);
+const Configuration = require(configPath);
 
 if (add) {
-  service.add(SERVICE_NAME, {
-    programPath: path.resolve(__dirname, '../node_modules/.bin/node-webserver'),
+  service.add(Configuration.service.name, {
+    displayName: Configuration.service.displayName || Configuration.service.name,
+    programPath: __filename,
     programArgs: [
-      `--config="${configPath}"`
+      '--run',
+      ...process.argv.slice(3),
     ]
   }, error => {
     if (error) {
@@ -27,13 +30,19 @@ if (add) {
     }
   });
 } else if (remove) {
-  service.remove(SERVICE_NAME, error => {
+  service.remove(Configuration.service.name, error => {
     if (error) {
       console.trace(error);
     }
   });
 } else if (run) {
+  const instance = spawn(
+    'node',
+    [path.resolve(__dirname, '../node_modules/.bin/node-webserver'), `--config="${configPath}"`],
+    {shell: true}
+  );
   service.run(() => {
+    instance.kill('SIGINT');
     service.stop(0);
   });
 } else {
