@@ -3,10 +3,8 @@ const path = require('path');
 process.chdir(__dirname);
 
 module.exports = {
-  service: {
-    name: 'node-webserver',
-    displayName: 'NodeJS Webserver',
-  },
+  serviceName: 'node-webserver',
+  serviceDisplayName: 'NodeJS Webserver',
   ENABLE_FILE_LOGS: true,
   FILE_LOG_PATH: path.resolve(__dirname, './.logs/'),
   LOG_LEVELS: {

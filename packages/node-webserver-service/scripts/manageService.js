@@ -17,8 +17,8 @@ if (!fs.existsSync(configPath)) {
 const Configuration = require(configPath);
 
 if (add) {
-  service.add(Configuration.service.name, {
-    displayName: Configuration.service.displayName || Configuration.service.name,
+  service.add(Configuration.serviceName, {
+    displayName: Configuration.serviceDisplayName || Configuration.serviceName,
     programPath: __filename,
     programArgs: [
       '--run',
@@ -30,7 +30,7 @@ if (add) {
     }
   });
 } else if (remove) {
-  service.remove(Configuration.service.name, error => {
+  service.remove(Configuration.serviceName, error => {
     if (error) {
       console.trace(error);
     }
