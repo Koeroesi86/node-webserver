@@ -72,18 +72,18 @@ function refreshStats(instances, refreshInterval = 10000) {
 }
 
 function setupStatsHandler(instances, httpApp, Configuration) {
-  const { PORTS, STATS_DOMAIN, STATS_REFRESH_INTERVAL } = Configuration;
-  if (STATS_DOMAIN) {
-    refreshStats(instances, STATS_REFRESH_INTERVAL);
+  const { httpPort, statsDomain, statsRefreshInterval } = Configuration;
+  if (statsDomain) {
+    refreshStats(instances, statsRefreshInterval);
 
     httpApp.set('json spaces', 4);
     httpApp.use(
-      vHost(STATS_DOMAIN, (req, res) => {
+      vHost(statsDomain, (req, res) => {
         res.json(usages);
       })
     );
 
-    logger.system(`[${getDate()}] Find stats on ${getURL('http', STATS_DOMAIN, PORTS.http)}`);
+    logger.system(`[${getDate()}] Find stats on ${getURL('http', statsDomain, httpPort)}`);
   }
 }
 

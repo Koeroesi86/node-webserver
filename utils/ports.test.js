@@ -1,5 +1,5 @@
 const { findPorts, getFreePort, clearPorts, getPorts, addPort } = require("./ports");
-const { PORT_LOOKUP } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
+const { portLookup } = require('../configuration.example');
 const fp = require('find-free-port');
 
 jest.mock('find-free-port');
@@ -10,11 +10,11 @@ describe('The ports', () => {
   });
 
   it('should lookup free ports in the given range', done => {
-    const mockedResult = Array(PORT_LOOKUP.to - PORT_LOOKUP.from).fill(1).map((_, i) => PORT_LOOKUP.from + i);
+    const mockedResult = Array(portLookup.to - portLookup.from).fill(1).map((_, i) => portLookup.from + i);
     fp.mockReturnValue(Promise.resolve(mockedResult));
-    findPorts()
+    findPorts(portLookup)
       .then(ports => {
-        expect(ports.length).toEqual(PORT_LOOKUP.to - PORT_LOOKUP.from);
+        expect(ports.length).toEqual(portLookup.to - portLookup.from);
         done();
       });
   });

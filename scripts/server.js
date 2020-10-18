@@ -7,8 +7,11 @@ const Configuration = require(process.env.NODE_WEBSERVER_CONFIG || '../configura
 
 (async () => {
   try {
-    await findPorts()
-    await startServer(Configuration)
+    if (Configuration.portLookup) {
+      await findPorts(Configuration.portLookup);
+    }
+
+    await startServer(Configuration);
   } catch (error) {
     logger.error(error);
   }

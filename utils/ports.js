@@ -1,5 +1,4 @@
 const fp = require('find-free-port');
-const { PORT_LOOKUP } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration');
 
 let PORTS = [];
 
@@ -34,8 +33,8 @@ const getFreePort = () => {
 module.exports.getFreePort = getFreePort;
 
 /** return Promise */
-const findPorts = () => {
-  const { from, to, address } = PORT_LOOKUP;
+const findPorts = (portLookup = { from: 3000, to: 3010, address: 'localhost' }) => {
+  const { from, to, address } = portLookup;
 
   return new Promise((resolve, reject) => {
     fp(from, to, address, to - from)

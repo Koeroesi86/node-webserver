@@ -34,7 +34,7 @@ function getMiddleware(instance) {
 }
 
 function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
-  const { PORTS } = Configuration;
+  const { portHttp, portHttps } = Configuration;
   const {
     serverOptions: {
       hostname,
@@ -45,12 +45,12 @@ function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
   switch (protocol) {
     case 'http':
       httpApp.use(vHost(hostname, getMiddleware(instance)));
-      instance.serverOptions.url = getURL(protocol, hostname, PORTS.http);
+      instance.serverOptions.url = getURL(protocol, hostname, portHttp);
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     case 'https':
       httpsApp.use(vHost(hostname, getMiddleware(instance)));
-      instance.serverOptions.url = getURL(protocol, hostname, PORTS.https);
+      instance.serverOptions.url = getURL(protocol, hostname, portHttps);
       logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
       break;
     default:

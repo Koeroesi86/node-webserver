@@ -3,6 +3,7 @@ const http = require('http');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const exampleConfig = require('../configuration.example');
 const accessLogsMiddleware = require('../middlewares/accessLogs');
 const addExitListeners = require('./exitHandler');
 const setupSecureContexts = require('./setupSecureContexts');
@@ -16,8 +17,12 @@ httpApp.disable('x-powered-by');
 httpsApp.disable('x-powered-by');
 
 module.exports = async (configuration) => {
-  const { SERVERS, PORTS } = configuration;
-  const instances = SERVERS.slice().map(config => {
+  const hydratedConfiguration = {
+    ...exampleConfig,
+    ...configuration,
+  };
+  const { servers, httpPort, httpsPort } = hydratedConfiguration;
+  const instances = servers.slice().map(config => {
     if (typeof config === 'string') {
       const configPath = path.resolve(config);
 
@@ -62,11 +67,11 @@ module.exports = async (configuration) => {
     }
   }, httpsApp);
 
-  await new Promise((resolve, reject) => httpServer.listen(PORTS.http, (err) => {
+  await new Promise((resolve, reject) => httpServer.listen(httpPort, (err) => {
     if (err) reject(err);
     resolve();
   }));
-  await new Promise((resolve, reject) => httpsServer.listen(PORTS.https, (err) => {
+  await new Promise((resolve, reject) => httpsServer.listen(httpsPort, (err) => {
     if (err) reject(err);
     resolve();
   }));
