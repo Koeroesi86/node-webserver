@@ -21,8 +21,7 @@ module.exports = async (configuration) => {
     ...exampleConfig,
     ...configuration,
   };
-  const { servers, httpPort, httpsPort } = hydratedConfiguration;
-  const instances = servers.slice().map(config => {
+  const instances = hydratedConfiguration.servers.slice().map(config => {
     if (typeof config === 'string') {
       const configPath = path.resolve(config);
 
@@ -67,11 +66,11 @@ module.exports = async (configuration) => {
     }
   }, httpsApp);
 
-  await new Promise((resolve, reject) => httpServer.listen(httpPort, (err) => {
+  await new Promise((resolve, reject) => httpServer.listen(hydratedConfiguration.portHttp, (err) => {
     if (err) reject(err);
     resolve();
   }));
-  await new Promise((resolve, reject) => httpsServer.listen(httpsPort, (err) => {
+  await new Promise((resolve, reject) => httpsServer.listen(hydratedConfiguration.portHttps, (err) => {
     if (err) reject(err);
     resolve();
   }));

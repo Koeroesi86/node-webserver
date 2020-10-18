@@ -72,7 +72,7 @@ function refreshStats(instances, refreshInterval = 10000) {
 }
 
 function setupStatsHandler(instances, httpApp, Configuration) {
-  const { httpPort, statsDomain, statsRefreshInterval } = Configuration;
+  const { portHttp, statsDomain, statsRefreshInterval } = Configuration;
   if (statsDomain) {
     refreshStats(instances, statsRefreshInterval);
 
@@ -83,7 +83,7 @@ function setupStatsHandler(instances, httpApp, Configuration) {
       })
     );
 
-    logger.system(`[${getDate()}] Find stats on ${getURL('http', statsDomain, httpPort)}`);
+    logger.system(`[${getDate()}] Find stats on ${getURL('http', statsDomain, portHttp)}`);
   }
 }
 
