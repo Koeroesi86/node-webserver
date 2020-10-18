@@ -12,7 +12,7 @@
     "access": "public"
   },
   "bin": {
-    "node-webserver-service": "./scripts/manageService.js"
+    "nws-service": "./scripts/manageService.js"
   },
   "scripts": {
     "service": "node scripts/manageService.js",
@@ -20,7 +20,7 @@
     "generate-version": "node scripts/version.js"
   },
   "dependencies": {
-    "@koeroesi86/node-webserver": "^20.10.104-80ebdf3",
+    "@koeroesi86/node-webserver": "^20.10.110-b4111b6",
     "os-service": "^2.2.0"
   },
   "devDependencies": {

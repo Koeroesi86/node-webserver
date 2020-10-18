@@ -3,7 +3,6 @@
 const service = require('os-service');
 const path = require('path');
 const fs = require('fs');
-const {spawn} = require('child_process');
 const parseArgv = require('../utils/parseArgv');
 
 const {add, remove, run, configuration} = parseArgv();
@@ -36,13 +35,9 @@ if (add) {
     }
   });
 } else if (run) {
-  const instance = spawn(
-    'node',
-    [path.resolve(__dirname, '../node_modules/.bin/node-webserver'), `--config="${configPath}"`],
-    {shell: true}
-  );
+  const start = require('../utils/start');
+  start(configPath);
   service.run(() => {
-    instance.kill('SIGINT');
     service.stop(0);
   });
 } else {
