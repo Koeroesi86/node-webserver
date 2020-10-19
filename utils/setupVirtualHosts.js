@@ -7,25 +7,25 @@ const getDate = require('./getDate');
 const logger = require('./logger');
 
 function getMiddleware(instance) {
-  if (instance.proxyOptions && instance.childOptions) {
+  if (instance.type === 'child') {
     return proxyMiddleware(instance);
   }
-  if (instance.lambdaOptions) {
+  if (instance.type === 'lambda') {
     return lambdaMiddleware(instance);
   }
-  if (instance.workerOptions) {
+  if (instance.type === 'worker') {
     return workerMiddleware({
-      ...instance.workerOptions,
+      ...instance.options,
       onStdout(data) {
         logger.info(`[${getDate()}] ${data.toString().trim()}`);
-        if (instance.workerOptions.onStdout) {
-          instance.workerOptions.onStdout(data);
+        if (instance.options.onStdout) {
+          instance.options.onStdout(data);
         }
       },
       onStderr(data) {
         logger.error(`[${getDate()}] ${data.toString().trim()}`);
-        if (instance.workerOptions.onStderr) {
-          instance.workerOptions.onStderr(data);
+        if (instance.options.onStderr) {
+          instance.options.onStderr(data);
         }
       },
     });
@@ -36,22 +36,20 @@ function getMiddleware(instance) {
 function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
   const { portHttp, portHttps } = Configuration;
   const {
-    serverOptions: {
-      hostname,
-      protocol,
-    },
+    hostname,
+    protocol,
   } = instance;
 
   switch (protocol) {
     case 'http':
       httpApp.use(vHost(hostname, getMiddleware(instance)));
-      instance.serverOptions.url = getURL(protocol, hostname, portHttp);
-      logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
+      instance.url = getURL(protocol, hostname, portHttp);
+      logger.system(`[${getDate()}] Server started for ${instance.url}`);
       break;
     case 'https':
       httpsApp.use(vHost(hostname, getMiddleware(instance)));
-      instance.serverOptions.url = getURL(protocol, hostname, portHttps);
-      logger.system(`[${getDate()}] Server started for ${instance.serverOptions.url}`);
+      instance.url = getURL(protocol, hostname, portHttps);
+      logger.system(`[${getDate()}] Server started for ${instance.url}`);
       break;
     default:
       logger.error(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);

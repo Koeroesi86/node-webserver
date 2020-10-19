@@ -44,10 +44,10 @@ module.exports = async (configuration) => {
   setupSecureContexts(instances);
   const contexts = instances
     .slice()
-    .filter(inst => inst.serverOptions.protocol === 'https')
+    .filter(inst => inst.protocol === 'https')
     .reduce((result, instance) => ({
       ...result,
-      [instance.serverOptions.hostname]: instance.serverOptions.secureContext
+      [instance.hostname]: instance.secureContext
     }), {});
 
   const httpServer = http.createServer(httpApp);

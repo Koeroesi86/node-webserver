@@ -25,9 +25,9 @@ function sslCADecode(source) {
 
 module.exports = function setupSecureContexts(instances = []) {
   instances.forEach(instance => {
-    const { key, cert, ca } = instance.serverOptions;
+    const { key, cert, ca } = instance;
     if (key && cert) {
-      instance.serverOptions.secureContext = tls.createSecureContext({
+      instance.secureContext = tls.createSecureContext({
         key: fs.readFileSync(key, 'utf8'),
         cert: fs.readFileSync(cert, 'utf8'),
         // If the 'ca' option is not given, then node.js will use the default
