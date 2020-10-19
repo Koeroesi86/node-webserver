@@ -1,0 +1,23 @@
+{
+  "name": "@koeroesi86/node-webserver-cli",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "A local Lambda implementation",
+  "author": {
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
+  },
+  "repository": "github:Koeroesi86/node-webserver",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "nws-cli": "./scripts/cli.js"
+  },
+  "scripts": {
+    "start": "node ./scripts/cli.js --config configuration.example.js"
+  },
+  "dependencies": {
+    "@koeroesi86/node-webserver": "^20.10.110-b4111b6"
+  }
+}
