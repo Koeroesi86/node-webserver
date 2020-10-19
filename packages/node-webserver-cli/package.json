@@ -15,7 +15,8 @@
     "nws-cli": "./scripts/cli.js"
   },
   "scripts": {
-    "start": "node ./scripts/cli.js --config configuration.example.js"
+    "start": "node ./scripts/cli.js --config configuration.example.js",
+    "generate-version": "node ./scripts/version.js"
   },
   "dependencies": {
     "@koeroesi86/node-webserver": "^20.10.110-b4111b6"
