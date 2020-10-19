@@ -11,12 +11,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "bin": {
-    "node-webserver": "./scripts/node-webserver.js"
-  },
   "scripts": {
     "test": "node scripts/tests.js",
-    "service": "node scripts/manageService.js",
     "start": "nodemon scripts/server.js",
     "generate-version": "node scripts/version.js"
   },
@@ -30,7 +26,6 @@
     "find-free-port": "^1.2.0",
     "http-proxy": "^1.17.0",
     "moment": "^2.22.2",
-    "os-service": "^2.2.0",
     "pidusage": "^2.0.10",
     "rimraf": "^2.6.3",
     "uuid": "^3.3.2",

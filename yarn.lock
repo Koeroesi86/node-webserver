@@ -2777,7 +2777,7 @@ ms@^2.1.1:
   resolved "https://registry.yarnpkg.com/ms/-/ms-2.1.2.tgz#d09d1f357b443f493382a8eb3ccd183872ae6009"
   integrity sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==
 
-nan@2.14.x, nan@^2.12.1:
+nan@^2.12.1:
   version "2.14.0"
   resolved "https://registry.yarnpkg.com/nan/-/nan-2.14.0.tgz#7818f722027b2459a86f0295d434d1fc2336c52c"
   integrity sha512-INOFj37C7k3AfaNTtX8RhsTw7qRy7eLET14cROi9+5HAVbbHuIWUHEauBv5qT4Av2tWasiTY1Jw6puUNqRJXQg==
@@ -3077,13 +3077,6 @@ os-locale@^3.0.0:
     execa "^1.0.0"
     lcid "^2.0.0"
     mem "^4.0.0"
-
-os-service@^2.2.0:
-  version "2.2.0"
-  resolved "https://registry.yarnpkg.com/os-service/-/os-service-2.2.0.tgz#874ec4c5d0a637de0a2857200ebd6096ae91df08"
-  integrity sha512-bc1BBoCCbVjHqF/EWYvCu0hE/PSs2VM/5lQLPqjkjelP0FQSI42s8/J8gMA1nqeNqyo2MaEFnlBz4ViI5IZxdQ==
-  dependencies:
-    nan "2.14.x"
 
 os-tmpdir@^1.0.0:
   version "1.0.2"

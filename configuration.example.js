@@ -1,7 +1,6 @@
 const { resolve } = require('path');
 
 module.exports = {
-  SERVICE_NAME: 'node-webserver', //TODO: cleanup
   fileLogPath: resolve(__dirname, './logs/'),
   logLevels: {
     system: true,
