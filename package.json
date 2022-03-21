@@ -20,21 +20,20 @@
   "dependencies": {
     "@koeroesi86/node-lambda-invoke": "^1.0.21-d1fa702",
     "@koeroesi86/node-worker-express": "^20.10.9-16a7d5b",
-    "chalk": "^4.1.1",
-    "dotenv": "^10.0.0",
-    "express": "^4.17.1",
+    "dotenv": "^16.0.0",
+    "express": "^4.17.3",
     "find-free-port": "^2.0.0",
     "http-proxy": "^1.17.0",
     "moment": "^2.29.1",
-    "pidusage": "^2.0.21",
+    "pidusage": "^3.0.0",
     "rimraf": "^3.0.2",
     "uuid": "^8.3.2",
     "vhost": "^3.0.2"
   },
   "devDependencies": {
     "etag": "^1.8.1",
-    "jest": "^27.0.4",
-    "mime-types": "^2.1.31",
-    "nodemon": "^2.0.7"
+    "jest": "^27.5.1",
+    "mime-types": "^2.1.35",
+    "nodemon": "^2.0.15"
   }
 }
