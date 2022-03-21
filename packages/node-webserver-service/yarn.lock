@@ -13,13 +13,13 @@
     rimraf "^2.6.3"
     uuid "^3.3.2"
 
-"@koeroesi86/node-webserver@^22.3.125-13952a4":
-  version "22.3.125-13952a4"
-  resolved "https://registry.yarnpkg.com/@koeroesi86/node-webserver/-/node-webserver-22.3.125-13952a4.tgz#eeeb26077bcb8c07eaf1bdcb47a34c9e6f660433"
-  integrity sha512-+FcEyzeprmJA7qYkhTgBYJiqxuRd8CMgQd7mSO5xHkefL0u0/u1sXlX3d7664z8ma3FnhQS9DYzmV4t1qvmFbw==
+"@koeroesi86/node-webserver@^22.3.132-5e488e1":
+  version "22.3.132-5e488e1"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-webserver/-/node-webserver-22.3.132-5e488e1.tgz#07b76c09d62008acc022573842f2092538d6143d"
+  integrity sha512-XajKpUvU1oV5juEGwe7Z3TAPtzhIULz8MpF0r4XPDfFex9jVfiahg7UlMYi6kQFR7FJVYr0KNd1qnNYrQ22vig==
   dependencies:
     "@koeroesi86/node-lambda-invoke" "^1.0.21-d1fa702"
-    "@koeroesi86/node-worker-express" "^20.10.9-16a7d5b"
+    "@koeroesi86/node-worker-express" "^22.3.12-fd2e588"
     dotenv "^16.0.0"
     express "^4.17.3"
     find-free-port "^2.0.0"
@@ -30,13 +30,13 @@
     uuid "^8.3.2"
     vhost "^3.0.2"
 
-"@koeroesi86/node-worker-express@^20.10.9-16a7d5b":
-  version "20.10.9-16a7d5b"
-  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-20.10.9-16a7d5b.tgz#630cb86c7d65af9835053eb9633702f932a4af1e"
-  integrity sha512-vPYGkuvPrl/OyeyQDnNhowGJL4PG6IIol+AleRl9Cc0LiG+B6dXwCgqsf1n6fwC4mKAGOPUzjhdAoH5wSA4Dsw==
+"@koeroesi86/node-worker-express@^22.3.12-fd2e588":
+  version "22.3.12-fd2e588"
+  resolved "https://registry.yarnpkg.com/@koeroesi86/node-worker-express/-/node-worker-express-22.3.12-fd2e588.tgz#369f17e66a04e958487101f1e43dda90ea34ad42"
+  integrity sha512-+bTv75RKDNWvZ4nw4Xv7qIUMa8XNveIOAFqYm5RMFf4evl8DLa7GL4tCVUNcTwGNGT+lnP3ch+OaHwhdPne8bg==
   dependencies:
     "@koeroesi86/node-worker" "^1.0.3-6bc3bc7"
-    uuid "^7.0.3"
+    uuid "^8.3.2"
 
 "@koeroesi86/node-worker@^1.0.3-6bc3bc7":
   version "1.0.3-6bc3bc7"
@@ -2455,11 +2455,6 @@ uuid@^3.3.2:
   version "3.4.0"
   resolved "https://registry.yarnpkg.com/uuid/-/uuid-3.4.0.tgz#b23e4358afa8a202fe7a100af1f5f883f02007ee"
   integrity sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==
-
-uuid@^7.0.3:
-  version "7.0.3"
-  resolved "https://registry.yarnpkg.com/uuid/-/uuid-7.0.3.tgz#c5c9f2c8cf25dc0a372c4df1441c41f5bd0c680b"
-  integrity sha512-DPSke0pXhTZgoF/d+WSt2QaKMCFSfx7QegxEWT+JOuHF5aWrKEn0G+ztjuJg/gG8/ItK+rbPCD/yNv8yyih6Cg==
 
 uuid@^8.3.2:
   version "8.3.2"
