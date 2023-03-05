@@ -13,9 +13,12 @@
     "name": "Krisztian Korosi",
     "url": "https://github.com/Koeroesi86"
   },
-  "repository": "github:Koeroesi86/node-lambda-invoke",
+  "repository": "github:Koeroesi86/node-worker",
   "publishConfig": {
     "access": "public"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.14.6"
+  }
 }

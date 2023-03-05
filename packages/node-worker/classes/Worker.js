@@ -6,13 +6,12 @@ const { spawn } = require('child_process');
 class Worker {
   /**
    * @param {string} command
-   * @param {Object} options
+   * @param {Parameters<import('child_process').spawn>[2]} [options]
    */
-  constructor(command = '', options = {}) {
+  constructor(command, options = {}) {
+    /** @type {string[]} */
     this.commandParts = command.split(' ');
-    /**
-     * @type {ChildProcess}
-     */
+    /** @type {import('child_process').ChildProcess} */
     this.instance = spawn(
       this.commandParts[0],
       [
@@ -85,7 +84,7 @@ class Worker {
 
   /**
    * @param {*} message
-   * @param {Function} [cb]
+   * @param {(error: Error | null) => void} [cb]
    */
   postMessage(message, cb = () => {}) {
     if (this.instance && this.instance.send) this.instance.send(message, cb);
