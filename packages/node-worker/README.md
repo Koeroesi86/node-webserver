@@ -1,5 +1,7 @@
 # Node Worker
 
+[![Publish](https://github.com/Koeroesi86/node-worker/actions/workflows/publish.yml/badge.svg)](https://github.com/Koeroesi86/node-worker/actions/workflows/publish.yml)
+
 NodeJS implementation of WebWorkers
 
 ```typescript
