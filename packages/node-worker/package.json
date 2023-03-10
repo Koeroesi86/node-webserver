@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "NodeJS implementation of WebWorkers",
   "main": "dist",
+  "types": "dist",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rm -rf ./dist && rollup -c rollup.config.js",
