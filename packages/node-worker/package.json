@@ -2,11 +2,13 @@
   "name": "@koeroesi86/node-worker",
   "version": "1.0.0",
   "description": "NodeJS implementation of WebWorkers",
-  "main": "index.js",
+  "main": "dist",
+  "types": "dist",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "example": "node scripts/example.js",
-    "generate-version": "node scripts/version.js"
+    "build": "rm -rf ./dist && rollup -c rollup.config.js",
+    "example": "ts-node src/example/index.ts",
+    "generate-version": "ts-node scripts/version.ts"
   },
   "keywords": [],
   "author": {
@@ -19,6 +21,11 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^18.14.6"
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@types/node": "^18.14.6",
+    "rollup": "^3.19.1",
+    "ts-node": "^10.9.1",
+    "tslib": "^2.5.0",
+    "typescript": "^4.9.5"
   }
 }

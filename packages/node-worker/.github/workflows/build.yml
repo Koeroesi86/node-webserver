@@ -3,7 +3,7 @@ name: Branch build
 on: 
   pull_request:
     branches:    
-      - master
+      - main
 
 jobs:
   build:
@@ -14,12 +14,12 @@ jobs:
         with:
           node-version: '18'
           cache: 'yarn'
-      # - name: Persist cache
-      #   uses: actions/cache@v3
-      #   id: local-dot-cache
-      #   with:
-      #     path: .cache
-      #     key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/yarn.lock') }}
+      - name: Persist cache
+        uses: actions/cache@v3
+        id: local-dot-cache
+        with:
+          path: .cache
+          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/yarn.lock') }}
       - name: Setup
         run: yarn install --frozen-lockfile
       # - name: Lint
@@ -28,7 +28,7 @@ jobs:
       #   run: yarn test
       - name: Package version
         run: yarn generate-version
-      # - name: Package bundle
-      #   run: yarn build
+      - name: Package bundle
+        run: yarn build
       - name: Package information
         run: npm publish --dry-run

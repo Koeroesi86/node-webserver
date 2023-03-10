@@ -3,7 +3,7 @@ name: Publish
 on: 
   push:
     branches:    
-      - master
+      - main
 
 jobs:
   publish:
@@ -15,12 +15,12 @@ jobs:
           node-version: '18'
           cache: 'yarn'
           registry-url: 'https://registry.npmjs.org'
-      # - name: Persist cache
-      #   uses: actions/cache@v3
-      #   id: local-dot-cache
-      #   with:
-      #     path: .cache
-      #     key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/yarn.lock') }}
+      - name: Persist cache
+        uses: actions/cache@v3
+        id: local-dot-cache
+        with:
+          path: .cache
+          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/yarn.lock') }}
       - name: Setup
         run: yarn install --frozen-lockfile
       # - name: Lint
@@ -29,8 +29,8 @@ jobs:
       #   run: yarn test
       - name: Package version
         run: yarn generate-version
-      # - name: Package bundle
-      #   run: yarn build
+      - name: Package bundle
+        run: yarn build
       - name: Publish package
         run: npm publish
         env:
