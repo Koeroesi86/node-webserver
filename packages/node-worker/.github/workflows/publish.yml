@@ -15,6 +15,7 @@ jobs:
           node-version: '18'
           cache: 'yarn'
           registry-url: 'https://registry.npmjs.org'
+          scope: '@koeroesi86'
       - name: Persist cache
         uses: actions/cache@v3
         id: local-dot-cache
@@ -32,6 +33,6 @@ jobs:
       - name: Package bundle
         run: yarn build
       - name: Publish package
-        run: npm publish
+        run: yarn publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
