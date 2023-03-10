@@ -9,5 +9,5 @@ module.exports = {
     sourcemap: true,
   },
   external: ['child_process'],
-  plugins: [typescript()],
+  plugins: [typescript({ module: 'esnext' })],
 };
