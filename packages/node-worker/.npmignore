@@ -5,3 +5,4 @@ tsconfig.json
 .travis.yml
 scripts
 .idea
+.eslintrc.js
