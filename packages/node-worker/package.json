@@ -5,7 +5,7 @@
   "main": "dist",
   "typings": "dist",
   "scripts": {
-    "lint": "eslint --ext .ts --cache-location .cache/eslint .",
+    "lint": "eslint --ext .ts --cache --cache-location .cache/eslint/ .",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rm -rf ./dist && rollup -c rollup.config.js",
     "example": "ts-node src/example/index.ts",
