@@ -26,8 +26,8 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Lint
         run: yarn lint
-      # - name: Test
-      #   run: yarn test
+      - name: Test
+        run: yarn test
       - name: Package version
         run: yarn generate-version
       - name: Package bundle

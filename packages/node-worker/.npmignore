@@ -6,3 +6,6 @@ tsconfig.json
 scripts
 .idea
 .eslintrc.js
+.cache
+__mocks__
+jest.config.ts
