@@ -32,6 +32,9 @@ function exitListener(instances: ServerInstance[], reason: ExitReason, event: un
 
   cleanTmp();
 
+  // the process is already exiting, there is nothing left to signal ('exit' is not a signal)
+  if (reason === 'exit') return;
+
   process.kill(process.pid, reason === 'uncaughtException' ? 'SIGINT' : reason);
 }
 
