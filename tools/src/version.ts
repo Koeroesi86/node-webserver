@@ -89,7 +89,7 @@ const readPackages = (): WorkspacePackage[] =>
 
 /** the latest release on the registry, or undefined when the package was never published */
 const fetchPublished = async (name: string): Promise<PublishedRelease | undefined> => {
-  const response = await fetch(`${NPM_REGISTRY_URL}/${name.replace('/', '%2F')}/latest`);
+  const response = await fetch(`${NPM_REGISTRY_URL}/${name.replaceAll('/', '%2F')}/latest`);
 
   if (response.status === 404) return undefined;
 
