@@ -1,6 +1,7 @@
 import { ChildProcess, Serializable, spawn } from 'child_process';
 
-export default class Worker implements EventTarget {
+/** `require('@koeroesi86/node-worker')` returns the class itself */
+class Worker implements EventTarget {
   readonly commandParts: string[];
   readonly instance: ChildProcess;
 
@@ -55,3 +56,5 @@ export default class Worker implements EventTarget {
     }
   };
 }
+
+export = Worker;
