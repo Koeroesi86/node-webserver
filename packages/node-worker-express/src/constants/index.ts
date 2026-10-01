@@ -38,6 +38,6 @@ export const DefaultOptions: MiddlewareOptions = {
   },
   index: [],
   env: {},
-  staticWorker: path.resolve(__dirname, './staticWorker.js'),
+  staticWorker: path.resolve(__dirname, '../staticWorker.js'),
   cwd: process.cwd(),
 };

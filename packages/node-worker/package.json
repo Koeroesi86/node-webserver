@@ -2,11 +2,11 @@
   "name": "@koeroesi86/node-worker",
   "version": "1.0.0",
   "description": "NodeJS implementation of WebWorkers",
-  "main": "dist",
-  "typings": "dist",
+  "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
   "scripts": {
     "test": "jest",
-    "build": "rimraf dist && rollup -c rollup.config.js",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
     "example": "ts-node src/example/index.ts"
   },
   "keywords": [],
@@ -24,15 +24,12 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@rollup/plugin-typescript": "^11.0.0",
     "@types/jest": "^29.4.0",
     "@types/node": "^24.0.0",
     "jest": "^29.5.0",
     "rimraf": "^3.0.2",
-    "rollup": "^3.19.1",
     "ts-jest": "^29.0.5",
     "ts-node": "^10.9.1",
-    "tslib": "^2.5.0",
     "typescript": "^5.9.3"
   },
   "files": [

@@ -13,7 +13,7 @@ const createWorkerCommand = (workerPath) => {
   switch (ext) {
     case '.js':
     default:
-      return `node --expose-gc ${path.resolve(__dirname, './workerInvoke.js')} ${workerPath}`;
+      return `node --expose-gc ${path.resolve(__dirname, '../workerInvoke.js')} ${workerPath}`;
   }
 };
 

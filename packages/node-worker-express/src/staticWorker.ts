@@ -110,4 +110,5 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   }
 };
 
-export default staticWorker;
+/** loaded by file path in the workers, so it has to stay a CommonJS `module.exports` */
+export = staticWorker;
