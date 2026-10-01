@@ -1,6 +1,6 @@
 # Node Worker
 
-[![Publish](https://github.com/Koeroesi86/node-worker/actions/workflows/publish.yml/badge.svg)](https://github.com/Koeroesi86/node-worker/actions/workflows/publish.yml)
+[![Publish](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml/badge.svg)](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml)
 
 NodeJS implementation of WebWorkers
 
@@ -27,6 +27,6 @@ instance.terminate();
 
 Or checkout the pproject and run
 ```javascript
-yarn example
+pnpm --filter @koeroesi86/node-worker example
 ```
 

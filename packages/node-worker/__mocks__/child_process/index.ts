@@ -32,6 +32,7 @@ const childProcessMock: ChildProcess = {
   rawListeners: jest.fn(() => []),
   listenerCount: jest.fn(() => 0),
   eventNames: jest.fn(() => []),
+  [Symbol.dispose]: jest.fn(),
 };
 
 export const spawn = jest.fn((spawnfile: string, spawnargs: string[], options: { stdio: string[] }) => childProcessMock);
