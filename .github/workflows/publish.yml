@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'packages/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
 
 permissions:
   contents: read
@@ -45,5 +51,3 @@ jobs:
         run: pnpm build
       - name: Publish package
         run: pnpm -r publish --access public --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
