@@ -3,12 +3,18 @@
   "private": true,
   "packageManager": "pnpm@12.8.1",
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "scripts": {
     "test": "pnpm -r test",
     "start": "pnpm --filter @koeroesi86/node-webserver start",
     "build": "pnpm -r --if-present build",
-    "generate-version": "node scripts/version.js"
+    "generate-version": "node scripts/version.js",
+    "lint": "eslint --cache --cache-location .cache/eslint/ ."
+  },
+  "devDependencies": {
+    "eslint": "^8.36.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "prettier": "^2.8.4"
   }
 }
