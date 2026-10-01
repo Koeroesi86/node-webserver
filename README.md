@@ -17,7 +17,7 @@ Everything in this repository is published to npm under the `@koeroesi86` scope.
 | [@koeroesi86/node-worker](https://www.npmjs.com/package/@koeroesi86/node-worker) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-worker?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-worker) | NodeJS implementation of WebWorkers. [Source](packages/node-worker) |
 
 `node-webserver` depends on `node-lambda-invoke` and `node-worker-express`, and `node-worker-express` depends on `node-worker`.
-All packages are published together with the same version, which is stamped by the pipeline on every release.
+The pipeline publishes a package when it, or a workspace package it depends on, changed since its latest release. Versions are stamped by the pipeline, see [scripts/version.js](scripts/version.js).
 
 ## Usage
 
