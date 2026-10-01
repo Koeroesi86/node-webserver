@@ -1,0 +1,83 @@
+import type { ChildProcess } from 'child_process';
+import type { SecureContext } from 'tls';
+import type HttpProxy from 'http-proxy';
+import type { middleware } from '@koeroesi86/node-worker-express';
+
+export type WorkerOptions = Parameters<typeof middleware>[0];
+
+export type ServerType = 'child' | 'lambda' | 'worker';
+
+export interface PortLookup {
+  from: number;
+  to: number;
+  address: string;
+}
+
+export interface LogLevels {
+  system?: boolean;
+  info?: boolean;
+  success?: boolean;
+  error?: boolean;
+  warning?: boolean;
+}
+
+export interface ChildOptions {
+  command: string;
+  args?: string[] | ((port: number[]) => string[]);
+}
+
+export interface ProxyOptions extends HttpProxy.ServerOptions {
+  hostname?: string;
+  port?: number | number[];
+}
+
+export interface InstanceServerOptions {
+  protocol: string;
+  proxyTarget?: string;
+  url?: string;
+}
+
+export interface LambdaOptions {
+  lambda?: string;
+  handler?: string;
+}
+
+export interface ServerInstance {
+  hostname: string;
+  protocol: string;
+  type?: ServerType;
+  key?: string;
+  cert?: string;
+  ca?: string;
+  options?: WorkerOptions;
+  childOptions?: ChildOptions;
+  proxyOptions?: ProxyOptions;
+  serverOptions?: InstanceServerOptions;
+  lambdaOptions?: LambdaOptions;
+  /** populated at runtime */
+  url?: string;
+  secureContext?: SecureContext;
+  child?: ChildProcess;
+  proxy?: HttpProxy;
+  lambdas?: Record<string, { pid: number }>;
+}
+
+export interface Configuration {
+  /** set to false to disable file logging */
+  fileLogPath: string | false;
+  logLevels?: LogLevels;
+  portHttp: number;
+  portHttps: number;
+  portLookup?: PortLookup;
+  /** set to false to disable */
+  statsDomain: string | false;
+  statsRefreshInterval: number;
+  /** server definitions, or paths to modules exporting one */
+  servers: Array<string | ServerInstance>;
+}
+
+export interface StorageDriver {
+  save: (path: string, data: string) => Promise<void>;
+  restore: (path: string) => Promise<string>;
+  destroy: (path: string) => Promise<void>;
+}
