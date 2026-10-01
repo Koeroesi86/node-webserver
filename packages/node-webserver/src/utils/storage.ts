@@ -1,4 +1,5 @@
 import { resolve } from 'path';
+import { PACKAGE_ROOT } from '../constants';
 import serializer from './serializer';
 import fileDriver from './fileDriver';
 import type { StorageDriver } from '../types';
@@ -18,11 +19,11 @@ class Storage {
   }
 
   get requestPath(): string {
-    return resolve('D:/Chris/Documents/Developement/node-webserver/', `./requests/${this.id}`);
+    return resolve(PACKAGE_ROOT, `./requests/${this.id}`);
   }
 
   get responsePath(): string {
-    return resolve('D:/Chris/Documents/Developement/node-webserver/', `./responses/${this.id}`);
+    return resolve(PACKAGE_ROOT, `./responses/${this.id}`);
   }
 
   setResponse(response: Middleware.ResponseEvent): Promise<void> {
