@@ -2,7 +2,7 @@
   "name": "@koeroesi86/node-lambda-invoke",
   "version": "1.0.0",
   "description": "A local Lambda implementation",
-  "main": "index.js",
+  "main": "dist/index.js",
   "author": {
     "name": "Krisztian Korosi",
     "url": "https://github.com/Koeroesi86"
@@ -16,16 +16,29 @@
     "access": "public"
   },
   "scripts": {
-    "start": "nodemon example/example.js"
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node example/example.js\""
   },
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^6.2.0",
     "moment": "^2.24.0",
     "rimraf": "^2.6.3",
     "uuid": "^3.3.2"
   },
   "devDependencies": {
-    "nodemon": "^2.0.15"
-  }
+    "@types/node": "^24.0.0",
+    "@types/rimraf": "^2.0.5",
+    "@types/uuid": "^3.4.13",
+    "dotenv": "^6.2.0",
+    "nodemon": "^2.0.15",
+    "typescript": "^5.9.3"
+  },
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "example",
+    ".env.example",
+    "requests/.gitkeep",
+    "responses/.gitkeep"
+  ]
 }

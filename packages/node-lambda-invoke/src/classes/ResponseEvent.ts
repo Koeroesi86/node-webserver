@@ -1,12 +1,10 @@
-/**
- * @class ResponseEvent
- * @property {Number} statusCode
- * @property {Object.<String, String>} headers
- * @property {String} body
- * @property {boolean} [isBase64Encoded]
- */
-class ResponseEvent {
+import type { OutgoingHttpHeaders } from 'http';
 
+class ResponseEvent {
+  declare statusCode?: number;
+  declare headers?: OutgoingHttpHeaders;
+  declare body?: string;
+  declare isBase64Encoded?: boolean;
 }
 
-module.exports = ResponseEvent;
+export default ResponseEvent;

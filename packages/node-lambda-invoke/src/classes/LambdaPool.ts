@@ -1,24 +1,35 @@
-const uuid = require('uuid');
-const Lambda = require('../classes/Lambda');
-const stdoutListener = require('../middlewares/stdoutListener');
-const { EVENT_STARTED } = require('../constants');
+import uuid from 'uuid';
+import Lambda from './Lambda';
+import stdoutListener from '../middlewares/stdoutListener';
+import { EVENT_STARTED } from '../constants';
+import type { Communication, LambdaEvent, Logger } from '../types';
 
-const lambdaInstances = {};
+interface LambdaPoolOptions {
+  overallLimit?: number;
+  logger?: Logger;
+  communication: Communication;
+}
+
+const lambdaInstances: Record<string, Record<string, Lambda>> = {};
 
 function getOverallCount() {
   return Object.keys(lambdaInstances).reduce((result, current) => Object.keys(lambdaInstances[current]).length + result, 0);
 }
 
-function getNonBusyId(lambdaToInvoke) {
+function getNonBusyId(lambdaToInvoke: string) {
   const timeLimit = Date.now() - 15 * 60 * 1000 + 5000; // lifespan of lambda, to give enough time to respond before killed
-  return Object.keys(lambdaInstances[lambdaToInvoke] || {}).find(id => {
+  return Object.keys(lambdaInstances[lambdaToInvoke] || {}).find((id) => {
     const instance = lambdaInstances[lambdaToInvoke][id];
-    return !instance.busy && instance.createdAt >= timeLimit;
+    return !instance.busy && instance.createdAt !== undefined && instance.createdAt >= timeLimit;
   });
 }
 
 class LambdaPool {
-  constructor({ overallLimit, logger = () => {}, communication }) {
+  readonly communication: Communication;
+  readonly overallLimit?: number;
+  readonly logger: Logger;
+
+  constructor({ overallLimit, logger = () => {}, communication }: LambdaPoolOptions) {
     this.communication = communication;
     this.overallLimit = overallLimit;
     this.logger = logger;
@@ -27,12 +38,12 @@ class LambdaPool {
     this.createLambda = this.createLambda.bind(this);
   }
 
-  createLambda(lambdaToInvoke, handlerKey) {
-    return new Promise(resolve => {
+  createLambda(lambdaToInvoke: string, handlerKey: string) {
+    return new Promise<{ id: string; instance: Lambda }>((resolve) => {
       const currentId = uuid.v4();
       const currentLambdaInstance = new Lambda(lambdaToInvoke, handlerKey, this.logger, this.communication);
 
-      const lambdaStartListener = message => {
+      const lambdaStartListener = (message: LambdaEvent) => {
         if (message.type === EVENT_STARTED) {
           this.logger(`[${currentId}] started`);
           currentLambdaInstance.removeEventListener('message', lambdaStartListener);
@@ -41,7 +52,7 @@ class LambdaPool {
       };
       currentLambdaInstance.addEventListener('message', lambdaStartListener);
 
-      currentLambdaInstance.addEventListenerOnce('close', code => {
+      currentLambdaInstance.addEventListenerOnce('close', (code: number | null) => {
         if (code) this.logger(`[${currentId}] Lambda exited with code ${code}`);
       });
 
@@ -49,30 +60,31 @@ class LambdaPool {
     });
   }
 
-  getLambda(lambdaToInvoke, handlerKey) {
-      const nonBusyId = getNonBusyId(lambdaToInvoke);
-      if (getOverallCount() >= this.overallLimit) {
-        return Promise.resolve()
-          .then(() => new Promise(r => setTimeout(r, 100)))
-          .then(() => this.getLambda(lambdaToInvoke, handlerKey));
-      } else if (!lambdaInstances[lambdaToInvoke] || !nonBusyId) {
-        return Promise.resolve()
-          .then(() => this.createLambda(lambdaToInvoke, handlerKey))
-          .then(({ id, instance }) => {
-            instance.createdAt = Date.now();
-            lambdaInstances[lambdaToInvoke] = {
-              ...(lambdaInstances[lambdaToInvoke] && lambdaInstances[lambdaToInvoke]),
-              [id]: instance,
-            };
+  getLambda(lambdaToInvoke: string, handlerKey: string): Promise<Lambda> {
+    const nonBusyId = getNonBusyId(lambdaToInvoke);
 
-            return Promise.resolve(instance);
-          });
-      } else if(nonBusyId) {
-        return Promise.resolve(lambdaInstances[lambdaToInvoke][nonBusyId]);
-      }
+    if (this.overallLimit !== undefined && getOverallCount() >= this.overallLimit) {
+      return Promise.resolve()
+        .then(() => new Promise((r) => setTimeout(r, 100)))
+        .then(() => this.getLambda(lambdaToInvoke, handlerKey));
+    }
 
-      return Promise.reject();
+    if (!lambdaInstances[lambdaToInvoke] || !nonBusyId) {
+      return Promise.resolve()
+        .then(() => this.createLambda(lambdaToInvoke, handlerKey))
+        .then(({ id, instance }) => {
+          instance.createdAt = Date.now();
+          lambdaInstances[lambdaToInvoke] = {
+            ...lambdaInstances[lambdaToInvoke],
+            [id]: instance,
+          };
+
+          return instance;
+        });
+    }
+
+    return Promise.resolve(lambdaInstances[lambdaToInvoke][nonBusyId]);
   }
 }
 
-module.exports = LambdaPool;
+export default LambdaPool;

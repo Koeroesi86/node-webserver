@@ -190,9 +190,6 @@ importers:
 
   packages/node-lambda-invoke:
     dependencies:
-      dotenv:
-        specifier: ^6.2.0
-        version: 6.2.0
       moment:
         specifier: ^2.24.0
         version: 2.31.0
@@ -203,9 +200,24 @@ importers:
         specifier: ^3.3.2
         version: 3.3.2
     devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.0
+      '@types/rimraf':
+        specifier: ^2.0.5
+        version: 2.0.5
+      '@types/uuid':
+        specifier: ^3.4.13
+        version: 3.4.13
+      dotenv:
+        specifier: ^6.2.0
+        version: 6.2.0
       nodemon:
         specifier: ^2.0.15
         version: 2.0.15
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/node-webserver:
     dependencies:
@@ -745,6 +757,9 @@ packages:
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
 
+  '@types/rimraf@2.0.5':
+    resolution: {integrity: sha512-YyP+VfeaqAyFmXoTh3HChxOQMyjByRMsHU7kc5KOJkSlXudhMhQIALbYV7rHh/l8d2lX3VUQzprrcAgWdRuU8g==}
+
   '@types/rimraf@3.0.2':
     resolution: {integrity: sha512-F3OznnSLAUxFrCEu/L5PY8+ny8DtcFRjx7fZZ9bycvXRi3KPTRS9HOitGZwvPg0juRhXFWIeKX58cnX5YqLohQ==}
 
@@ -759,6 +774,9 @@ packages:
 
   '@types/stack-utils@2.0.0':
     resolution: {integrity: sha512-RJJrrySY7A8havqpGObOB4W92QXKJo63/jFLLgpvOtsGUqbQZ9Sbgl35KMm1DjC6j7AvmmU2bIno+3IyEaemaw==}
+
+  '@types/uuid@3.4.13':
+    resolution: {integrity: sha512-pAeZeUbLE4Z9Vi9wsWV2bYPTweEHeJJy0G4pEjOA/FSvy1Ad5U5Km8iDV6TKre1mjBiVNfAdVHKruP8bAh4Q5A==}
 
   '@types/yargs-parser@20.2.0':
     resolution: {integrity: sha512-37RSHht+gzzgYeobbG+KWryeAW8J33Nhr69cjTqSYymXVZEN9NbRYWoYlRtDhHKPVT1FyNKwaTPC1NynKZpzRA==}
@@ -3242,7 +3260,7 @@ snapshots:
   '@types/glob@8.1.0':
     dependencies:
       '@types/minimatch': 5.1.2
-      '@types/node': 15.12.4
+      '@types/node': 24.19.0
 
   '@types/graceful-fs@4.1.5':
     dependencies:
@@ -3293,6 +3311,11 @@ snapshots:
     dependencies:
       '@types/node': 24.19.0
 
+  '@types/rimraf@2.0.5':
+    dependencies:
+      '@types/glob': 8.1.0
+      '@types/node': 24.19.0
+
   '@types/rimraf@3.0.2':
     dependencies:
       '@types/glob': 8.1.0
@@ -3314,6 +3337,8 @@ snapshots:
       '@types/send': 0.17.6
 
   '@types/stack-utils@2.0.0': {}
+
+  '@types/uuid@3.4.13': {}
 
   '@types/yargs-parser@20.2.0': {}
 

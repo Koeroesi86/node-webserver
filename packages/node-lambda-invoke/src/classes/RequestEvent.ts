@@ -1,15 +1,15 @@
-/**
- * @class RequestEvent
- * @property {String} path
- * @property {Object.<String, String>} headers
- * @property {Object.<String, String>} pathParameters
- * @property {Object} requestContext
- * @property {String} resource
- * @property {String} httpMethod
- * @property {Object.<String, String>} queryStringParameters
- * @property {Object.<String, String>} stageVariables
- */
+import type { IncomingHttpHeaders } from 'http';
+import type { ParsedUrlQuery } from 'querystring';
+
 class RequestEvent {
+  declare path: string;
+  declare headers: IncomingHttpHeaders;
+  declare pathParameters?: Record<string, string>;
+  declare requestContext?: object;
+  declare resource?: string;
+  declare httpMethod: string;
+  declare queryStringParameters: ParsedUrlQuery;
+  declare stageVariables?: Record<string, string>;
 }
 
-module.exports = RequestEvent;
+export default RequestEvent;

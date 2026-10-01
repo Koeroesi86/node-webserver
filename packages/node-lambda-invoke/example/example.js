@@ -1,6 +1,6 @@
 const http = require('http');
 const { resolve } = require('path');
-const createHttpMiddleware = require('../middlewares/http');
+const createHttpMiddleware = require('../dist/middlewares/http').default;
 
 if (!process.env.HOST) {
   require('dotenv').config();

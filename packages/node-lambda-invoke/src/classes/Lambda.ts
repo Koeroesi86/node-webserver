@@ -1,37 +1,45 @@
-const { resolve } = require('path');
-const Worker = require('./Worker');
-const {
-  EVENT_REQUEST,
-  EVENT_RESPONSE,
-} = require('../constants');
-const CommunicationRegistry = require('../registry/communication');
+import { resolve } from 'path';
+import Worker from './Worker';
+import { EVENT_REQUEST, EVENT_RESPONSE } from '../constants';
+import { getRegisteredPath } from '../registry';
+import type RequestEvent from './RequestEvent';
+import type ResponseEvent from './ResponseEvent';
+import type { Communication, LambdaEvent, Listener, Logger, Storage, StorageDriverConstructor } from '../types';
 
 class Lambda {
-  /**
-   * @param {string} path
-   * @param {string} handler
-   * @param {function} [logger]
-   * @param {Object} communication
-   */
-  constructor(path, handler, logger = () => {}, communication) {
+  private readonly _path: string;
+  private readonly _handler: string;
+  private readonly _logger: Logger;
+  private readonly _storagePath: string;
+  private readonly _communication: Communication;
+  private _storage?: Storage;
+  private _requestId?: string;
+  private _callback: (response: ResponseEvent) => void = () => {};
+  readonly StorageDriver: StorageDriverConstructor;
+  instance: Worker | null;
+  busy: boolean;
+  createdAt?: number;
+
+  constructor(path: string, handler: string, logger: Logger = () => {}, communication: Communication) {
     this._path = path;
     this._handler = handler;
     this._logger = logger;
-    this._storagePath = CommunicationRegistry[communication.type].js.path;
+    this._storagePath = getRegisteredPath(communication.type);
     this._communication = communication;
     this.StorageDriver = require(this._storagePath);
-    this.createInstance();
+    const instance = this.createInstance();
+    this.instance = instance;
     this.busy = false;
 
     const killTimer = setTimeout(() => {
       this._logger('Shutting down lambda.');
-        if (this.instance) {
-          this.instance.terminate();
-          this.instance = null;
-        }
+      if (this.instance) {
+        this.instance.terminate();
+        this.instance = null;
+      }
     }, 15 * 60 * 1000);
 
-    this.instance.addEventListenerOnce('close', code => {
+    instance.addEventListenerOnce('close', () => {
       this.instance = null;
       clearTimeout(killTimer);
     });
@@ -40,85 +48,64 @@ class Lambda {
   }
 
   get stdout() {
-    return this.instance.stdout;
+    return this.instance?.stdout;
   }
 
   get stderr() {
-    return this.instance.stderr;
+    return this.instance?.stderr;
   }
 
-  createInstance() {
-    this.instance = new Worker(
-      resolve(__dirname, '../middlewares/invoke.js'),
-      {
-        stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-        env: {
-          LAMBDA: this._path,
-          HANDLER: this._handler,
-          COMMUNICATION: JSON.stringify(this._communication),
-        }
-      }
-    );
+  createInstance(): Worker {
+    return new Worker(resolve(__dirname, '../middlewares/invoke.js'), {
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+      env: {
+        LAMBDA: this._path,
+        HANDLER: this._handler,
+        COMMUNICATION: JSON.stringify(this._communication),
+      },
+    });
   }
 
-  /**
-   * @param {string} requestId
-   * @param {RequestEvent} requestEvent
-   * @param {function} callback
-   */
-  invoke(requestId, requestEvent, callback = () => {}) {
-    if (!this.instance) this.createInstance();
-    this._storage = new this.StorageDriver(requestId, this.instance);
+  invoke(requestId: string, requestEvent: RequestEvent, callback: (response: ResponseEvent) => void = () => {}) {
+    if (!this.instance) this.instance = this.createInstance();
+    const { instance } = this;
+    const storage = new this.StorageDriver(requestId, instance);
+    this._storage = storage;
     Promise.resolve()
-      .then(() => this._storage.setRequest(requestEvent))
+      .then(() => storage.setRequest(requestEvent))
       .then(() => {
         this.busy = true;
         this._requestId = requestId;
         this._callback = callback;
-        this.instance.addEventListener('message', this._onFinished);
-        this.instance.postMessage({ type: EVENT_REQUEST, id: requestId });
+        instance.addEventListener('message', this._onFinished);
+        instance.postMessage({ type: EVENT_REQUEST, id: requestId });
       });
   }
 
-  /**
-   * @param event
-   * @private
-   */
-  _onFinished(event) {
+  /** @private */
+  _onFinished(event: LambdaEvent) {
     if (event.type === EVENT_RESPONSE && event.id === this._requestId) {
       this.busy = false;
-      this.instance.removeEventListener('message', this._onFinished);
-      this._storage.getResponse().then(responseEvent => this._callback(responseEvent));
+      this.instance?.removeEventListener('message', this._onFinished);
+      this._storage?.getResponse().then((responseEvent) => this._callback(responseEvent));
     }
   }
 
-  /**
-   * @param {string} event
-   * @param {function} listener
-   */
-  addEventListener(event, listener) {
-    this.instance.addEventListener(event, listener);
+  addEventListener(event: string, listener: Listener) {
+    this.instance?.addEventListener(event, listener);
   }
 
-  /**
-   * @param {string} event
-   * @param {function} listener
-   */
-  addEventListenerOnce(event, listener) {
-    this.instance.addEventListenerOnce(event, listener);
+  addEventListenerOnce(event: string, listener: Listener) {
+    this.instance?.addEventListenerOnce(event, listener);
   }
 
-  /**
-   * @param {string} event
-   * @param {function} listener
-   */
-  removeEventListener(event, listener) {
-    this.instance.removeEventListener(event, listener);
+  removeEventListener(event: string, listener: Listener) {
+    this.instance?.removeEventListener(event, listener);
   }
 
-  postMessage(message, cb = () => {}) {
-    this.instance.postMessage(message, cb);
+  postMessage(message: Parameters<Worker['postMessage']>[0], cb: Parameters<Worker['postMessage']>[1] = () => {}) {
+    this.instance?.postMessage(message, cb);
   }
 }
 
-module.exports = Lambda;
+export default Lambda;

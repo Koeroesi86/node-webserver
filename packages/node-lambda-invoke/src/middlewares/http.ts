@@ -1,111 +1,88 @@
-const uuid = require('uuid');
-const url = require('url');
-const LambdaPool = require('../classes/LambdaPool');
-const RequestEvent = require('../classes/RequestEvent');
-const CommunicationRegistry = require('../registry/communication');
+import uuid from 'uuid';
+import url from 'url';
+import type { IncomingMessage, ServerResponse } from 'http';
+import LambdaPool from '../classes/LambdaPool';
+import RequestEvent from '../classes/RequestEvent';
+import { isRegistered, getRegisteredPath } from '../registry';
+import type ResponseEvent from '../classes/ResponseEvent';
+import type { Communication, HttpMiddlewareOptions, Storage, StorageDriverConstructor } from '../types';
+
+export type HttpMiddleware = (request: IncomingMessage, response: ServerResponse, next?: () => void) => void;
 
 let overallLimit = 3000;
 
-/**
- * @typedef Communication
- * @property {string} type
- * @property {string} [path]
- */
+const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
+  if (!responseEvent.statusCode) return;
 
-/**
- * @typedef Options
- * @property {string} lambdaPath
- * @property {string} handlerKey
- * @property {function} [logger]
- * @property {number} [limit]
- * @property {Communication} [communication]
- */
+  response.writeHead(responseEvent.statusCode, responseEvent.headers);
 
-/**
- * @param {Options} options
- * @returns {Function}
- */
-function createHttpMiddleware(options) {
-  const {
-    lambdaPath,
-    handlerKey = 'handler',
-    logger = () => {},
-    limit = overallLimit,
-    communication = {},
-  } = options;
-  const currentCommunication = {
-    ...(!communication.type ? { type: 'ipc' } : communication),
-  };
-  const communicationConfig = {
-    ...(CommunicationRegistry[currentCommunication.type] && CommunicationRegistry[currentCommunication.type].js),
-    ...(!CommunicationRegistry[currentCommunication.type] && currentCommunication),
-  };
+  if (!responseEvent.body) {
+    response.end();
+    return;
+  }
+
+  const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
+  response.end(Buffer.from(responseEvent.body, bufferEncoding));
+};
+
+function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
+  const { lambdaPath, handlerKey = 'handler', logger = () => {}, limit = overallLimit, communication = {} } = options;
+  const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
+  const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
   // TODO: tmp folders
-  if (!communicationConfig.path || typeof communicationConfig.path !== "string") return (req, res, next) => { next() };
+  if (!storagePath) {
+    return (req, res, next) => {
+      next?.();
+    };
+  }
 
   if (limit) {
     overallLimit = limit;
   }
 
-  const StorageDriver = require(communicationConfig.path);
+  const StorageDriver: StorageDriverConstructor = require(storagePath);
   if (StorageDriver.start) StorageDriver.start();
   const lambdaPool = new LambdaPool({ logger, communication: currentCommunication });
   return (request, response) => {
-    const {
-      query: queryStringParameters,
-      pathname: path
-    } = url.parse(request.url, true);
+    const { query: queryStringParameters, pathname: path } = url.parse(request.url ?? '', true);
 
-    /** @var {RequestEvent} event */
-    const requestEvent = new RequestEvent;
-    requestEvent.httpMethod = request.method.toUpperCase();
-    requestEvent.path = path;
+    const requestEvent = new RequestEvent();
+    requestEvent.httpMethod = request.method?.toUpperCase() ?? '';
+    requestEvent.path = path ?? '';
     requestEvent.queryStringParameters = queryStringParameters;
     requestEvent.headers = request.headers;
 
     const requestId = uuid.v4();
-    let storage;
-
-    let lambdaInstance;
+    let storage: Storage | undefined;
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
 
     const closeListener = () => {
-      if (!response.finished) response.end();
+      if (!response.writableEnded) response.end();
       if (storage) storage.destroy();
     };
-    Promise.resolve()
-      .then(() => lambdaPool.getLambda(lambdaPath, handlerKey))
-      .then(instance => {
-        instance.addEventListenerOnce('close', closeListener);
 
-        lambdaInstance = instance;
-        storage = new StorageDriver(requestId, instance);
-        return Promise.resolve(instance);
-      })
-      .then(() => new Promise(res => lambdaInstance.invoke(requestId, requestEvent, res)))
-      /** @var {ResponseEvent} responseEvent */
-      .then(responseEvent => {
-        if (responseEvent.statusCode) {
-          response.writeHead(responseEvent.statusCode, responseEvent.headers);
-          if (responseEvent.body) {
-            const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
-            response.end(Buffer.from(responseEvent.body, bufferEncoding));
-          } else {
-            response.end();
-          }
-        }
+    const handleRequest = async () => {
+      const lambdaInstance = await lambdaPool.getLambda(lambdaPath, handlerKey);
+      lambdaInstance.addEventListenerOnce('close', closeListener);
 
-        lambdaInstance.removeEventListener('close', closeListener);
-        return storage ? storage.destroy() : Promise.resolve();
-      })
-      .catch(err => {
-        logger(err);
-        response.writeHead(500);
-        response.write('Something went wrong.');
-        response.end();
-      });
-  }
+      const currentStorage = new StorageDriver(requestId, lambdaInstance);
+      storage = currentStorage;
+      const responseEvent = await new Promise<ResponseEvent>((res) => lambdaInstance.invoke(requestId, requestEvent, res));
+
+      writeResponse(response, responseEvent);
+
+      lambdaInstance.removeEventListener('close', closeListener);
+      return currentStorage.destroy();
+    };
+
+    handleRequest().catch((err) => {
+      logger(err);
+      response.writeHead(500);
+      response.write('Something went wrong.');
+      response.end();
+    });
+  };
 }
 
-module.exports = createHttpMiddleware;
+export default createHttpMiddleware;

@@ -1,14 +1,11 @@
-const moment = require('moment');
+import moment from 'moment';
+import type Lambda from '../classes/Lambda';
+import type { Logger } from '../types';
 
-const getDate = exports = () =>  moment().format('YYYY-MM-DD HH:mm:ss.SS');
+const getDate = () => moment().format('YYYY-MM-DD HH:mm:ss.SS');
 
-/**
- *
- * @param {Lambda} lambdaInstance
- * @param {function} [logger]
- */
-module.exports = (lambdaInstance, logger = () => {}) => {
-  const messageListener = data => {
+const stdoutListener = (lambdaInstance: Lambda, logger: Logger = () => {}) => {
+  const messageListener = (data: Buffer | string) => {
     logger(`[${getDate()}] ${data.toString().trim()}`);
   };
   if (lambdaInstance.stdout) {
@@ -20,8 +17,10 @@ module.exports = (lambdaInstance, logger = () => {}) => {
     lambdaInstance.stderr.on('data', messageListener);
   }
 
-  const closeListener = code => {
+  const closeListener = (code: number | null) => {
     if (code) logger(`[${getDate()}] child process exited with code ${code}`);
   };
   lambdaInstance.addEventListenerOnce('close', closeListener);
 };
+
+export default stdoutListener;

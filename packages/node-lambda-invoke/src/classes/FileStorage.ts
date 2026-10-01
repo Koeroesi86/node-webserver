@@ -1,41 +1,35 @@
-const { resolve } = require('path');
-const {
-  unlink,
-  readFile,
-  writeFile,
-  existsSync,
-  mkdirSync,
-} = require('fs');
-const rimraf = require('rimraf');
+import { resolve } from 'path';
+import { unlink, readFile, writeFile, existsSync, mkdirSync } from 'fs';
+import rimraf from 'rimraf';
+import { PACKAGE_ROOT } from '../constants';
+import type RequestEvent from './RequestEvent';
+import type ResponseEvent from './ResponseEvent';
 
 const serializer = {
-  serialize: data => JSON.stringify(data),
-  deserialize: data => JSON.parse(data),
+  serialize: (data: unknown) => JSON.stringify(data),
+  deserialize: <T>(data: string): T => JSON.parse(data),
 };
 
-/**
- * @type {{restore: (function(*=): Promise), save: (function(*=, *=): Promise), destroy: (function(*=): Promise)}}
- */
 const Driver = {
-  save: (path, data) => new Promise((res, rej) =>
-    writeFile(path, data, 'utf8', err => err ? rej(err) : res())
-  ),
-  restore: path => new Promise((res, rej) =>
-    readFile(path, 'utf8', (err, data) => err ? rej(err) : res(data))
-  ),
-  destroy: path => new Promise((res, rej) =>
-    existsSync(path) ? unlink(path, err => err ? rej(err) : res()) : setTimeout(res, 0)
-  ),
+  save: (path: string, data: string) => new Promise<void>((res, rej) => writeFile(path, data, 'utf8', (err) => (err ? rej(err) : res()))),
+  restore: (path: string) => new Promise<string>((res, rej) => readFile(path, 'utf8', (err, data) => (err ? rej(err) : res(data)))),
+  destroy: (path: string) => new Promise<void>((res, rej) => (existsSync(path) ? unlink(path, (err) => (err ? rej(err) : res())) : setTimeout(res, 0))),
 };
 
-
+/** loaded by file path, so it has to stay a CommonJS `module.exports` */
 class FileStorage {
-  /**
-   * @param {string} id
-   */
-  constructor(id)  {
-    this.id = id;
+  static requestBase = resolve(PACKAGE_ROOT, 'requests/');
+  static responseBase = resolve(PACKAGE_ROOT, 'responses/');
 
+  static start() {
+    rimraf.sync(resolve(FileStorage.requestBase, './*'));
+    rimraf.sync(resolve(FileStorage.responseBase, './*'));
+
+    if (!existsSync(FileStorage.requestBase)) mkdirSync(FileStorage.requestBase, { recursive: true });
+    if (!existsSync(FileStorage.responseBase)) mkdirSync(FileStorage.responseBase, { recursive: true });
+  }
+
+  constructor(readonly id: string) {
     this.setResponse = this.setResponse.bind(this);
     this.getResponse = this.getResponse.bind(this);
     this.setRequest = this.setRequest.bind(this);
@@ -43,72 +37,33 @@ class FileStorage {
     this.destroy = this.destroy.bind(this);
   }
 
-  /**
-   * @returns {string}
-   */
-  get requestPath() {
+  get requestPath(): string {
     return resolve(FileStorage.requestBase, `./${this.id}`);
   }
 
-  /**
-   * @returns {string}
-   */
-  get responsePath() {
+  get responsePath(): string {
     return resolve(FileStorage.responseBase, `./${this.id}`);
   }
 
-  /**
-   * @param {ResponseEvent} response
-   * @returns {Promise}
-   */
-  setResponse(response) {
+  setResponse(response: ResponseEvent): Promise<void> {
     return Driver.save(this.responsePath, serializer.serialize(response));
   }
 
-  /**
-   * @returns {Promise<ResponseEvent>}
-   */
-  getResponse() {
-    return Driver.restore(this.responsePath)
-      .then(data => Promise.resolve(serializer.deserialize(data)));
+  getResponse(): Promise<ResponseEvent> {
+    return Driver.restore(this.responsePath).then((data) => serializer.deserialize<ResponseEvent>(data));
   }
 
-  /**
-   * @param {RequestEvent} request
-   * @returns {Promise}
-   */
-  setRequest(request) {
+  setRequest(request: RequestEvent): Promise<void> {
     return Driver.save(this.requestPath, serializer.serialize(request));
   }
 
-  /**
-   * @returns {Promise<RequestEvent>}
-   */
-  getRequest() {
-    return Driver.restore(this.requestPath)
-      .then(data => Promise.resolve(serializer.deserialize(data)));
+  getRequest(): Promise<RequestEvent> {
+    return Driver.restore(this.requestPath).then((data) => serializer.deserialize<RequestEvent>(data));
   }
 
-  /**
-   * @returns {Promise}
-   */
-  destroy() {
-    return Promise.all([
-      Driver.destroy(this.responsePath),
-      Driver.destroy(this.requestPath)
-    ]);
+  destroy(): Promise<[void, void]> {
+    return Promise.all([Driver.destroy(this.responsePath), Driver.destroy(this.requestPath)]);
   }
 }
 
-FileStorage.requestBase = resolve(__dirname, `../requests/`);
-FileStorage.responseBase = resolve(__dirname, `../responses/`);
-
-FileStorage.start = () => {
-  rimraf.sync(resolve(FileStorage.requestBase, './*'));
-  rimraf.sync(resolve(FileStorage.responseBase, './*'));
-
-  if (!existsSync(FileStorage.requestBase)) mkdirSync(FileStorage.requestBase, { recursive: true });
-  if (!existsSync(FileStorage.responseBase)) mkdirSync(FileStorage.responseBase, { recursive: true });
-};
-
-module.exports = FileStorage;
+export = FileStorage;
