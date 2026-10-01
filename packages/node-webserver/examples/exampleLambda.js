@@ -20,7 +20,7 @@ module.exports.handler = (event, context, callback) => {
         'Content-Type': isText ? `${contentType}; charset=${mime.charset(contentType).toLowerCase()}` : contentType,
         'Content-Length': bodyBuffer.length,
         'Cache-Control': 'public, max-age=0',
-        'ETag': currentEtag,
+        ETag: currentEtag,
         ...(stats.mtime && { 'Last-Modified': moment(stats.mtime).format('ddd, DD MMM YYYY HH:mm:ss') + ' GMT' }),
       },
       body: body,
@@ -30,9 +30,9 @@ module.exports.handler = (event, context, callback) => {
     callback(null, {
       statusCode: 404,
       headers: {
-        'Content-Type': 'text/html'
+        'Content-Type': 'text/html',
       },
-      body: ''
+      body: '',
     });
   }
 };

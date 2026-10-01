@@ -21,18 +21,21 @@ module.exports = async (configuration) => {
     ...exampleConfig,
     ...configuration,
   };
-  const instances = hydratedConfiguration.servers.slice().map(config => {
-    if (typeof config === 'string') {
-      const configPath = path.resolve(config);
+  const instances = hydratedConfiguration.servers
+    .slice()
+    .map((config) => {
+      if (typeof config === 'string') {
+        const configPath = path.resolve(config);
 
-      if (!fs.existsSync(configPath)) {
-        return false;
+        if (!fs.existsSync(configPath)) {
+          return false;
+        }
+
+        return require(configPath);
       }
-
-      return require(configPath);
-    }
-    return config;
-  }).filter(Boolean);
+      return config;
+    })
+    .filter(Boolean);
   /** access logs */
   httpApp.use(accessLogsMiddleware({ alias: 'http' }));
   httpsApp.use(accessLogsMiddleware({ alias: 'https' }));
@@ -44,37 +47,47 @@ module.exports = async (configuration) => {
   setupSecureContexts(instances);
   const contexts = instances
     .slice()
-    .filter(inst => inst.protocol === 'https')
-    .reduce((result, instance) => ({
-      ...result,
-      [instance.hostname]: instance.secureContext
-    }), {});
+    .filter((inst) => inst.protocol === 'https')
+    .reduce(
+      (result, instance) => ({
+        ...result,
+        [instance.hostname]: instance.secureContext,
+      }),
+      {}
+    );
 
   const httpServer = http.createServer(httpApp);
-  const httpsServer = https.createServer({
-    SNICallback: (domain, callback) => {
-      const secureContext = contexts[domain];
-      if (secureContext) {
-        if (callback) {
-          return callback(null, secureContext);
+  const httpsServer = https.createServer(
+    {
+      SNICallback: (domain, callback) => {
+        const secureContext = contexts[domain];
+        if (secureContext) {
+          if (callback) {
+            return callback(null, secureContext);
+          }
+
+          return secureContext;
         }
 
-        return secureContext;
-      }
+        return null;
+      },
+    },
+    httpsApp
+  );
 
-      return null;
-    }
-  }, httpsApp);
-
-  await new Promise((resolve, reject) => httpServer.listen(hydratedConfiguration.portHttp, (err) => {
-    if (err) reject(err);
-    resolve();
-  }));
-  await new Promise((resolve, reject) => httpsServer.listen(hydratedConfiguration.portHttps, (err) => {
-    if (err) reject(err);
-    resolve();
-  }));
+  await new Promise((resolve, reject) =>
+    httpServer.listen(hydratedConfiguration.portHttp, (err) => {
+      if (err) reject(err);
+      resolve();
+    })
+  );
+  await new Promise((resolve, reject) =>
+    httpsServer.listen(hydratedConfiguration.portHttps, (err) => {
+      if (err) reject(err);
+      resolve();
+    })
+  );
 
   addExitListeners(instances);
   return { httpApp, httpsApp };
-}
+};

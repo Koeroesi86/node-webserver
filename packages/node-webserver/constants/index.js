@@ -1,6 +1,6 @@
 const DEFAULT_PORTS = {
   http: 80,
-  https: 443
+  https: 443,
 };
 
 module.exports.DEFAULT_PORTS = DEFAULT_PORTS;

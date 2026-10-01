@@ -14,13 +14,13 @@ function debounce(fn = () => {}, timeout = 0) {
 
 function getContentType(extension = '') {
   const contentTypes = {
-    '.aac':	'audio/aac',
-    '.abw':	'application/x-abiword',
-    '.arc':	'application/x-freearc',
-    '.avi':	'video/x-msvideo',
-    '.azw':	'application/vnd.amazon.ebook',
-    '.bin':	'application/octet-stream',
-    '.bmp':	'image/bmp',
+    '.aac': 'audio/aac',
+    '.abw': 'application/x-abiword',
+    '.arc': 'application/x-freearc',
+    '.avi': 'video/x-msvideo',
+    '.azw': 'application/vnd.amazon.ebook',
+    '.bin': 'application/octet-stream',
+    '.bmp': 'image/bmp',
     '.bz': 'application/x-bzip',
     '.bz2': 'application/x-bzip2',
     '.csh': 'application/x-csh',
@@ -88,7 +88,7 @@ function getContentType(extension = '') {
     '.3gp': 'video/3gpp',
     '.3g2': 'video/3gpp2',
     '.7z': 'application/x-7z-compressed',
-};
+  };
 
   return contentTypes[extension] || contentTypes['.txt'];
 }
@@ -100,18 +100,12 @@ function etag(body) {
   }
 
   // compute hash of entity
-  const hash = crypto
-    .createHash('sha1')
-    .update(body, 'utf8')
-    .digest('base64')
-    .substring(0, 27);
+  const hash = crypto.createHash('sha1').update(body, 'utf8').digest('base64').substring(0, 27);
 
   // compute length of entity
-  const len = typeof body === 'string'
-    ? Buffer.byteLength(body, 'utf8')
-    : body.length;
+  const len = typeof body === 'string' ? Buffer.byteLength(body, 'utf8') : body.length;
 
-  return `"${len.toString(16)}-${hash}"`
+  return `"${len.toString(16)}-${hash}"`;
 }
 
 /**
@@ -155,7 +149,7 @@ const staticWorker = (event, callback = () => {}) => {
         'Content-Type': `${contentType}${charset ? `; charset=${charset}` : ''}`,
         'Cache-Control': 'public, max-age=0',
         'Content-Length': bodyBuffer.length,
-        'ETag': currentEtag,
+        ETag: currentEtag,
         ...(stats.mtime && { 'Last-Modified': lastModified.toUTCString() }),
       },
       body: bodyBuffer.toString('base64'),
@@ -168,7 +162,7 @@ const staticWorker = (event, callback = () => {}) => {
         'Content-Type': 'text/plain',
         'Cache-Control': 'public, max-age=0',
       },
-      body:`${fileName} does not exist`,
+      body: `${fileName} does not exist`,
       isBase64Encoded: false,
     });
   }

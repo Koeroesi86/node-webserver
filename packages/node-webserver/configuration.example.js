@@ -14,7 +14,7 @@ module.exports = {
   portLookup: {
     from: 3000,
     to: 3010,
-    address: 'localhost'
+    address: 'localhost',
   },
   statsDomain: 'stats.localhost', // set to false to disable
   statsRefreshInterval: 10000,
@@ -27,10 +27,8 @@ module.exports = {
       type: 'worker', // 'child'|'lambda'|'worker'
       options: {
         root: resolve('examples'),
-        index: [
-          'exampleWorker.js'
-        ]
+        index: ['exampleWorker.js'],
       },
     },
-  ]
+  ],
 };

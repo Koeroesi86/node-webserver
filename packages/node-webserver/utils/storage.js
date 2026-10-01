@@ -7,7 +7,7 @@ class Storage {
    * @param {string} id
    * @param {Driver} [driver]
    */
-  constructor(id, driver)  {
+  constructor(id, driver) {
     this.id = id;
     this.driver = driver || Driver;
 
@@ -44,8 +44,7 @@ class Storage {
    * @returns {Promise<ResponseEvent>}
    */
   getResponse() {
-    return this.driver.restore(this.responsePath)
-      .then(data => Promise.resolve(serializer.deserialize(data)));
+    return this.driver.restore(this.responsePath).then((data) => Promise.resolve(serializer.deserialize(data)));
   }
 
   /**
@@ -60,18 +59,14 @@ class Storage {
    * @returns {Promise<RequestEvent>}
    */
   getRequest() {
-    return this.driver.restore(this.requestPath)
-      .then(data => Promise.resolve(serializer.deserialize(data)));
+    return this.driver.restore(this.requestPath).then((data) => Promise.resolve(serializer.deserialize(data)));
   }
 
   /**
    * @returns {Promise}
    */
   destroy() {
-    return Promise.all([
-      this.driver.destroy(this.responsePath),
-      this.driver.destroy(this.requestPath)
-    ]);
+    return Promise.all([this.driver.destroy(this.responsePath), this.driver.destroy(this.requestPath)]);
   }
 }
 

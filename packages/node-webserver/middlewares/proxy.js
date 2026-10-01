@@ -10,7 +10,7 @@ const proxyMiddleware = (instance) => {
   const {
     childOptions: { command, args },
     proxyOptions,
-    serverOptions
+    serverOptions,
   } = instance;
 
   let childArgs = args;
@@ -28,7 +28,7 @@ const proxyMiddleware = (instance) => {
     }
 
     if (Array.isArray(childArgs)) {
-      childArgs = childArgs.map(childArg => childArg.replace(/%PORT%/gi, port))
+      childArgs = childArgs.map((childArg) => childArg.replace(/%PORT%/gi, port));
     }
 
     serverOptions.proxyTarget = `${PROXY_PROTOCOLS[serverOptions.protocol]}://${proxyOptions.hostname}:${port}`;
@@ -38,8 +38,8 @@ const proxyMiddleware = (instance) => {
   instance.proxy = new HttpProxy.createProxyServer(proxyOptions);
 
   return (req, res) => {
-    instance.proxy.web(req, res, { target: serverOptions.proxyTarget  });
-  }
+    instance.proxy.web(req, res, { target: serverOptions.proxyTarget });
+  };
 };
 
 module.exports = proxyMiddleware;

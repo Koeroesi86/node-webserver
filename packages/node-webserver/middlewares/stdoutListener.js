@@ -1,8 +1,8 @@
 const moment = require('moment');
 
-const getDate = exports = () =>  moment().format('YYYY-MM-DD HH:mm:ss.SS');
+const getDate = (exports = () => moment().format('YYYY-MM-DD HH:mm:ss.SS'));
 let currentLogger = () => {};
-const messageListener = data => {
+const messageListener = (data) => {
   currentLogger(data.toString().trim());
 };
 
@@ -21,7 +21,7 @@ module.exports = (childProcess, logger = () => {}) => {
     childProcess.stderr.on('data', messageListener);
   }
 
-  const closeListener = code => {
+  const closeListener = (code) => {
     if (code) logger(`[${getDate()}] child process exited with code ${code}`);
 
     if (childProcess && childProcess.instance) {

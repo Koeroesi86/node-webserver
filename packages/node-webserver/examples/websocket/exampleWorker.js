@@ -26,7 +26,7 @@ module.exports = (event, callback) => {
           Connection: 'Upgrade',
           'Sec-WebSocket-Accept': `${digest}`,
         },
-        body
+        body,
       });
 
       timers[key] = setInterval(() => {

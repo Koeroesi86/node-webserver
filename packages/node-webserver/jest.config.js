@@ -3,7 +3,7 @@ const { resolve } = require('path');
 module.exports = {
   verbose: true,
   rootDir: resolve(__dirname),
-  cacheDirectory: resolve(__dirname, "../../.cache/jest/node-webserver"),
+  cacheDirectory: resolve(__dirname, '../../.cache/jest/node-webserver'),
   // setupFiles: [
   //   "<rootDir>/config/polyfills.js"
   // ],
@@ -11,8 +11,6 @@ module.exports = {
   // collectCoverageFrom: [
   //   "*.js"
   // ],
-  testMatch: [
-    "**/?(*.)+(spec|test).js"
-  ],
-  moduleFileExtensions: ["js", "json"],
+  testMatch: ['**/?(*.)+(spec|test).js'],
+  moduleFileExtensions: ['js', 'json'],
 };

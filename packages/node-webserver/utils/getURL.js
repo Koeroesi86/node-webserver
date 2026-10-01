@@ -1,4 +1,4 @@
-const { DEFAULT_PORTS } = require("../constants");
+const { DEFAULT_PORTS } = require('../constants');
 
 function getURL(protocol, hostname, port) {
   let displayedPort = port ? `:${port}` : '';

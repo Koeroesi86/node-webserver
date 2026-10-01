@@ -6,7 +6,7 @@ const { logLevels, fileLogPath } = require(process.env.NODE_WEBSERVER_CONFIG || 
 const startedAt = moment();
 
 if (fileLogPath === undefined) {
-  throw new Error("Please define fileLogPath in configuration.");
+  throw new Error('Please define fileLogPath in configuration.');
 }
 
 if (fileLogPath && !existsSync(fileLogPath)) {

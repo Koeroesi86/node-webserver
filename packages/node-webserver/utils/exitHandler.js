@@ -6,13 +6,13 @@ const { readdirSync, existsSync } = require('fs');
 function cleanTmp() {
   const tmpLocation = resolve(__dirname, '../tmp');
   if (existsSync(tmpLocation) && readdirSync(tmpLocation).length > 0) {
-    rimraf.sync(`${tmpLocation}/*`, { glob: { silent: true }});
+    rimraf.sync(`${tmpLocation}/*`, { glob: { silent: true } });
     logger.info('Tmp folder cleaned.');
   }
 }
 
 function exitHandler(instances) {
-  instances.forEach(instance => {
+  instances.forEach((instance) => {
     const { child } = instance;
 
     if (child) {
@@ -20,7 +20,6 @@ function exitHandler(instances) {
     }
   });
 }
-
 
 function exitListener(instances, reason, event) {
   logger.error(`${reason} triggered:\n`, event);
@@ -52,7 +51,6 @@ function addExitListeners(instances) {
 
   //catches uncaught exceptions
   process.once('uncaughtException', (e) => exitListener(instances, 'uncaughtException', e));
-
 }
 
 module.exports = addExitListeners;

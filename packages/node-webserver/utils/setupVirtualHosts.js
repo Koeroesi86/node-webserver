@@ -30,15 +30,14 @@ function getMiddleware(instance) {
       },
     });
   }
-  return (req, res, next) => { next(); }
+  return (req, res, next) => {
+    next();
+  };
 }
 
 function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
   const { portHttp, portHttps } = Configuration;
-  const {
-    hostname,
-    protocol,
-  } = instance;
+  const { hostname, protocol } = instance;
 
   switch (protocol) {
     case 'http':
@@ -53,12 +52,11 @@ function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
       break;
     default:
       logger.error(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);
-
   }
 
   return instance;
 }
 
 module.exports = function setupVirtualHosts(instances, httpApp, httpsApp, Configuration) {
-  instances.forEach(instance => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
+  instances.forEach((instance) => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
 };

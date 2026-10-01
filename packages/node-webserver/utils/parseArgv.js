@@ -4,7 +4,7 @@
  */
 function parseArgv(argv = process.argv) {
   let skipNext = false;
-  const parsedArgv =argv.reduce((result, current, index) => {
+  const parsedArgv = argv.reduce((result, current, index) => {
     if (index < 2) {
       result[index] = current;
       return result;

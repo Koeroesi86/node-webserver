@@ -1,15 +1,15 @@
 const getDate = require('./getDate');
 const logger = require('./logger');
 
-const parseMessage = data => logger.info(`[${getDate()}] ${data.toString().trim()}`);
+const parseMessage = (data) => logger.info(`[${getDate()}] ${data.toString().trim()}`);
 
-module.exports = child => {
+module.exports = (child) => {
   if (child.stdout) {
     child.stdout.off('data', parseMessage);
     child.stdout.on('data', parseMessage);
   }
 
-  const errorListener = data => {
+  const errorListener = (data) => {
     logger.error(`[${getDate()}] ${data.toString().trim()}`);
   };
   if (child.stderr) {
@@ -17,7 +17,7 @@ module.exports = child => {
     child.stderr.on('data', errorListener);
   }
 
-  const closeListener = code => {
+  const closeListener = (code) => {
     if (code) {
       logger.error(`[${getDate()}] child process exited with code ${code}`);
     }

@@ -10,39 +10,45 @@ const usages = {
 };
 
 function refreshStats(instances, refreshInterval = 10000) {
-  pidUsage(process.pid).then(stats => {
-    usages.overall = stats;
-  }).catch(err => console.error(err));
+  pidUsage(process.pid)
+    .then((stats) => {
+      usages.overall = stats;
+    })
+    .catch((err) => console.error(err));
 
-  instances.forEach(instance => {
+  instances.forEach((instance) => {
     const { child } = instance;
 
     if (child) {
-      pidUsage(child.pid).then((stats) => {
-        if (instance.serverOptions.url) {
-          usages.child[instance.serverOptions.url] = {
-            url: instance.serverOptions.url,
-            stats,
-          };
+      pidUsage(child.pid)
+        .then((stats) => {
+          if (instance.serverOptions.url) {
+            usages.child[instance.serverOptions.url] = {
+              url: instance.serverOptions.url,
+              stats,
+            };
 
-          if (instance.lambdas) {
-            const current = usages.child[instance.serverOptions.url];
-            const currentLambdaStats = {};
-            Promise.resolve()
-              .then(() =>
-                Promise.all(Object.keys(instance.lambdas).map(key => {
-                  pidUsage(instance.lambdas[key].pid).then(lambdaStats => {
-                    currentLambdaStats[lambdaStats.pid] = lambdaStats;
-                    return Promise.resolve();
-                  });
-                }))
-              )
-              .then(() => {
-                current.lambdas = currentLambdaStats;
-              });
+            if (instance.lambdas) {
+              const current = usages.child[instance.serverOptions.url];
+              const currentLambdaStats = {};
+              Promise.resolve()
+                .then(() =>
+                  Promise.all(
+                    Object.keys(instance.lambdas).map((key) => {
+                      pidUsage(instance.lambdas[key].pid).then((lambdaStats) => {
+                        currentLambdaStats[lambdaStats.pid] = lambdaStats;
+                        return Promise.resolve();
+                      });
+                    })
+                  )
+                )
+                .then(() => {
+                  current.lambdas = currentLambdaStats;
+                });
+            }
           }
-        }
-      }).catch(err => console.error(err));
+        })
+        .catch((err) => console.error(err));
     }
 
     if (instance.lambdas) {
@@ -50,20 +56,22 @@ function refreshStats(instances, refreshInterval = 10000) {
         ...usages.child[instance.serverOptions.url],
         url: instance.serverOptions.url,
       };
-      const getLambda = key => instance.lambdas[key];
+      const getLambda = (key) => instance.lambdas[key];
       const currentLambdaStats = {};
       Promise.resolve()
         .then(() =>
-          Promise.all(Object.keys(instance.lambdas).map(key => {
-            const lambda = getLambda(key);
-            return pidUsage(lambda.pid).then(stats => {
-              currentLambdaStats[lambda.pid] = stats;
-              return Promise.resolve();
-            });
-          }))
+          Promise.all(
+            Object.keys(instance.lambdas).map((key) => {
+              const lambda = getLambda(key);
+              return pidUsage(lambda.pid).then((stats) => {
+                currentLambdaStats[lambda.pid] = stats;
+                return Promise.resolve();
+              });
+            })
+          )
         )
         .then(() => {
-          usages.child[instance.serverOptions.url].lambdas = currentLambdaStats
+          usages.child[instance.serverOptions.url].lambdas = currentLambdaStats;
         });
     }
   });
