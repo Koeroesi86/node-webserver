@@ -6,7 +6,7 @@ on:
       - master
     paths:
       - 'packages/**'
-      - 'scripts/**'
+      - 'tools/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'

@@ -9,7 +9,7 @@
     "test": "pnpm -r test",
     "start": "pnpm --filter @koeroesi86/node-webserver start",
     "build": "pnpm -r --if-present build",
-    "generate-version": "node scripts/version.js",
+    "generate-version": "pnpm --filter @koeroesi86/tools generate-version",
     "lint": "eslint --ext .ts --cache --cache-location .cache/eslint/ ."
   },
   "devDependencies": {

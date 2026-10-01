@@ -1,0 +1,16 @@
+{
+  "name": "@koeroesi86/tools",
+  "version": "0.0.0",
+  "description": "Internal tooling of the workspace, never published",
+  "private": true,
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "generate-version": "node dist/version.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "rimraf": "^3.0.2",
+    "typescript": "^5.9.3"
+  }
+}
