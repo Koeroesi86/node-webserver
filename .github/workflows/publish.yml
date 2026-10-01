@@ -1,0 +1,36 @@
+name: Publish
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Persist cache
+        uses: actions/cache@v3
+        id: local-dot-cache
+        with:
+          path: .cache
+          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Setup
+        run: pnpm install --frozen-lockfile
+      - name: Test
+        run: pnpm test
+      - name: Package version
+        run: pnpm generate-version
+      - name: Package bundle
+        run: pnpm build
+      - name: Publish package
+        run: pnpm -r publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

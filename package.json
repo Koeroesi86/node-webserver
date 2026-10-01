@@ -1,0 +1,14 @@
+{
+  "name": "node-webserver-workspace",
+  "private": true,
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "pnpm -r test",
+    "start": "pnpm --filter @koeroesi86/node-webserver start",
+    "build": "pnpm -r --if-present build",
+    "generate-version": "node scripts/version.js"
+  }
+}

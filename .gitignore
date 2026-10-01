@@ -7,11 +7,3 @@ configuration.json
 *.pid
 *.log
 .certificates
-!tmp/.gitkeep
-tmp
-!requests/.gitkeep
-requests/*
-!responses/.gitkeep
-responses/*
-!logs/.gitkeep
-logs/*

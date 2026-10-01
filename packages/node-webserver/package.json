@@ -7,14 +7,17 @@
     "name": "Krisztian Korosi",
     "url": "https://github.com/Koeroesi86"
   },
-  "repository": "github:Koeroesi86/node-webserver",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Koeroesi86/node-webserver.git",
+    "directory": "packages/node-webserver"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "test": "node scripts/tests.js",
-    "start": "nodemon scripts/server.js",
-    "generate-version": "node scripts/version.js"
+    "start": "nodemon scripts/server.js"
   },
   "license": "MIT",
   "dependencies": {
