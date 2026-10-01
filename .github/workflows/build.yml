@@ -5,11 +5,21 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -23,6 +33,8 @@ jobs:
           key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Setup
         run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
       - name: Test
         run: pnpm test
       - name: Package version
