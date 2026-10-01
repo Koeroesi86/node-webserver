@@ -356,6 +356,18 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  tools:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.0
+      rimraf:
+        specifier: ^3.0.2
+        version: 3.0.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
 packages:
 
   '@ampproject/remapping@2.1.2':

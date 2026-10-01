@@ -6,7 +6,7 @@ on:
       - master
     paths:
       - 'packages/**'
-      - 'scripts/**'
+      - 'tools/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
@@ -27,6 +27,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # the version script compares the packages with the commit of their latest release
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
