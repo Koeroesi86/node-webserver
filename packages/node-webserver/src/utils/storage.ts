@@ -1,15 +1,14 @@
-const { resolve } = require('path');
-const serializer = require('./serializer');
-const Driver = require('./fileDriver');
+import { resolve } from 'path';
+import serializer from './serializer';
+import fileDriver from './fileDriver';
+import type { StorageDriver } from '../types';
 
+/** loaded by file path in the lambda workers, so it has to stay a CommonJS `module.exports` */
 class Storage {
-  /**
-   * @param {string} id
-   * @param {Driver} [driver]
-   */
-  constructor(id, driver) {
-    this.id = id;
-    this.driver = driver || Driver;
+  readonly driver: StorageDriver;
+
+  constructor(readonly id: string, driver?: StorageDriver) {
+    this.driver = driver || fileDriver;
 
     this.setResponse = this.setResponse.bind(this);
     this.getResponse = this.getResponse.bind(this);
@@ -18,56 +17,33 @@ class Storage {
     this.destroy = this.destroy.bind(this);
   }
 
-  /**
-   * @returns {string}
-   */
-  get requestPath() {
+  get requestPath(): string {
     return resolve('D:/Chris/Documents/Developement/node-webserver/', `./requests/${this.id}`);
   }
 
-  /**
-   * @returns {string}
-   */
-  get responsePath() {
+  get responsePath(): string {
     return resolve('D:/Chris/Documents/Developement/node-webserver/', `./responses/${this.id}`);
   }
 
-  /**
-   * @param {ResponseEvent} response
-   * @returns {Promise}
-   */
-  setResponse(response) {
+  setResponse(response: Middleware.ResponseEvent): Promise<void> {
     return this.driver.save(this.responsePath, serializer.serialize(response));
   }
 
-  /**
-   * @returns {Promise<ResponseEvent>}
-   */
-  getResponse() {
-    return this.driver.restore(this.responsePath).then((data) => Promise.resolve(serializer.deserialize(data)));
+  getResponse(): Promise<Middleware.ResponseEvent> {
+    return this.driver.restore(this.responsePath).then((data) => serializer.deserialize<Middleware.ResponseEvent>(data));
   }
 
-  /**
-   * @param {RequestEvent} request
-   * @returns {Promise}
-   */
-  setRequest(request) {
+  setRequest(request: Middleware.RequestEvent): Promise<void> {
     return this.driver.save(this.requestPath, serializer.serialize(request));
   }
 
-  /**
-   * @returns {Promise<RequestEvent>}
-   */
-  getRequest() {
-    return this.driver.restore(this.requestPath).then((data) => Promise.resolve(serializer.deserialize(data)));
+  getRequest(): Promise<Middleware.RequestEvent> {
+    return this.driver.restore(this.requestPath).then((data) => serializer.deserialize<Middleware.RequestEvent>(data));
   }
 
-  /**
-   * @returns {Promise}
-   */
-  destroy() {
+  destroy(): Promise<[void, void]> {
     return Promise.all([this.driver.destroy(this.responsePath), this.driver.destroy(this.requestPath)]);
   }
 }
 
-module.exports = Storage;
+export = Storage;

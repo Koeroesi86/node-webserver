@@ -1,8 +1,9 @@
-const tls = require('tls');
-const fs = require('fs');
+import tls from 'tls';
+import fs from 'fs';
+import type { ServerInstance } from '../types';
 
 // if CA contains more certificates it will be parsed to array
-function sslCADecode(source) {
+function sslCADecode(source?: string): string[] {
   if (!source || typeof source !== 'string') {
     return [];
   }
@@ -19,7 +20,7 @@ function sslCADecode(source) {
   });
 }
 
-module.exports = function setupSecureContexts(instances = []) {
+function setupSecureContexts(instances: ServerInstance[] = []) {
   instances.forEach((instance) => {
     const { key, cert, ca } = instance;
     if (key && cert) {
@@ -27,10 +28,12 @@ module.exports = function setupSecureContexts(instances = []) {
         key: fs.readFileSync(key, 'utf8'),
         cert: fs.readFileSync(cert, 'utf8'),
         // If the 'ca' option is not given, then node.js will use the default
-        ca: ca ? sslCADecode(fs.readFileSync(ca, 'utf8')) : null,
+        ca: ca ? sslCADecode(fs.readFileSync(ca, 'utf8')) : undefined,
       });
     }
   });
 
   return instances;
-};
+}
+
+export default setupSecureContexts;

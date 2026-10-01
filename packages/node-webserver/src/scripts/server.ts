@@ -1,7 +1,7 @@
-const { findPorts } = require('../utils/ports');
-const logger = require('../utils/logger');
-const startServer = require('../utils/startServer');
-const Configuration = require('../configuration.example');
+import { findPorts } from '../utils/ports';
+import logger from '../utils/logger';
+import startServer from '../utils/startServer';
+import Configuration from '../configuration.example';
 
 (async () => {
   try {

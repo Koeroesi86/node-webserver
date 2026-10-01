@@ -1,7 +1,9 @@
-const { resolve } = require('path');
+import { resolve } from 'path';
+import { PACKAGE_ROOT } from './constants';
+import type { Configuration } from './types';
 
-module.exports = {
-  fileLogPath: resolve(__dirname, './logs/'),
+const configuration = {
+  fileLogPath: resolve(PACKAGE_ROOT, './logs/'),
   logLevels: {
     system: true,
     info: true,
@@ -26,9 +28,11 @@ module.exports = {
       // cert: resolve(__dirname, './.certificates/localhost/cert1.pem'),
       type: 'worker', // 'child'|'lambda'|'worker'
       options: {
-        root: resolve('examples'),
+        root: resolve(PACKAGE_ROOT, 'examples'),
         index: ['exampleWorker.js'],
       },
     },
   ],
-};
+} satisfies Configuration;
+
+export = configuration;

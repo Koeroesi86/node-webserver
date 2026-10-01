@@ -1,6 +1,6 @@
-const { findPorts, getFreePort, clearPorts, getPorts, addPort } = require('./ports');
-const { portLookup } = require('../configuration.example');
-const fp = require('find-free-port');
+import fp from 'find-free-port';
+import { findPorts, getFreePort, clearPorts, getPorts, addPort } from './ports';
+import { portLookup } from '../configuration.example';
 
 jest.mock('find-free-port');
 
@@ -13,7 +13,7 @@ describe('The ports', () => {
     const mockedResult = Array(portLookup.to - portLookup.from)
       .fill(1)
       .map((_, i) => portLookup.from + i);
-    fp.mockReturnValue(Promise.resolve(mockedResult));
+    jest.mocked(fp).mockReturnValue(Promise.resolve(mockedResult));
     findPorts(portLookup).then((ports) => {
       expect(ports.length).toEqual(portLookup.to - portLookup.from);
       done();

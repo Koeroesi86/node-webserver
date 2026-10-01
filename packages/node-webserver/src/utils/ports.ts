@@ -1,49 +1,35 @@
-const fp = require('find-free-port');
+import fp from 'find-free-port';
+import type { PortLookup } from '../types';
 
-let PORTS = [];
+let PORTS: number[] = [];
 
-const addPort = (port) => {
+export const addPort = (port: number) => {
   if (!PORTS.includes(port)) {
     PORTS.push(port);
   }
 };
 
-module.exports.addPort = addPort;
-
-const getPorts = () => {
+export const getPorts = () => {
   return PORTS.slice();
 };
 
-module.exports.getPorts = getPorts;
-
-const clearPorts = () => {
+export const clearPorts = () => {
   PORTS.splice(0, PORTS.length);
 };
 
-module.exports.clearPorts = clearPorts;
-
-const getFreePort = () => {
-  if (PORTS.length > 0) {
-    return PORTS.splice(0, 1);
-  } else {
+export const getFreePort = (): number[] => {
+  if (PORTS.length === 0) {
     throw new Error('No more available port left.');
   }
+
+  return PORTS.splice(0, 1);
 };
 
-module.exports.getFreePort = getFreePort;
-
-/** return Promise */
-const findPorts = (portLookup = { from: 3000, to: 3010, address: 'localhost' }) => {
+export const findPorts = (portLookup: PortLookup = { from: 3000, to: 3010, address: 'localhost' }): Promise<number[]> => {
   const { from, to, address } = portLookup;
 
-  return new Promise((resolve, reject) => {
-    fp(from, to, address, to - from)
-      .then((ports) => {
-        PORTS = ports;
-        resolve(PORTS);
-      })
-      .catch((err) => reject(err));
+  return fp(from, to, address, to - from).then((ports) => {
+    PORTS = ports;
+    return PORTS;
   });
 };
-
-module.exports.findPorts = findPorts;

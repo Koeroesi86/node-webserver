@@ -1,5 +1,6 @@
-const startServer = require('./utils/startServer');
-module.exports = startServer;
-module.exports.default = startServer;
-module.exports.startServer = startServer;
-module.exports.ports = require('./utils/ports');
+import startServer from './utils/startServer';
+import * as ports from './utils/ports';
+
+const api = Object.assign(startServer, { default: startServer, startServer, ports });
+
+export = api;

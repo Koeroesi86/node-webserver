@@ -1,17 +1,21 @@
-const logger = require('./logger');
-const rimraf = require('rimraf');
-const { resolve } = require('path');
-const { readdirSync, existsSync } = require('fs');
+import rimraf from 'rimraf';
+import { resolve } from 'path';
+import { readdirSync, existsSync } from 'fs';
+import logger from './logger';
+import { PACKAGE_ROOT } from '../constants';
+import type { ServerInstance } from '../types';
+
+type ExitReason = NodeJS.Signals | 'exit' | 'uncaughtException';
 
 function cleanTmp() {
-  const tmpLocation = resolve(__dirname, '../tmp');
+  const tmpLocation = resolve(PACKAGE_ROOT, 'tmp');
   if (existsSync(tmpLocation) && readdirSync(tmpLocation).length > 0) {
     rimraf.sync(`${tmpLocation}/*`, { glob: { silent: true } });
     logger.info('Tmp folder cleaned.');
   }
 }
 
-function exitHandler(instances) {
+function exitHandler(instances: ServerInstance[]) {
   instances.forEach((instance) => {
     const { child } = instance;
 
@@ -21,7 +25,7 @@ function exitHandler(instances) {
   });
 }
 
-function exitListener(instances, reason, event) {
+function exitListener(instances: ServerInstance[], reason: ExitReason, event: unknown) {
   logger.error(`${reason} triggered:\n`, event);
 
   exitHandler(instances);
@@ -31,7 +35,7 @@ function exitListener(instances, reason, event) {
   process.kill(process.pid, reason === 'uncaughtException' ? 'SIGINT' : reason);
 }
 
-function addExitListeners(instances) {
+function addExitListeners(instances: ServerInstance[]) {
   process.stdin.resume();
 
   cleanTmp();
@@ -53,4 +57,4 @@ function addExitListeners(instances) {
   process.once('uncaughtException', (e) => exitListener(instances, 'uncaughtException', e));
 }
 
-module.exports = addExitListeners;
+export default addExitListeners;

@@ -1,4 +1,6 @@
-module.exports = {
-  serialize: (data) => JSON.stringify(data),
-  deserialize: (data) => JSON.parse(data),
+const serializer = {
+  serialize: (data: unknown) => JSON.stringify(data),
+  deserialize: <T>(data: string): T => JSON.parse(data),
 };
+
+export default serializer;

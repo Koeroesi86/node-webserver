@@ -22,6 +22,8 @@ Please enter in a console/terminal:
     pnpm install
     pnpm start
 
+`pnpm start` compiles the TypeScript sources in `src/` to `dist/` and restarts on changes. `pnpm build` creates the published `dist/` output once, `pnpm test` runs the Jest suite and `pnpm lint` checks formatting.
+
 
 ### Build
 

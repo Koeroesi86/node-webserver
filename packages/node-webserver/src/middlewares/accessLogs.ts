@@ -1,20 +1,27 @@
-const getDate = require('../utils/getDate');
-const logger = require('../utils/logger');
+import type { NextFunction, Request, Response } from 'express';
+import getDate from '../utils/getDate';
+import logger from '../utils/logger';
 
-const fullUrl = (request) => `${request.protocol}://${request.get('host')}${request.originalUrl}`;
-const serialiseHeaders = (request) => {
-  const prepared = {};
-  Object.keys(request.headers)
-    .sort()
-    .forEach((key) => {
-      prepared[key] = request.headers[key];
-    });
-  return JSON.stringify(prepared);
+const fullUrl = (request: Request) => `${request.protocol}://${request.get('host')}${request.originalUrl}`;
+
+const serialiseHeaders = (request: Request) =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.keys(request.headers)
+        .sort()
+        .map((key) => [key, request.headers[key]])
+    )
+  );
+
+const getResponseLogger = (statusCode: number) => {
+  if (statusCode < 400) return logger.success;
+  if (statusCode >= 400) return logger.error;
+  return logger.info;
 };
 
-module.exports =
-  ({ alias = 'APP' }) =>
-  (request, response, next) => {
+const accessLogsMiddleware =
+  ({ alias = 'APP' }: { alias?: string }) =>
+  (request: Request, response: Response, next: NextFunction) => {
     setTimeout(() => {
       const timePrefix = `[${getDate()}]`;
       logger.success(
@@ -31,12 +38,6 @@ module.exports =
     }, 0);
     response.on('finish', () => {
       const timePrefix = `[${getDate()}]`;
-      let log = (message) => logger.info(message);
-      if (response.statusCode < 400) {
-        log = (message) => logger.success(message);
-      } else if (response.statusCode >= 400) {
-        log = (message) => logger.error(message);
-      }
       const logLine = [
         timePrefix,
         `[${alias}]`,
@@ -47,7 +48,9 @@ module.exports =
         response.statusMessage,
         `${response.get('Content-Length') || 0}b sent`,
       ].join(' ');
-      log(logLine);
+      getResponseLogger(response.statusCode)(logLine);
     });
     next();
   };
+
+export default accessLogsMiddleware;

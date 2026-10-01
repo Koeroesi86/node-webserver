@@ -1,12 +1,38 @@
-const vHost = require('vhost');
-const { middleware: workerMiddleware } = require('@koeroesi86/node-worker-express');
-const getURL = require('./getURL');
-const proxyMiddleware = require('../middlewares/proxy');
-const lambdaMiddleware = require('../middlewares/lambda');
-const getDate = require('./getDate');
-const logger = require('./logger');
+import vHost from 'vhost';
+import type { Express, RequestHandler } from 'express';
+import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
+import getURL from './getURL';
+import proxyMiddleware from '../middlewares/proxy';
+import lambdaMiddleware from '../middlewares/lambda';
+import getDate from './getDate';
+import logger from './logger';
+import type { Configuration, ServerInstance } from '../types';
 
-function getMiddleware(instance) {
+function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
+  const { options } = instance;
+
+  if (!options) {
+    throw new Error(`options are required for worker server ${instance.hostname}.`);
+  }
+
+  return workerMiddleware({
+    ...options,
+    onStdout(data) {
+      logger.info(`[${getDate()}] ${data.toString().trim()}`);
+      if (options.onStdout) {
+        options.onStdout(data);
+      }
+    },
+    onStderr(data) {
+      logger.error(`[${getDate()}] ${data.toString().trim()}`);
+      if (options.onStderr) {
+        options.onStderr(data);
+      }
+    },
+  });
+}
+
+function getMiddleware(instance: ServerInstance): RequestHandler {
   if (instance.type === 'child') {
     return proxyMiddleware(instance);
   }
@@ -14,28 +40,14 @@ function getMiddleware(instance) {
     return lambdaMiddleware(instance);
   }
   if (instance.type === 'worker') {
-    return workerMiddleware({
-      ...instance.options,
-      onStdout(data) {
-        logger.info(`[${getDate()}] ${data.toString().trim()}`);
-        if (instance.options.onStdout) {
-          instance.options.onStdout(data);
-        }
-      },
-      onStderr(data) {
-        logger.error(`[${getDate()}] ${data.toString().trim()}`);
-        if (instance.options.onStderr) {
-          instance.options.onStderr(data);
-        }
-      },
-    });
+    return getWorkerMiddleware(instance);
   }
   return (req, res, next) => {
     next();
   };
 }
 
-function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
+function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
   const { portHttp, portHttps } = Configuration;
   const { hostname, protocol } = instance;
 
@@ -57,6 +69,8 @@ function setupVirtualHost(instance, httpApp, httpsApp, Configuration) {
   return instance;
 }
 
-module.exports = function setupVirtualHosts(instances, httpApp, httpsApp, Configuration) {
+function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
   instances.forEach((instance) => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
-};
+}
+
+export default setupVirtualHosts;

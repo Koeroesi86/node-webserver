@@ -1,14 +1,16 @@
-const express = require('express');
-const http = require('http');
-const https = require('https');
-const path = require('path');
-const fs = require('fs');
-const exampleConfig = require('../configuration.example');
-const accessLogsMiddleware = require('../middlewares/accessLogs');
-const addExitListeners = require('./exitHandler');
-const setupSecureContexts = require('./setupSecureContexts');
-const setupStatsHandler = require('./setupStatsHandler');
-const setupVirtualHosts = require('./setupVirtualHosts');
+import express from 'express';
+import type { Express } from 'express';
+import http from 'http';
+import https from 'https';
+import path from 'path';
+import fs from 'fs';
+import exampleConfig from '../configuration.example';
+import accessLogsMiddleware from '../middlewares/accessLogs';
+import addExitListeners from './exitHandler';
+import setupSecureContexts from './setupSecureContexts';
+import setupStatsHandler from './setupStatsHandler';
+import setupVirtualHosts from './setupVirtualHosts';
+import type { Configuration, ServerInstance } from '../types';
 
 const httpApp = express();
 const httpsApp = express();
@@ -16,26 +18,26 @@ const httpsApp = express();
 httpApp.disable('x-powered-by');
 httpsApp.disable('x-powered-by');
 
-module.exports = async (configuration) => {
-  const hydratedConfiguration = {
+const loadInstance = (configPath: string): ServerInstance[] => {
+  const resolvedPath = path.resolve(configPath);
+
+  if (!fs.existsSync(resolvedPath)) {
+    return [];
+  }
+
+  const instance: ServerInstance = require(resolvedPath);
+
+  return [instance];
+};
+
+const listen = (server: http.Server | https.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
+
+const startServer = async (configuration: Partial<Configuration>): Promise<{ httpApp: Express; httpsApp: Express }> => {
+  const hydratedConfiguration: Configuration = {
     ...exampleConfig,
     ...configuration,
   };
-  const instances = hydratedConfiguration.servers
-    .slice()
-    .map((config) => {
-      if (typeof config === 'string') {
-        const configPath = path.resolve(config);
-
-        if (!fs.existsSync(configPath)) {
-          return false;
-        }
-
-        return require(configPath);
-      }
-      return config;
-    })
-    .filter(Boolean);
+  const instances = hydratedConfiguration.servers.flatMap((config) => (typeof config === 'string' ? loadInstance(config) : [config]));
   /** access logs */
   httpApp.use(accessLogsMiddleware({ alias: 'http' }));
   httpsApp.use(accessLogsMiddleware({ alias: 'https' }));
@@ -45,16 +47,7 @@ module.exports = async (configuration) => {
 
   setupVirtualHosts(instances, httpApp, httpsApp, configuration);
   setupSecureContexts(instances);
-  const contexts = instances
-    .slice()
-    .filter((inst) => inst.protocol === 'https')
-    .reduce(
-      (result, instance) => ({
-        ...result,
-        [instance.hostname]: instance.secureContext,
-      }),
-      {}
-    );
+  const contexts = Object.fromEntries(instances.filter((inst) => inst.protocol === 'https').map((instance) => [instance.hostname, instance.secureContext]));
 
   const httpServer = http.createServer(httpApp);
   const httpsServer = https.createServer(
@@ -62,32 +55,18 @@ module.exports = async (configuration) => {
       SNICallback: (domain, callback) => {
         const secureContext = contexts[domain];
         if (secureContext) {
-          if (callback) {
-            return callback(null, secureContext);
-          }
-
-          return secureContext;
+          callback(null, secureContext);
         }
-
-        return null;
       },
     },
     httpsApp
   );
 
-  await new Promise((resolve, reject) =>
-    httpServer.listen(hydratedConfiguration.portHttp, (err) => {
-      if (err) reject(err);
-      resolve();
-    })
-  );
-  await new Promise((resolve, reject) =>
-    httpsServer.listen(hydratedConfiguration.portHttps, (err) => {
-      if (err) reject(err);
-      resolve();
-    })
-  );
+  await listen(httpServer, hydratedConfiguration.portHttp);
+  await listen(httpsServer, hydratedConfiguration.portHttps);
 
   addExitListeners(instances);
   return { httpApp, httpsApp };
 };
+
+export default startServer;

@@ -1,17 +1,19 @@
-const moment = require('moment');
+import type { Readable } from 'stream';
+import getDate from '../utils/getDate';
 
-const getDate = (exports = () => moment().format('YYYY-MM-DD HH:mm:ss.SS'));
-let currentLogger = () => {};
-const messageListener = (data) => {
+interface ListenableWorker {
+  stdout?: Readable | null;
+  stderr?: Readable | null;
+  instance?: unknown;
+  addEventListenerOnce: (event: string, listener: (code?: number) => void) => void;
+}
+
+let currentLogger: (message: string) => void = () => {};
+const messageListener = (data: Buffer | string) => {
   currentLogger(data.toString().trim());
 };
 
-/**
- *
- * @param {Worker} childProcess
- * @param {function} [logger]
- */
-module.exports = (childProcess, logger = () => {}) => {
+const stdoutListener = (childProcess: ListenableWorker, logger: (message: string) => void = () => {}) => {
   currentLogger = logger;
 
   if (childProcess.stdout && !childProcess.stdout.listeners('data').includes(messageListener)) {
@@ -21,7 +23,7 @@ module.exports = (childProcess, logger = () => {}) => {
     childProcess.stderr.on('data', messageListener);
   }
 
-  const closeListener = (code) => {
+  const closeListener = (code?: number) => {
     if (code) logger(`[${getDate()}] child process exited with code ${code}`);
 
     if (childProcess && childProcess.instance) {
@@ -31,3 +33,5 @@ module.exports = (childProcess, logger = () => {}) => {
   };
   childProcess.addEventListenerOnce('close', closeListener);
 };
+
+export default stdoutListener;

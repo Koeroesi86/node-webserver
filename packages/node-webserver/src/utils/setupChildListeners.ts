@@ -1,11 +1,12 @@
-const setupChildListener = require('./setupChildListener');
+import setupChildListener from './setupChildListener';
+import type { ServerInstance } from '../types';
 
-module.exports = (instances = []) => {
-  instances.forEach((instance) => {
-    const { child } = instance;
-
+const setupChildListeners = (instances: ServerInstance[] = []) => {
+  instances.forEach(({ child }) => {
     if (child) {
       setupChildListener(child);
     }
   });
 };
+
+export default setupChildListeners;

@@ -1,85 +1,73 @@
-const vHost = require('vhost');
-const pidUsage = require('pidusage');
-const getURL = require('./getURL');
-const getDate = require('./getDate');
-const logger = require('./logger');
+import type { Express } from 'express';
+import vHost from 'vhost';
+import pidUsage from 'pidusage';
+import getURL from './getURL';
+import getDate from './getDate';
+import logger from './logger';
+import type { Configuration, ServerInstance } from '../types';
 
-const usages = {
+type Lambdas = NonNullable<ServerInstance['lambdas']>;
+
+interface ChildUsage {
+  url: string;
+  stats?: pidUsage.Status;
+  lambdas?: Record<number, pidUsage.Status>;
+}
+
+interface Usages {
+  overall: Partial<pidUsage.Status>;
+  child: Record<string, ChildUsage>;
+}
+
+const usages: Usages = {
   overall: {},
   child: {},
 };
 
-function refreshStats(instances, refreshInterval = 10000) {
+const getLambdaStats = (lambdas: Lambdas) =>
+  Promise.all(Object.values(lambdas).map(({ pid }) => pidUsage(pid))).then((stats) =>
+    Object.fromEntries(stats.map((lambdaStats) => [lambdaStats.pid, lambdaStats]))
+  );
+
+function refreshInstanceStats(instance: ServerInstance) {
+  const { child, lambdas } = instance;
+  const url = instance.serverOptions?.url;
+
+  if (child?.pid && url) {
+    pidUsage(child.pid)
+      .then((stats) => {
+        usages.child[url] = { url, stats };
+
+        if (lambdas) {
+          getLambdaStats(lambdas).then((lambdaStats) => {
+            usages.child[url].lambdas = lambdaStats;
+          });
+        }
+      })
+      .catch((err) => console.error(err));
+  }
+
+  if (lambdas && url) {
+    usages.child[url] = { ...usages.child[url], url };
+    getLambdaStats(lambdas).then((lambdaStats) => {
+      usages.child[url].lambdas = lambdaStats;
+    });
+  }
+}
+
+function refreshStats(instances: ServerInstance[], refreshInterval = 10000) {
   pidUsage(process.pid)
     .then((stats) => {
       usages.overall = stats;
     })
     .catch((err) => console.error(err));
 
-  instances.forEach((instance) => {
-    const { child } = instance;
-
-    if (child) {
-      pidUsage(child.pid)
-        .then((stats) => {
-          if (instance.serverOptions.url) {
-            usages.child[instance.serverOptions.url] = {
-              url: instance.serverOptions.url,
-              stats,
-            };
-
-            if (instance.lambdas) {
-              const current = usages.child[instance.serverOptions.url];
-              const currentLambdaStats = {};
-              Promise.resolve()
-                .then(() =>
-                  Promise.all(
-                    Object.keys(instance.lambdas).map((key) => {
-                      pidUsage(instance.lambdas[key].pid).then((lambdaStats) => {
-                        currentLambdaStats[lambdaStats.pid] = lambdaStats;
-                        return Promise.resolve();
-                      });
-                    })
-                  )
-                )
-                .then(() => {
-                  current.lambdas = currentLambdaStats;
-                });
-            }
-          }
-        })
-        .catch((err) => console.error(err));
-    }
-
-    if (instance.lambdas) {
-      usages.child[instance.serverOptions.url] = {
-        ...usages.child[instance.serverOptions.url],
-        url: instance.serverOptions.url,
-      };
-      const getLambda = (key) => instance.lambdas[key];
-      const currentLambdaStats = {};
-      Promise.resolve()
-        .then(() =>
-          Promise.all(
-            Object.keys(instance.lambdas).map((key) => {
-              const lambda = getLambda(key);
-              return pidUsage(lambda.pid).then((stats) => {
-                currentLambdaStats[lambda.pid] = stats;
-                return Promise.resolve();
-              });
-            })
-          )
-        )
-        .then(() => {
-          usages.child[instance.serverOptions.url].lambdas = currentLambdaStats;
-        });
-    }
-  });
+  instances.forEach(refreshInstanceStats);
 
   setTimeout(() => refreshStats(instances, refreshInterval), refreshInterval);
 }
 
-function setupStatsHandler(instances, httpApp, Configuration) {
+function setupStatsHandler(instances: ServerInstance[], httpApp: Express, Configuration: Partial<Configuration>) {
   const { portHttp, statsDomain, statsRefreshInterval } = Configuration;
   if (statsDomain) {
     refreshStats(instances, statsRefreshInterval);
@@ -95,4 +83,4 @@ function setupStatsHandler(instances, httpApp, Configuration) {
   }
 }
 
-module.exports = setupStatsHandler;
+export default setupStatsHandler;

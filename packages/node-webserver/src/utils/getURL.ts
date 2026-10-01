@@ -1,6 +1,6 @@
-const { DEFAULT_PORTS } = require('../constants');
+import { DEFAULT_PORTS } from '../constants';
 
-function getURL(protocol, hostname, port) {
+function getURL(protocol: string, hostname: string, port?: number) {
   let displayedPort = port ? `:${port}` : '';
 
   if (DEFAULT_PORTS[protocol] === port) {
@@ -10,4 +10,4 @@ function getURL(protocol, hostname, port) {
   return `${protocol}://${hostname}${displayedPort}`;
 }
 
-module.exports = getURL;
+export default getURL;

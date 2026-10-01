@@ -1,12 +1,15 @@
 module.exports = {
   root: true,
   env: { node: true, jest: true },
+  parser: '@typescript-eslint/parser',
   parserOptions: {
+    project: true,
     ecmaVersion: 'latest',
-    sourceType: 'commonjs',
+    sourceType: 'module',
   },
-  plugins: ['prettier'],
+  plugins: ['@typescript-eslint', 'prettier'],
   rules: {
+    '@typescript-eslint/no-explicit-any': 'error',
     'prettier/prettier': [
       'error',
       {
@@ -17,5 +20,5 @@ module.exports = {
       { usePrettierrc: false },
     ],
   },
-  ignorePatterns: ['.idea/*', '.cache/*', '**/node_modules/*', 'packages/*/examples/static/*'],
+  ignorePatterns: ['**/dist/*', '.idea/*', '.cache/*', '**/node_modules/*', '*.js'],
 };

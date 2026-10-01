@@ -1,3 +1,5 @@
-const moment = require('moment');
+import moment from 'moment';
 
-module.exports = () => moment().format('YYYY-MM-DD HH:mm:ss.SS');
+const getDate = () => moment().format('YYYY-MM-DD HH:mm:ss.SS');
+
+export default getDate;

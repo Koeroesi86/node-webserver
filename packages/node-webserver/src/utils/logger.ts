@@ -1,7 +1,9 @@
-const moment = require('moment');
-const { resolve } = require('path');
-const { appendFileSync, mkdirSync, existsSync } = require('fs');
-const { logLevels, fileLogPath } = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration.example');
+import moment from 'moment';
+import { resolve } from 'path';
+import { appendFileSync, mkdirSync, existsSync } from 'fs';
+import type { Configuration, LogLevels } from '../types';
+
+const { logLevels, fileLogPath }: Pick<Configuration, 'logLevels' | 'fileLogPath'> = require(process.env.NODE_WEBSERVER_CONFIG || '../configuration.example');
 
 const startedAt = moment();
 
@@ -13,36 +15,26 @@ if (fileLogPath && !existsSync(fileLogPath)) {
   mkdirSync(fileLogPath, { recursive: true });
 }
 
-function fileLog(filePath, args = []) {
+function fileLog(level: keyof LogLevels, args: unknown[]) {
   if (fileLogPath) {
-    appendFileSync(filePath, `${args.join(', ')}\n`, 'utf8');
+    appendFileSync(resolve(fileLogPath, `./${startedAt.valueOf()}.${level}.log`), `${args.join(', ')}\n`, 'utf8');
   }
 }
 
-module.exports = {
-  system: (...args) => {
-    if (logLevels && logLevels.system === false) return;
-    fileLog(resolve(fileLogPath, `./${startedAt.valueOf()}.system.log`), args);
+const createLog =
+  (level: keyof LogLevels) =>
+  (...args: unknown[]) => {
+    if (logLevels && logLevels[level] === false) return;
+    fileLog(level, args);
     return console.log(...args);
-  },
-  info: (...args) => {
-    if (logLevels && logLevels.info === false) return;
-    fileLog(resolve(fileLogPath, `./${startedAt.valueOf()}.info.log`), args);
-    return console.log(...args);
-  },
-  success: (...args) => {
-    if (logLevels && logLevels.success === false) return;
-    fileLog(resolve(fileLogPath, `./${startedAt.valueOf()}.success.log`), args);
-    return console.log(...args);
-  },
-  error: (...args) => {
-    if (logLevels && logLevels.error === false) return;
-    fileLog(resolve(fileLogPath, `./${startedAt.valueOf()}.error.log`), args);
-    return console.log(...args);
-  },
-  warning: (...args) => {
-    if (logLevels && logLevels.warning === false) return;
-    fileLog(resolve(fileLogPath, `./${startedAt.valueOf()}.warning.log`), args);
-    return console.log(...args);
-  },
+  };
+
+const logger = {
+  system: createLog('system'),
+  info: createLog('info'),
+  success: createLog('success'),
+  error: createLog('error'),
+  warning: createLog('warning'),
 };
+
+export default logger;

@@ -1,14 +1,16 @@
-const DEFAULT_PORTS = {
+import { resolve } from 'path';
+
+/** folder of the package, both from src/ and dist/ */
+export const PACKAGE_ROOT = resolve(__dirname, '../..');
+
+export const DEFAULT_PORTS: Record<string, number> = {
   http: 80,
   https: 443,
 };
 
-module.exports.DEFAULT_PORTS = DEFAULT_PORTS;
-
-const PROXY_PROTOCOLS = {
+export const PROXY_PROTOCOLS: Record<string, string> = {
   http: 'http',
   https: 'http',
   ws: 'ws',
   wss: 'ws',
 };
-module.exports.PROXY_PROTOCOLS = PROXY_PROTOCOLS;
