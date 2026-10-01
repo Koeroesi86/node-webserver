@@ -1,0 +1,42 @@
+{
+  "name": "@koeroesi86/node-worker-express",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist",
+  "typings": "dist",
+  "author": {
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
+  },
+  "repository": "github:Koeroesi86/node-worker-express",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "eslint --ext .ts --cache --cache-location .cache/eslint/ .",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rm -rf ./dist && rollup -c rollup.config.js",
+    "start": "nodemon examples/server.js",
+    "generate-version": "node scripts/version.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@koeroesi86/node-worker": "^23.3.4408728827-main",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@types/express": "^4.17.17",
+    "@types/node": "^18.15.3",
+    "@typescript-eslint/eslint-plugin": "^5.55.0",
+    "@typescript-eslint/parser": "^5.55.0",
+    "eslint": "^8.36.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "express": "^4.18.2",
+    "nodemon": "^2.0.21",
+    "prettier": "^2.8.4",
+    "rollup": "^3.19.1",
+    "tslib": "^2.5.0",
+    "typescript": "^4.9.5"
+  }
+}
