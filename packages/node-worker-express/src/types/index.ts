@@ -58,7 +58,7 @@ export interface MiddlewareOptions {
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
   onExit?: (code: number, workerPath: string, id: string) => void;
-  onForbiddenPath: (request: Request, response: Response) => unknown;
+  onForbiddenPath?: (request: Request, response: Response) => unknown;
   index?: string[];
   env?: object;
   staticWorker?: string;

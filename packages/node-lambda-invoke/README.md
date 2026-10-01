@@ -1,16 +1,16 @@
-# Node Lambda invoke [![Build status](https://api.travis-ci.org/Koeroesi86/node-lambda-invoke.svg?branch=master)](https://travis-ci.org/Koeroesi86/node-lambda-invoke)
+# Node Lambda invoke
 
 A library that can be easily used for AWS lambda functions locally
 
 ## Dependencies
 
 * [Node](https://nodejs.org/en/)
-* [Yarn](https://yarnpkg.com/lang/en/) (optional)
+* [pnpm](https://pnpm.io/) (for development in this workspace)
 
 ## Usage
 
 ```bash
-yarn add @koeroesi86/node-lambda-invoke
+pnpm add @koeroesi86/node-lambda-invoke
 ```
 
 Or with npm
@@ -53,7 +53,7 @@ http
 ## Running locally
 
 ```bash
-yarn start
+pnpm start
 ```
 
 ## Configuration

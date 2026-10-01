@@ -1,5 +1,6 @@
 import { resolve } from 'path';
 import { PACKAGE_ROOT } from '../constants';
+import type { RequestEvent, ResponseEvent } from '@koeroesi86/node-worker-express';
 import serializer from './serializer';
 import fileDriver from './fileDriver';
 import type { StorageDriver } from '../types';
@@ -26,20 +27,20 @@ class Storage {
     return resolve(PACKAGE_ROOT, `./responses/${this.id}`);
   }
 
-  setResponse(response: Middleware.ResponseEvent): Promise<void> {
+  setResponse(response: ResponseEvent): Promise<void> {
     return this.driver.save(this.responsePath, serializer.serialize(response));
   }
 
-  getResponse(): Promise<Middleware.ResponseEvent> {
-    return this.driver.restore(this.responsePath).then((data) => serializer.deserialize<Middleware.ResponseEvent>(data));
+  getResponse(): Promise<ResponseEvent> {
+    return this.driver.restore(this.responsePath).then((data) => serializer.deserialize<ResponseEvent>(data));
   }
 
-  setRequest(request: Middleware.RequestEvent): Promise<void> {
+  setRequest(request: RequestEvent): Promise<void> {
     return this.driver.save(this.requestPath, serializer.serialize(request));
   }
 
-  getRequest(): Promise<Middleware.RequestEvent> {
-    return this.driver.restore(this.requestPath).then((data) => serializer.deserialize<Middleware.RequestEvent>(data));
+  getRequest(): Promise<RequestEvent> {
+    return this.driver.restore(this.requestPath).then((data) => serializer.deserialize<RequestEvent>(data));
   }
 
   destroy(): Promise<[void, void]> {

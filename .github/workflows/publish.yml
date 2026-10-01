@@ -41,13 +41,13 @@ jobs:
           key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Setup
         run: pnpm install --frozen-lockfile
+      - name: Package bundle
+        run: pnpm build
       - name: Lint
         run: pnpm lint
       - name: Test
         run: pnpm test
       - name: Package version
         run: pnpm generate-version
-      - name: Package bundle
-        run: pnpm build
       - name: Publish package
         run: pnpm -r publish --access public --provenance --no-git-checks

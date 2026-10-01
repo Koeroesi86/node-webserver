@@ -1,4 +1,4 @@
-# Node Worker Express [![Publish](https://github.com/Koeroesi86/node-worker-express/actions/workflows/publish.yml/badge.svg)](https://github.com/Koeroesi86/node-worker-express/actions/workflows/publish.yml)
+# Node Worker Express [![Publish](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml/badge.svg)](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml)
 
 Express JS library for [@koeroesi86/node-worker](https://www.npmjs.com/package/@koeroesi86/node-worker)
 
@@ -15,8 +15,9 @@ app.listen(80);
 
 ### To run the example included:
 ```bash
-yarn install
-yarn start
+pnpm install
+pnpm --filter @koeroesi86/node-worker-express build
+pnpm --filter @koeroesi86/node-worker-express start
 ```
 
-For all options see [types](https://github.com/Koeroesi86/node-worker-express/blob/main/src/middleware/index.ts).
+For all options see [types](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/src/types/index.ts).

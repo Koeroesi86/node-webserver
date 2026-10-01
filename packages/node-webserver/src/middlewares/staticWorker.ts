@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import type { RequestEvent, ResponseEvent } from '@koeroesi86/node-worker-express';
 
 let timer: NodeJS.Timeout | undefined;
 
@@ -115,7 +116,7 @@ function getCharset(body: Buffer): string | false {
   return false;
 }
 
-const staticWorker = (event: Middleware.RequestEvent, callback: (response: Middleware.ResponseEvent) => void = () => {}) => {
+const staticWorker = (event: RequestEvent, callback: (response: ResponseEvent) => void = () => {}) => {
   debounce(() => {
     // console.log('Exiting static worker.')
   }, 5000);

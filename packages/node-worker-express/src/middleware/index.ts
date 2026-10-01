@@ -9,9 +9,9 @@ import constructWsMessage from '../utils/constructWsMessage';
 import getClientIp from '../utils/getClientIp';
 import createBodyParser from './bodyParser';
 import { RequestHandler } from 'express';
-import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from 'src/types';
-import resolvePath from 'src/utils/resolvePath';
-import fileExists from 'src/utils/fileExists';
+import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
+import resolvePath from '../utils/resolvePath';
+import fileExists from '../utils/fileExists';
 
 const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   const config = {

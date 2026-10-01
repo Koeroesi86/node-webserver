@@ -7,21 +7,25 @@
     "name": "Krisztian Korosi",
     "url": "https://github.com/Koeroesi86"
   },
-  "repository": "github:Koeroesi86/node-lambda-invoke",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Koeroesi86/node-webserver.git",
+    "directory": "packages/node-lambda-invoke"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "start": "nodemon example/example.js",
-    "generate-version": "node scripts/version.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "nodemon example/example.js"
   },
   "license": "MIT",
   "dependencies": {
     "dotenv": "^6.2.0",
     "moment": "^2.24.0",
-    "nodemon": "^1.18.10",
     "rimraf": "^2.6.3",
     "uuid": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15"
   }
 }
