@@ -12,11 +12,13 @@ Everything in this repository is published to npm under the `@koeroesi86` scope.
 | Package | Latest version | Description |
 |---|---|---|
 | [@koeroesi86/node-webserver](https://www.npmjs.com/package/@koeroesi86/node-webserver) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-webserver?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-webserver) | The web server. [Source](packages/node-webserver) |
+| [@koeroesi86/node-webserver-cli](https://www.npmjs.com/package/@koeroesi86/node-webserver-cli) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-webserver-cli?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-webserver-cli) | Command line runner for the web server. [Source](packages/node-webserver-cli) |
+| [@koeroesi86/node-webserver-service](https://www.npmjs.com/package/@koeroesi86/node-webserver-service) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-webserver-service?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-webserver-service) | Runs the web server as an operating system service. [Source](packages/node-webserver-service) |
 | [@koeroesi86/node-lambda-invoke](https://www.npmjs.com/package/@koeroesi86/node-lambda-invoke) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-lambda-invoke?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-lambda-invoke) | Invoke AWS Lambda style handlers locally. [Source](packages/node-lambda-invoke) |
 | [@koeroesi86/node-worker-express](https://www.npmjs.com/package/@koeroesi86/node-worker-express) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-worker-express?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-worker-express) | Express middleware that runs a worker per request. [Source](packages/node-worker-express) |
 | [@koeroesi86/node-worker](https://www.npmjs.com/package/@koeroesi86/node-worker) | [![npm](https://img.shields.io/npm/v/@koeroesi86/node-worker?label=npm)](https://www.npmjs.com/package/@koeroesi86/node-worker) | NodeJS implementation of WebWorkers. [Source](packages/node-worker) |
 
-`node-webserver` depends on `node-lambda-invoke` and `node-worker-express`, and `node-worker-express` depends on `node-worker`.
+`node-webserver` depends on `node-lambda-invoke` and `node-worker-express`, `node-worker-express` depends on `node-worker`, and `node-webserver-cli` and `node-webserver-service` depend on `node-webserver`.
 The pipeline publishes a package when it, or a workspace package it depends on, changed since its latest release. Versions are stamped by the pipeline, see [tools/src/version.ts](tools/src/version.ts).
 
 ## Usage

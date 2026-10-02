@@ -7,7 +7,11 @@
     "name": "Krisztian Korosi",
     "url": "https://github.com/Koeroesi86"
   },
-  "repository": "github:Koeroesi86/node-webserver-service",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Koeroesi86/node-webserver.git",
+    "directory": "packages/node-webserver-service"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -16,11 +20,10 @@
   },
   "scripts": {
     "service": "node scripts/manageService.js",
-    "start": "nodemon scripts/start.js",
-    "generate-version": "node scripts/version.js"
+    "start": "nodemon scripts/start.js"
   },
   "dependencies": {
-    "@koeroesi86/node-webserver": "^22.3.132-5e488e1",
+    "@koeroesi86/node-webserver": "workspace:*",
     "os-service": "^2.2.0"
   },
   "devDependencies": {

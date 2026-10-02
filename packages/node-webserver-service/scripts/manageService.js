@@ -44,7 +44,7 @@ if (add) {
   console.info('\x1b[32m%s\x1b[0m', `
     Usage:
     
-    yarn run service [argument]
+    pnpm run service [argument]
     
     arguments:
         --add      Installs the service

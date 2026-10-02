@@ -1,11 +1,13 @@
-# @koeroesi86/node-webserver-cli [![Build Status](https://travis-ci.com/Koeroesi86/node-webserver-cli.svg?branch=master)](https://travis-ci.com/Koeroesi86/node-webserver-cli)
+# @koeroesi86/node-webserver-cli
+
+CLI for [@koeroesi86/node-webserver](../node-webserver).
 
 ### Dependencies to run
 * [NodeJS](https://nodejs.org/en/)
-* [Yarn](https://yarnpkg.com/en/)
 
 ### Usage:
 
 ```shell script
-yarn nws-cli --config </path/to/config>
+npm install @koeroesi86/node-webserver-cli
+npx nws-cli --config </path/to/config>
 ```
