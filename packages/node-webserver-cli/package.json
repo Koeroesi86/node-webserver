@@ -16,12 +16,23 @@
     "access": "public"
   },
   "bin": {
-    "nws-cli": "./scripts/cli.js"
+    "nws-cli": "./dist/scripts/cli.js"
   },
   "scripts": {
-    "start": "node ./scripts/cli.js --config configuration.example.js"
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "start": "node dist/scripts/cli.js --config configuration.example.js"
   },
   "dependencies": {
     "@koeroesi86/node-webserver": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "configuration.example.js"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "rimraf": "^3.0.2",
+    "typescript": "^5.9.3"
   }
 }

@@ -16,17 +16,28 @@
     "access": "public"
   },
   "bin": {
-    "nws-service": "./scripts/manageService.js"
+    "nws-service": "./dist/scripts/manageService.js"
   },
   "scripts": {
-    "service": "node scripts/manageService.js",
-    "start": "nodemon scripts/start.js"
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "service": "node dist/scripts/manageService.js",
+    "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/start.js\""
   },
   "dependencies": {
     "@koeroesi86/node-webserver": "workspace:*",
     "os-service": "^2.2.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.15"
-  }
+    "@types/node": "^24.0.0",
+    "@types/os-service": "^2.2.3",
+    "nodemon": "^2.0.15",
+    "rimraf": "^3.0.2",
+    "typescript": "^5.9.3"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "configuration.example.js",
+    ".logs/.gitkeep"
+  ]
 }

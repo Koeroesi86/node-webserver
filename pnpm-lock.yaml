@@ -291,6 +291,16 @@ importers:
       '@koeroesi86/node-webserver':
         specifier: workspace:*
         version: link:../node-webserver
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.0
+      rimraf:
+        specifier: ^3.0.2
+        version: 3.0.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/node-webserver-service:
     dependencies:
@@ -301,9 +311,21 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
     devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.0
+      '@types/os-service':
+        specifier: ^2.2.3
+        version: 2.2.3
       nodemon:
         specifier: ^2.0.15
         version: 2.0.15
+      rimraf:
+        specifier: ^3.0.2
+        version: 3.0.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/node-worker:
     devDependencies:
@@ -824,6 +846,9 @@ packages:
 
   '@types/node@24.19.0':
     resolution: {integrity: sha512-zY+5tKxXdhGh1PYI0ac+7juvEu4OI6vWtVVoj5i2m42jxAY1U+zHGt6QCyOFwykdP62sM3MJ9stoYYUw5aCWew==}
+
+  '@types/os-service@2.2.3':
+    resolution: {integrity: sha512-qoXBdxI+sGAaEkO6wf2tdqgSRnuUWuXil46Vl8KAnKOch14VRyhQ/wgxdNaVGW0ckBe/Vgr1a+mL0/VIT+vFzw==}
 
   '@types/pidusage@2.0.5':
     resolution: {integrity: sha512-MIiyZI4/MK9UGUXWt0jJcCZhVw7YdhBuTOuqP/BjuLDLZ2PmmViMIQgZiWxtaMicQfAz/kMrZ5T7PKxFSkTeUA==}
@@ -3755,6 +3780,8 @@ snapshots:
   '@types/node@24.19.0':
     dependencies:
       undici-types: 7.24.6
+
+  '@types/os-service@2.2.3': {}
 
   '@types/pidusage@2.0.5': {}
 
