@@ -1,0 +1,38 @@
+{
+  "name": "@koeroesi86/node-webserver-cli",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "CLI for @koeroesi86/node-webserver",
+  "author": {
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Koeroesi86/node-webserver.git",
+    "directory": "packages/node-webserver-cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "nws-cli": "./dist/scripts/cli.js"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "start": "node dist/scripts/cli.js --config configuration.example.js"
+  },
+  "dependencies": {
+    "@koeroesi86/node-webserver": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "configuration.example.js"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "rimraf": "^3.0.2",
+    "typescript": "^5.9.3"
+  }
+}
