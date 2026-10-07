@@ -27,47 +27,39 @@ class WorkerPool {
   protected readonly overallLimit: number;
   protected readonly idleCheckTimeout: number;
   protected readonly onExit: (code: number, workerPath: string, id: string) => void;
-  protected readonly workers: Record<string, Record<string, Worker>>;
+  protected readonly workers: Map<string, Map<string, Worker>>;
   private creating: boolean;
 
   constructor({ overallLimit = 0, idleCheckTimeout = 5, onExit = () => {} }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
     this.idleCheckTimeout = idleCheckTimeout;
     this.onExit = onExit;
-    this.workers = {};
+    this.workers = new Map();
     pools.push(this);
 
     this.creating = false;
   }
 
   onClose = () => {
-    Object.keys(this.workers).forEach((workerPath) => {
-      const current = this.workers[workerPath];
-      Object.keys(current).forEach((id) => {
-        current[id].terminate();
-      });
-    });
+    this.workers.forEach((current) => current.forEach((worker) => worker.terminate()));
   };
 
   getNonBusyId = (workerPath) => {
-    return this.workers[workerPath]
-      ? Object.keys(this.workers[workerPath] || {}).find((id) => {
-          return true; // !this.workers[workerPath][id].busy;
-        })
-      : undefined;
+    // the first worker is always picked, busy tracking is disabled
+    return this.workers.get(workerPath)?.keys().next().value;
   };
 
   getWorkerCountForPath = (p) => {
-    return this.workers[p] ? Object.keys(this.workers[p]).length : 0;
+    return this.workers.get(p)?.size ?? 0;
   };
 
   getWorkerCount = () => {
-    return Object.keys(this.workers).reduce((result, current) => this.getWorkerCountForPath(current) + result, 0);
+    return Array.from(this.workers.values()).reduce((result, current) => current.size + result, 0);
   };
 
   isBeyondLimit = (workerPath, limit) => {
     return (
-      (this.workers[workerPath] && limit > 0 && this.getWorkerCountForPath(workerPath) >= limit) ||
+      (this.workers.has(workerPath) && limit > 0 && this.getWorkerCountForPath(workerPath) >= limit) ||
       (this.overallLimit > 0 && this.getWorkerCount() >= this.overallLimit)
     );
   };
@@ -76,30 +68,33 @@ class WorkerPool {
     const nonBusyId = this.getNonBusyId(workerPath);
     // TODO: tidy up
     if (nonBusyId !== undefined) {
-      return this.workers[workerPath][nonBusyId];
+      return this.workers.get(workerPath).get(nonBusyId);
     } else if (this.isBeyondLimit(workerPath, limit) || this.creating) {
       await new Promise((r) => setTimeout(r, this.idleCheckTimeout));
       return this.getWorker(workerPath, options, limit);
     }
 
     this.creating = true;
-    const id = uuid();
-    const instance = new Worker(createWorkerCommand(workerPath), options);
 
-    if (!this.workers[workerPath]) {
-      this.workers[workerPath] = {};
+    try {
+      const id = uuid();
+      const instance = new Worker(createWorkerCommand(workerPath), options);
+
+      const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
+      this.workers.set(workerPath, workersForPath);
+
+      instance.addEventListenerOnce('close', (code: number) => {
+        workersForPath.delete(id);
+        this.onExit(code, workerPath, id);
+      });
+
+      workersForPath.set(id, instance);
+
+      return instance;
+    } finally {
+      // a failed spawn must not leave the pool waiting for a worker that never gets created
+      this.creating = false;
     }
-
-    instance.addEventListenerOnce('close', (code: number) => {
-      this.workers[workerPath][id] = null;
-      delete this.workers[workerPath][id];
-      this.onExit(code, workerPath, id);
-    });
-
-    this.workers[workerPath][id] = instance;
-
-    this.creating = false;
-    return instance;
   };
 }
 

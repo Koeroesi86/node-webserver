@@ -27,6 +27,7 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "test": "jest",
+    "start:load-test": "NODE_WEBSERVER_CONFIG=../configuration.load-test node dist/scripts/load-test-server.js",
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/server.js\""
   },
   "license": "MIT",

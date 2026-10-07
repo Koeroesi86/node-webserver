@@ -1,0 +1,86 @@
+name: Load test
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      vus:
+        description: Concurrent virtual users
+        default: '20'
+      duration:
+        description: Test duration (k6 format, e.g. 30s, 2m)
+        default: '30s'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PORT_HTTP: '8080'
+      PORT_HTTPS: '8443'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - name: Setup
+        run: pnpm install --frozen-lockfile
+      - name: Package bundle
+        run: pnpm build
+      - name: Start example server
+        run: |
+          cd packages/node-webserver
+          NODE_WEBSERVER_CONFIG=../configuration.load-test node dist/scripts/load-test-server.js > ../../server.log 2>&1 &
+          echo $! > server.pid
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null -H 'Host: web.localhost' "http://localhost:${PORT_HTTP}"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Server did not become ready' >&2
+          cat server.log
+          exit 1
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '1.2.2'
+      - name: Run load test
+        env:
+          # passed through the environment rather than interpolated into the script
+          VUS: ${{ inputs.vus || '20' }}
+          DURATION: ${{ inputs.duration || '30s' }}
+        run: >
+          k6 run
+          --summary-export=k6-summary.json
+          -e BASE_URL="http://localhost:${PORT_HTTP}"
+          packages/node-webserver/load-tests/example.js
+      - name: Summarize results
+        if: always()
+        run: node packages/node-webserver/load-tests/summary.js k6-summary.json server.log >> "$GITHUB_STEP_SUMMARY"
+      - name: Stop server
+        if: always()
+        run: kill "$(cat server.pid)" || true
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-test-results
+          path: |
+            k6-summary.json
+            server.log
+          if-no-files-found: ignore

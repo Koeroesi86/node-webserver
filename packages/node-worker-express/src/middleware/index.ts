@@ -47,14 +47,17 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       await Promise.race([new Promise((_res, rej) => setTimeout(rej, config.limitRequestTimeout)), new Promise((res) => bodyParser(request, response, res))]);
       let indexPath: string;
+      // the cache entries expire on a timer, so read them once before awaiting anything
+      const cachedAliasPath = aliasCache[pathname];
+      const cachedWorkerPath = workerCache[pathname];
 
-      if (aliasCache[pathname] && (await fileExists(aliasCache[pathname]))) {
+      if (cachedAliasPath && (await fileExists(cachedAliasPath))) {
         isWorker = false;
-        indexPath = aliasCache[pathname];
+        indexPath = cachedAliasPath;
         pathExists = true;
-      } else if (workerCache[pathname] && (await fileExists(workerCache[pathname]))) {
+      } else if (cachedWorkerPath && (await fileExists(cachedWorkerPath))) {
         isWorker = true;
-        indexPath = workerCache[pathname];
+        indexPath = cachedWorkerPath;
         pathExists = true;
       } else {
         const resolved = await resolvePath(rootPath, currentPathFragments, config.index);
