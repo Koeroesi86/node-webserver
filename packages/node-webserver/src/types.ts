@@ -40,6 +40,8 @@ export interface InstanceServerOptions {
 export interface LambdaOptions {
   lambda?: string;
   handler?: string;
+  /** how requests and responses reach the lambda process: `ipc` (default) or through files */
+  communication?: 'ipc' | 'file';
 }
 
 export interface ServerInstance {

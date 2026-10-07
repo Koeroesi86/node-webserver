@@ -7,6 +7,15 @@ import exampleConfiguration from './configuration.example';
 const certificateFolder = resolve(PACKAGE_ROOT, '.certificates/localhost');
 const key = resolve(certificateFolder, 'privkey.pem');
 const cert = resolve(certificateFolder, 'cert.pem');
+const lambdaServer: ServerInstance = {
+  hostname: 'lambda.localhost',
+  protocol: 'http',
+  type: 'lambda',
+  lambdaOptions: {
+    lambda: resolve(PACKAGE_ROOT, 'examples/exampleLambda.js'),
+    handler: 'handler',
+  },
+};
 const secureServers: ServerInstance[] =
   existsSync(key) && existsSync(cert)
     ? [
@@ -44,7 +53,7 @@ const configuration = {
     error: true,
     warning: true,
   },
-  servers: [...exampleConfiguration.servers, ...secureServers].map(withWorkerLimit),
+  servers: [...exampleConfiguration.servers, lambdaServer, ...secureServers].map(withWorkerLimit),
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

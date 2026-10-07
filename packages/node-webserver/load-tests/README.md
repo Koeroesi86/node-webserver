@@ -15,6 +15,8 @@ pnpm --filter @koeroesi86/node-webserver start:load-test &   # http on 8080, htt
 k6 run -e HTTPS_PORT=8443 packages/node-webserver/load-tests/example.js
 ```
 
+The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses.
+
 ## Options
 
 | Where | Name | Default | |

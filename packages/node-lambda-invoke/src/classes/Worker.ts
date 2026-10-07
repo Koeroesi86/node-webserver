@@ -9,11 +9,14 @@ class Worker {
 
   constructor(workerPath: string, options: SpawnOptions = {}) {
     this.workerPath = workerPath;
-    const instance = spawn('node', [...this.workerPath.split(' ')], {
+    // the running node, as the environment of the worker may not have it on its PATH
+    const instance = spawn(process.execPath, [...this.workerPath.split(' ')], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       ...options,
     });
     this.instance = instance;
+    // an unhandled error event would take the whole process down, for example when the process could not be spawned
+    instance.on('error', (error) => console.error(error));
 
     if (instance.stdout) {
       const messageListener = (data: Buffer | string) => {

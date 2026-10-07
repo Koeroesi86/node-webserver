@@ -55,4 +55,7 @@ process.on('message', (event) => {
   }
 });
 
+// the parent can disappear without running its exit handlers, for example when it is terminated by a signal
+process.on('disconnect', () => process.exit(0));
+
 sendToParent({ type: EVENT_STARTED });

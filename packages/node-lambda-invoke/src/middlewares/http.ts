@@ -58,6 +58,8 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
 
     const closeListener = () => {
+      // the lambda exited without answering
+      if (!response.headersSent) response.writeHead(502);
       if (!response.writableEnded) response.end();
       if (storage) storage.destroy();
     };

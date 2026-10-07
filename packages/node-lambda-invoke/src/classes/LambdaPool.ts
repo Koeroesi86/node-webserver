@@ -39,9 +39,11 @@ class LambdaPool {
   }
 
   createLambda(lambdaToInvoke: string, handlerKey: string) {
-    return new Promise<{ id: string; instance: Lambda }>((resolve) => {
+    return new Promise<{ id: string; instance: Lambda }>((resolve, reject) => {
       const currentId = uuid.v4();
       const currentLambdaInstance = new Lambda(lambdaToInvoke, handlerKey, this.logger, this.communication);
+      // a lambda that cannot start answers nobody, so the request waiting for it has to fail instead of waiting forever
+      const failedToStart = (reason: unknown) => reject(new Error(`Lambda ${lambdaToInvoke} did not start: ${reason}`));
 
       const lambdaStartListener = (message: LambdaEvent) => {
         if (message.type === EVENT_STARTED) {
@@ -52,8 +54,12 @@ class LambdaPool {
       };
       currentLambdaInstance.addEventListener('message', lambdaStartListener);
 
+      currentLambdaInstance.addEventListenerOnce('error', failedToStart);
       currentLambdaInstance.addEventListenerOnce('close', (code: number | null) => {
         if (code) this.logger(`[${currentId}] Lambda exited with code ${code}`);
+        failedToStart(`it exited with code ${code}`);
+        // a lambda that is gone must not be handed out, nor count against the limit
+        delete lambdaInstances[lambdaToInvoke]?.[currentId];
       });
 
       stdoutListener(currentLambdaInstance, this.logger);
@@ -73,6 +79,8 @@ class LambdaPool {
       return Promise.resolve()
         .then(() => this.createLambda(lambdaToInvoke, handlerKey))
         .then(({ id, instance }) => {
+          // taken by the request that asked for it, before anything else can pick it from the registry
+          instance.busy = true;
           instance.createdAt = Date.now();
           lambdaInstances[lambdaToInvoke] = {
             ...lambdaInstances[lambdaToInvoke],
@@ -83,7 +91,11 @@ class LambdaPool {
         });
     }
 
-    return Promise.resolve(lambdaInstances[lambdaToInvoke][nonBusyId]);
+    const lambdaInstance = lambdaInstances[lambdaToInvoke][nonBusyId];
+    // marked right away: the invocation starts later, and requests in between must not get the same lambda, as it answers one at a time
+    lambdaInstance.busy = true;
+
+    return Promise.resolve(lambdaInstance);
   }
 }
 

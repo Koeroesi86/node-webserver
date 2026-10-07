@@ -3,7 +3,7 @@ import Worker from './Worker';
 import { EVENT_REQUEST, EVENT_RESPONSE } from '../constants';
 import { getRegisteredPath } from '../registry';
 import type RequestEvent from './RequestEvent';
-import type ResponseEvent from './ResponseEvent';
+import ResponseEvent from './ResponseEvent';
 import type { Communication, LambdaEvent, Listener, Logger, Storage, StorageDriverConstructor } from '../types';
 
 class Lambda {
@@ -59,6 +59,7 @@ class Lambda {
     return new Worker(resolve(__dirname, '../middlewares/invoke.js'), {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       env: {
+        ...process.env,
         LAMBDA: this._path,
         HANDLER: this._handler,
         COMMUNICATION: JSON.stringify(this._communication),
@@ -79,15 +80,29 @@ class Lambda {
         this._callback = callback;
         instance.addEventListener('message', this._onFinished);
         instance.postMessage({ type: EVENT_REQUEST, id: requestId });
+      })
+      .catch((error) => {
+        // the lambda was not given the request, so it is free again and the request is answered with the failure
+        this.busy = false;
+        this._logger(error);
+        callback(Object.assign(new ResponseEvent(), { statusCode: 500, body: 'Something went wrong.' }));
       });
   }
 
   /** @private */
   _onFinished(event: LambdaEvent) {
     if (event.type === EVENT_RESPONSE && event.id === this._requestId) {
-      this.busy = false;
+      // the next request replaces these as soon as the lambda is free
+      const { _storage: storage, _callback: callback } = this;
       this.instance?.removeEventListener('message', this._onFinished);
-      this._storage?.getResponse().then((responseEvent) => this._callback(responseEvent));
+      storage
+        ?.getResponse()
+        .then((responseEvent) => callback(responseEvent))
+        // the storage listens to the messages of the lambda until it is destroyed
+        .finally(() => storage.destroy())
+        .finally(() => {
+          this.busy = false;
+        });
     }
   }
 
