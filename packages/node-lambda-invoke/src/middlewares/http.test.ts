@@ -1,6 +1,7 @@
 import childProcess, { ChildProcess, fork } from 'child_process';
 import fs from 'fs/promises';
 import http from 'http';
+import os from 'os';
 import path from 'path';
 import ts from 'typescript';
 import type { HttpMiddlewareOptions } from '../types';
@@ -13,7 +14,8 @@ require('fs').appendFileSync(process.env.PID_FILE, process.pid + '\\n');
 exports.handler = (event, context, callback) => {
   const respond = () => callback(null, { statusCode: 200, headers: { 'x-pid': String(process.pid) }, body: 'echo ' + event.path });
   if (event.path === '/exit') process.exit(1);
-  if (event.path === '/slow') return setTimeout(respond, 100);
+  if (event.path.startsWith('/slow')) return setTimeout(respond, 100);
+  if (event.path === '/hold') return setTimeout(respond, 400);
   respond();
 };
 `;
@@ -86,9 +88,14 @@ describe('httpMiddleware', () => {
     }
   });
 
+  /** the pool keeps its lambdas in the module, so every test gets the module anew; loaded late, as the build only exists once the tests run */
+  const load = () => {
+    jest.resetModules();
+    return require(path.join(build, 'index.js'));
+  };
+
   const start = async (options: Partial<HttpMiddlewareOptions> = {}) => {
-    // loaded late, as the build only exists once the tests run
-    const { httpMiddleware } = require(path.join(build, 'index.js'));
+    const { httpMiddleware } = load();
     server = http.createServer(httpMiddleware({ lambdaPath, communication: { type: 'ipc' }, ...options }));
     await new Promise<void>((resolve) => server.listen(0, resolve));
     baseUrl = `http://localhost:${(server.address() as { port: number }).port}`;
@@ -113,7 +120,8 @@ describe('httpMiddleware', () => {
   });
 
   it('starts another lambda while the others are busy', async () => {
-    await start();
+    // without a limit: the default is the number of cores, which a small machine does not have three of
+    await start({ limit: 0 });
 
     const pids = await Promise.all([1, 2, 3].map(async () => (await fetch(`${baseUrl}/slow`)).headers.get('x-pid')));
 
@@ -174,6 +182,76 @@ describe('httpMiddleware', () => {
     const response = await fetch(`${baseUrl}/`);
 
     expect(response.status).toBe(500);
+  });
+
+  describe('limit', () => {
+    const pidsOf = async (count: number, requestPath = '/slow') => {
+      const responses = await Promise.all(Array.from({ length: count }, () => fetch(`${baseUrl}${requestPath}`)));
+
+      return { statuses: responses.map(({ status }) => status), pids: responses.map((response) => response.headers.get('x-pid')) };
+    };
+
+    it('never runs more lambdas than the limit, and answers every request', async () => {
+      await start({ limit: 2 });
+
+      const { statuses, pids } = await pidsOf(6);
+
+      expect(statuses).toEqual(Array(6).fill(200));
+      expect(new Set(pids).size).toBeLessThanOrEqual(2);
+    });
+
+    it('answers 503 when no lambda becomes free in time', async () => {
+      await start({ limit: 1, acquireTimeout: 50 });
+
+      // both hold the lambda for longer than the wait, whichever arrives first gets it
+      const responses = await Promise.all([fetch(`${baseUrl}/hold`), fetch(`${baseUrl}/hold`)]);
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 503]);
+    });
+
+    it('keeps one busy file from using up the limit of the others', async () => {
+      const { httpMiddleware } = load();
+      const otherLambdaPath = path.join(build, 'other-lambda.js');
+      await fs.copyFile(lambdaPath, otherLambdaPath);
+      const create = (file: string) => http.createServer(httpMiddleware({ lambdaPath: file, limit: 2, communication: { type: 'ipc' } }));
+      const [busy, other] = [create(lambdaPath), create(otherLambdaPath)];
+      await Promise.all([busy, other].map((instance) => new Promise<void>((resolve) => instance.listen(0, resolve))));
+      const urlOf = (instance: http.Server) => `http://localhost:${(instance.address() as { port: number }).port}`;
+
+      try {
+        const first = await Promise.all([fetch(`${urlOf(busy)}/slow`), fetch(`${urlOf(busy)}/slow`)]);
+        const busyPids = first.map((response) => Number(response.headers.get('x-pid')));
+        expect(new Set(busyPids).size).toBe(2);
+
+        const response = await fetch(`${urlOf(other)}/`);
+
+        expect(response.status).toBe(200);
+        for (let waited = 0; busyPids.every(processExists) && waited < 3000; waited += 50) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(busyPids.filter(processExists)).toHaveLength(1);
+      } finally {
+        [busy, other].forEach((instance) => instance.closeAllConnections());
+        await Promise.all([busy, other].map((instance) => new Promise((resolve) => instance.close(resolve))));
+      }
+    });
+
+    it('allows as many lambdas as there are CPU cores by default', async () => {
+      await start();
+
+      const { statuses, pids } = await pidsOf(40);
+
+      expect(statuses).toEqual(Array(40).fill(200));
+      expect(new Set(pids).size).toBeLessThanOrEqual(os.availableParallelism());
+    });
+
+    it('has no limit when it is 0', async () => {
+      await start({ limit: 0 });
+
+      const { pids } = await pidsOf(8);
+
+      expect(new Set(pids).size).toBe(8);
+    });
   });
 
   it('stops the lambdas when the process that started them is killed', async () => {

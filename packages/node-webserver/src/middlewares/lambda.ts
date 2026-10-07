@@ -11,6 +11,8 @@ const lambdaMiddleware = (instance: ServerInstance): RequestHandler => {
     handlerKey: config?.handler || 'handler',
     logger: logger.info,
     communication: { type: config?.communication || 'ipc' },
+    limit: config?.limit,
+    acquireTimeout: config?.acquireTimeout,
   });
 };
 

@@ -30,7 +30,7 @@ const port = 8080;
 const lambdaPath = './pathOfLambda.js';
 const handlerKey = 'handler';
 const logger = console.log;
-const limit = 100; // overall limit ox running lambdas
+const limit = 100; // overall limit of running lambdas, defaults to the number of CPU cores, 0 for no limit
 
 http
   .createServer(httpMiddleware({

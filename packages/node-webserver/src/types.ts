@@ -42,6 +42,10 @@ export interface LambdaOptions {
   handler?: string;
   /** how requests and responses reach the lambda process: `ipc` (default) or through files */
   communication?: 'ipc' | 'file';
+  /** how many lambdas may run in total. Defaults to the number of CPU cores, 0 means no limit. */
+  limit?: number;
+  /** how long a request waits for a lambda when the limit is reached before it is answered with 503, in milliseconds. Defaults to 10000. */
+  acquireTimeout?: number;
 }
 
 export interface ServerInstance {

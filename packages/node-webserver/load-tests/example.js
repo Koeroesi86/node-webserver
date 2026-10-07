@@ -38,8 +38,9 @@ const routes = {
     validate: (r) => r.headers['Content-Type'].startsWith('image/') && Number(r.headers['Content-Length']) > 0,
     maxP95: 30,
   },
-  // the example lambda serves the files of the static folder, in a lambda process
-  lambda: { method: 'GET', url: `${baseUrl}/index.html`, host: lambdaHostname, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 70 },
+  // the example lambda serves the files of the static folder, in a lambda process. A lambda answers one request at a time and there are as many as cores,
+  // so only a share of the iterations goes there: the route is meant to measure the lambda, not the queue in front of them
+  lambda: { method: 'GET', url: `${baseUrl}/index.html`, host: lambdaHostname, status: 200, every: 4, validate: (r) => r.body.includes('It works!'), maxP95: 50 },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
   notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 60 },
   ...(httpsPort && {

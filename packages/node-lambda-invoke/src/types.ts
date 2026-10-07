@@ -17,7 +17,10 @@ export interface HttpMiddlewareOptions {
   lambdaPath: string;
   handlerKey?: string;
   logger?: Logger;
+  /** how many lambdas may run in total, they are shared by all requests: a lambda answers one request at a time. Defaults to the number of CPU cores, 0 means no limit. */
   limit?: number;
+  /** how long a request waits for a lambda when the limit is reached before it is answered with 503, in milliseconds. Defaults to 10000. */
+  acquireTimeout?: number;
   communication?: Communication;
 }
 
