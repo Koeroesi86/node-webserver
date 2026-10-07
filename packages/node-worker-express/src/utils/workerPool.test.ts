@@ -9,7 +9,7 @@ jest.mock('@koeroesi86/node-worker', () => {
     readonly instance = Object.assign(new EventEmitter(), { exitCode: null as number | null });
     readonly terminate = jest.fn(() => this.exit(0));
 
-    constructor(readonly command: string) {
+    constructor(readonly command: string, readonly options: unknown) {
       FakeWorker.instances.push(this);
     }
 
@@ -32,6 +32,11 @@ const pathA = '/root/a/exampleWorker.js';
 const pathB = '/root/b/exampleWorker.js';
 
 const createPool = (params = {}) => new WorkerPool({ idleCheckTimeout: 1, acquireTimeout: 50, ...params });
+const acquireAllWith = (pool: WorkerPool, workerPath: string, options: () => object, limit: number, count: number) =>
+  Array.from({ length: count }).reduce<Promise<WorkerLease[]>>(
+    async (leases, _) => [...(await leases), await pool.acquire(workerPath, options, limit)],
+    Promise.resolve([])
+  );
 const acquireAll = (pool: WorkerPool, workerPath: string, limit: number, count: number) =>
   Array.from({ length: count }).reduce<Promise<WorkerLease[]>>(
     async (leases, _) => [...(await leases), await pool.acquire(workerPath, {}, limit)],
@@ -161,6 +166,28 @@ describe('WorkerPool', () => {
     const lease = await pool.acquire(pathA, {}, 1);
 
     expect(lease.worker).toBe(FakeWorker.instances[1]);
+  });
+
+  describe('spawn options', () => {
+    it('makes them only when a worker is started, not for every request', async () => {
+      const pool = createPool();
+      const options = jest.fn(() => ({ env: { FROM: 'factory' } }));
+
+      const leases = await acquireAllWith(pool, pathA, options, 2, 6);
+      leases.forEach((lease) => lease.release());
+      await pool.acquire(pathA, options, 2);
+
+      expect(FakeWorker.instances).toHaveLength(2);
+      expect(options).toHaveBeenCalledTimes(2);
+    });
+
+    it('hands what the factory made to the worker', async () => {
+      const pool = createPool();
+
+      await pool.acquire(pathA, () => ({ env: { FROM: 'factory' } }), 1);
+
+      expect(FakeWorker.instances[0].options).toEqual({ env: { FROM: 'factory' } });
+    });
   });
 
   describe('warm', () => {

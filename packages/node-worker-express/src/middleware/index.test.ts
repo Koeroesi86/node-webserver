@@ -141,6 +141,25 @@ describe('workerMiddleware', () => {
     expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7);
   });
 
+  describe('spawn options of the workers', () => {
+    it('are made by a function, as copying the environment for every request is costly', async () => {
+      await start({ env: { FROM_CONFIG: 'yes' }, cwd: '/somewhere' });
+      mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: '', isBase64Encoded: false } })
+      );
+
+      await fetch(`${baseUrl}/`);
+
+      const options = FakePool.last.acquire.mock.calls[0][1];
+      expect(typeof options).toBe('function');
+      expect(options()).toMatchObject({
+        stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+        cwd: '/somewhere',
+        env: expect.objectContaining({ FROM_CONFIG: 'yes', PATH: process.env.PATH }),
+      });
+    });
+  });
+
   describe('warming the static worker', () => {
     it('starts a static worker together with the middleware', async () => {
       await start({ staticWorker: '/static-worker.js' });

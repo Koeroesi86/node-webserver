@@ -36,8 +36,8 @@ k6 run packages/node-webserver/load-tests/cpu.js
 | k6 | `BASE_URL` | `http://localhost:8080` | |
 | k6 | `HTTPS_PORT` | not set | enables the HTTPS and secure websocket routes |
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
-| k6 | `MIN_REQUEST_RATE` | 760 | requests per second the whole run has to reach |
-| k6 (`cpu.js`) | `CPU_RATE`, `MAX_P95_MS` | 150, 80 | requests per second for the CPU bound worker, and the p95 allowed |
+| k6 | `MIN_REQUEST_RATE` | 1000 | requests per second the whole run has to reach |
+| k6 (`cpu.js`) | `CPU_RATE`, `MAX_P95_MS` | 150, 50 | requests per second for the CPU bound worker, and the p95 allowed |
 
 ## Thresholds
 

@@ -26,6 +26,9 @@ interface WorkerPoolParams {
   onExit?: (code: number, workerPath: string, id: string) => void;
 }
 
+/** the options to spawn a worker with, or a function that makes them: building them can be costly (the environment is copied), and it is only needed when a worker is started */
+export type SpawnOptions = object | (() => object);
+
 /** A worker handed out for one request, it counts as load for the worker until it is released. */
 export interface WorkerLease {
   readonly worker: Worker;
@@ -114,9 +117,9 @@ class WorkerPool {
     return true;
   };
 
-  private createWorker = (workerPath: string, options): Worker => {
+  private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = uuid();
-    const instance = new Worker(createWorkerCommand(workerPath), options);
+    const instance = new Worker(createWorkerCommand(workerPath), typeof options === 'function' ? options() : options);
     const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
     this.workers.set(workerPath, workersForPath);
     this.leases.set(instance, new Set());
@@ -140,7 +143,7 @@ class WorkerPool {
     return instance;
   };
 
-  private tryGetWorker = (workerPath: string, options, limit: number): Worker | undefined => {
+  private tryGetWorker = (workerPath: string, options: SpawnOptions, limit: number): Worker | undefined => {
     const candidates = Array.from(this.workers.get(workerPath)?.values() ?? []).filter((worker) => worker.instance.exitCode === null);
     const leastLoaded = candidates.length > 0 ? this.pickLeastLoaded(workerPath, candidates) : undefined;
 
@@ -156,7 +159,7 @@ class WorkerPool {
   };
 
   /** Starts workers for the path ahead of its first request, so that one does not have to wait for a process to start. */
-  warm = (workerPath: string, options = {}, count = 1) => {
+  warm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
     while (this.getWorkerCountForPath(workerPath) < count && this.belowOverallLimit()) {
       this.createWorker(workerPath, options);
     }
@@ -167,7 +170,7 @@ class WorkerPool {
    * A limit of 0 (or less) keeps a single worker for the path.
    * Rejects when no worker could be started within the acquire timeout, as the overall limit is used up by other paths.
    */
-  acquire = async (workerPath: string, options = {}, limit = 0): Promise<WorkerLease> => {
+  acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0): Promise<WorkerLease> => {
     const deadline = Date.now() + this.acquireTimeout;
     let worker = this.tryGetWorker(workerPath, options, limit);
 

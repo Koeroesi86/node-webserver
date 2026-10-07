@@ -28,6 +28,12 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
     idleCheckTimeout: config.idleCheckTimeout,
     acquireTimeout: config.limitRequestTimeout,
   });
+  // a function, as copying the environment is costly and only needed when a worker is started, not for every request
+  const workerOptions = () => ({
+    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    env: { ...process.env, ...config.env },
+    cwd: config.cwd,
+  });
   const staticWorkerOptions = { cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe', 'ipc'] };
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
@@ -95,15 +101,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
       const lease = await (isWorker
-        ? workerPool.acquire(
-            indexPath,
-            {
-              stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-              env: { ...process.env, ...config.env },
-              cwd: config.cwd,
-            },
-            limitPerPath
-          )
+        ? workerPool.acquire(indexPath, workerOptions, limitPerPath)
         : workerPool.acquire(config.staticWorker, staticWorkerOptions, limitPerPath));
       const { worker } = lease;
 

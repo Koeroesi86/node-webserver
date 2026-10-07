@@ -79,12 +79,12 @@ jobs:
           VUS: ${{ inputs.vus || '20' }}
           DURATION: ${{ inputs.duration || '30s' }}
         run: |
-          # the throughput floor was calibrated at 190 requests per second and core
+          # the throughput floor was calibrated at 250 requests per second and core
           k6 run \
             --summary-export=k6-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             -e HTTPS_PORT="${PORT_HTTPS}" \
-            -e MIN_REQUEST_RATE="$(( $(nproc) * 190 ))" \
+            -e MIN_REQUEST_RATE="$(( $(nproc) * 250 ))" \
             packages/node-webserver/load-tests/example.js
       # on its own, as other traffic would take the cores that its workers need
       - name: Run CPU bound load test

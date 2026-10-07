@@ -14,31 +14,32 @@ const wsUrl = baseUrl.replace(/^http/, 'ws');
 const wsHoldSeconds = Number(__ENV.WS_HOLD_SECONDS || 3.5);
 const wsMinMessages = Math.floor(wsHoldSeconds) - 1;
 const wsSessionOk = new Rate('ws_session_ok');
-// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs:
-// 1520-1930 req/s overall, p95 of 12-15 ms for the worker, secure and static routes, 23-29 ms for the 404, 30-34 ms for the lambda, 132-180 ms to connect a websocket
-const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 760);
+// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs, over several runs of the same code:
+// 2190-3900 req/s overall (runners differ by up to 1.8 times), p95 of 6-10 ms for the worker, secure, static and compressed routes, 12-18 ms for the 404, 10-16 ms streamed,
+// 20-23 ms for the lambda, 100-200 ms to connect a websocket
+const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 1000);
 const postBody = JSON.stringify({ hello: 'world' });
 const streamChunks = 8;
 const streamChunkSize = 4096;
 
 // every iteration walks through all routes, so each of them gets the same share of the load, unless `every` says otherwise
 const routes = {
-  worker: { method: 'GET', url: `${baseUrl}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 30 },
+  worker: { method: 'GET', url: `${baseUrl}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 20 },
   workerPost: {
     method: 'POST',
     url: `${baseUrl}/`,
     body: postBody,
     status: 200,
     validate: (r) => r.body.includes('It works!') && r.headers['X-Request-Body-Length'] === String(postBody.length),
-    maxP95: 30,
+    maxP95: 20,
   },
-  static: { method: 'GET', url: `${baseUrl}/static/index.html`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 30 },
+  static: { method: 'GET', url: `${baseUrl}/static/index.html`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 20 },
   staticBinary: {
     method: 'GET',
     url: `${baseUrl}/static/favicon.ico`,
     status: 200,
     validate: (r) => r.headers['Content-Type'].startsWith('image/') && Number(r.headers['Content-Length']) > 0,
-    maxP95: 30,
+    maxP95: 20,
   },
   // the example lambda serves the files of the static folder, in a lambda process. A lambda answers one request at a time and there are as many as cores,
   // so only a share of the iterations goes there: the route is meant to measure the lambda, not the queue in front of them
@@ -58,9 +59,9 @@ const routes = {
     maxP95: 35,
   },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
-  notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 60 },
+  notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 40 },
   ...(httpsPort && {
-    secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 30 },
+    secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 20 },
   }),
 };
 
@@ -87,7 +88,7 @@ export const options = {
     http_reqs: [`rate>${minRequestRate}`],
     // a session is ok when the upgrade succeeded, frames kept arriving and the connection closed cleanly
     ws_session_ok: ['rate>0.99'],
-    ws_connecting: ['p(95)<360'],
+    ws_connecting: ['p(95)<400'],
     ...Object.fromEntries(Object.entries(routes).map(([route, { maxP95 }]) => [`http_req_duration{route:${route}}`, [`p(95)<${maxP95}`]])),
   },
 };

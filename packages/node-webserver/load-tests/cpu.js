@@ -7,8 +7,8 @@ import { check } from 'k6';
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
 const rounds = 8000;
-// 17-32 ms were seen on the 4 core GitHub runners, where a single worker needs seconds
-const maxP95 = Number(__ENV.MAX_P95_MS || 80);
+// 11-24 ms were seen on the 4 core GitHub runners, where a single worker needs seconds
+const maxP95 = Number(__ENV.MAX_P95_MS || 50);
 
 export const options = {
   scenarios: {
