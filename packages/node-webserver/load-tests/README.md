@@ -52,6 +52,27 @@ taskset -c 0-2 pnpm --filter @koeroesi86/node-webserver start:load-test &
 taskset -c 3 k6 run -e HTTPS_PORT=8443 packages/node-webserver/load-tests/example.js
 ```
 
+## Comparison with the base
+
+The absolute thresholds catch a collapse, not a slowdown, and the machines of shared runners differ too much from run to run to compare numbers of different runs: the same code has run at 3,300 and 4,600 requests per second.
+So on a pull request the workflow also builds the base (the commit it is merged into) next to the pull request, and measures both **in the same job**, one at a time, alternating, three runs of 15 seconds each (`compare.sh`).
+Both sides run the load test of the pull request against their own server, so that the load is the same. Then `compare.js` takes the median of the runs of each side and shows the change in the job summary:
+
+- **throughput** is judged: a pull request with more than 15% less requests per second than the base fails (`MAX_THROUGHPUT_DROP`, 0.15),
+- **the p95 of a route** is judged with wide limits, 50% and 5 milliseconds higher (`MAX_P95_INCREASE` 0.5, `MIN_P95_DIFFERENCE_MS` 5). The load is a fixed number of users, so a build that is faster gets more requests through
+  every route, which makes the routes compete for the cores: the p95 of one route can rise while the build is better. The limits only catch a route that got much slower,
+- a route that the base cannot serve (the pull request added it, which the checks per route show) is listed with n/a and not judged,
+- the p95 of all requests and the connect time of the websocket are shown, not judged.
+
+Same code on both sides measured within 2% of each other with runs that varied by 1-2%, while 0.2 milliseconds of extra work for every request (47% less throughput) failed it. The comparison needs a load test in the base:
+for the pull request that adds the load test, and while the base cannot be built, the summary says there is nothing to compare with. Locally, with checkouts of both (`git worktree add ../base master`, install and build each), and the cores split as in the workflow:
+
+```sh
+SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' packages/node-webserver/load-tests/compare.sh ../base . 3 15s
+```
+
+The results are in `compare-results/`, the exit code is 1 on a regression. Each run also shows the processor of the runner and how much of the time it was held back by its host (steal time) in the job summary, which explains runs that are slow for no reason of the code.
+
 ## Thresholds
 
 They were calibrated on the 4 core GitHub runners of public repositories (see the notes in `example.js`) and are about twice the worst

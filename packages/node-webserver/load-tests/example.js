@@ -130,6 +130,8 @@ export const options = {
     ws_session_ok: ['rate>0.99'],
     ws_connecting: ['p(95)<400'],
     ...Object.fromEntries(Object.entries(routes).map(([route, { maxP95 }]) => [`http_req_duration{route:${route}}`, [`p(95)<${maxP95}`]])),
+    // also makes k6 report the checks per route, which tells a comparison with another build whether that build can serve the route at all
+    ...Object.fromEntries(Object.keys(routes).map((route) => [`checks{route:${route}}`, ['rate>0.999']])),
   },
 };
 

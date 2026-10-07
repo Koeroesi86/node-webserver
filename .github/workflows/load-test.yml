@@ -47,6 +47,29 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Package bundle
         run: pnpm build
+      # The pull request is compared with its base on the same machine, as the machines differ too much between runs to compare numbers of different ones.
+      # The base has to have a load test itself, which is not the case for the pull request that adds it.
+      - name: Checkout the base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - name: Build the base
+        id: base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        working-directory: base
+        run: |
+          if [ ! -f packages/node-webserver/load-tests/example.js ]; then
+            echo 'The base has no load test.'
+            exit 0
+          fi
+          pnpm install --frozen-lockfile
+          pnpm build
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
       - name: Runner resources and cores for the server and k6
         run: |
           cores=$(nproc)
@@ -91,6 +114,8 @@ jobs:
       - uses: grafana/setup-k6-action@v1
         with:
           k6-version: '1.2.2'
+      - name: Look at the runner before the load test
+        run: node packages/node-webserver/load-tests/runner.js snapshot > runner-before.json
       - name: Run load test
         env:
           # passed through the environment rather than interpolated into the script
@@ -105,6 +130,9 @@ jobs:
             -e HTTPS_PORT="${PORT_HTTPS}" \
             -e MIN_REQUEST_RATE="$(( SERVER_CORE_COUNT * 250 ))" \
             packages/node-webserver/load-tests/example.js
+      - name: Look at the runner after the load test
+        if: always()
+        run: node packages/node-webserver/load-tests/runner.js snapshot > runner-after.json
       # on its own, as other traffic would take the cores that its workers need
       - name: Run CPU bound load test
         if: always()
@@ -120,9 +148,21 @@ jobs:
           node packages/node-webserver/load-tests/summary.js k6-summary.json server.log >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node packages/node-webserver/load-tests/summary.js k6-cpu-summary.json '' 'Load test: CPU bound worker' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          node packages/node-webserver/load-tests/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
         if: always()
         run: kill "$(cat server.pid)" || echo 'The server had already stopped.'
+      # one server at a time, the one above is stopped, and the cores of the runner are the same for both sides
+      - name: Compare with the base
+        if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
+        run: |
+          set -o pipefail
+          packages/node-webserver/load-tests/compare.sh base . 3 15s | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Note that there is nothing to compare with
+        if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready != 'true'
+        run: |
+          printf '## Comparison with the base\n\nThe base has no load test (yet), or could not be built, so there is nothing to compare with.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v7
@@ -132,4 +172,7 @@ jobs:
             k6-summary.json
             k6-cpu-summary.json
             server.log
+            runner-before.json
+            runner-after.json
+            compare-results/
           if-no-files-found: ignore
