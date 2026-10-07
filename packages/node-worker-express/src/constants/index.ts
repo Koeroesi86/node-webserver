@@ -1,3 +1,4 @@
+import os from 'os';
 import path from 'path';
 import { MiddlewareOptions } from '../types';
 
@@ -23,7 +24,7 @@ export enum Protocols {
 export const DefaultOptions: MiddlewareOptions = {
   root: '',
   limit: 0,
-  limitPerPath: 0,
+  limitPerPath: os.availableParallelism(),
   limitRequestBody: 1000000,
   limitRequestTimeout: 5000,
   idleCheckTimeout: 5,

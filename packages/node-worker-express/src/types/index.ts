@@ -51,6 +51,7 @@ export type InvokableWorker = (event: RequestEvent, callback: (e: ResponseEvent)
 export interface MiddlewareOptions {
   root: string;
   limit?: number;
+  /** workers started per path, requests are spread over them. Defaults to the available CPU cores, 0 or 1 keeps a single worker. */
   limitPerPath?: number | ((path: string) => number);
   limitRequestBody?: number;
   limitRequestTimeout?: number;

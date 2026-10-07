@@ -28,25 +28,19 @@ class WorkerPool {
   protected readonly idleCheckTimeout: number;
   protected readonly onExit: (code: number, workerPath: string, id: string) => void;
   protected readonly workers: Map<string, Map<string, Worker>>;
-  private creating: boolean;
+  private readonly cursors: Map<string, number>;
 
   constructor({ overallLimit = 0, idleCheckTimeout = 5, onExit = () => {} }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
     this.idleCheckTimeout = idleCheckTimeout;
     this.onExit = onExit;
     this.workers = new Map();
+    this.cursors = new Map();
     pools.push(this);
-
-    this.creating = false;
   }
 
   onClose = () => {
     this.workers.forEach((current) => current.forEach((worker) => worker.terminate()));
-  };
-
-  getNonBusyId = (workerPath) => {
-    // the first worker is always picked, busy tracking is disabled
-    return this.workers.get(workerPath)?.keys().next().value;
   };
 
   getWorkerCountForPath = (p) => {
@@ -57,44 +51,51 @@ class WorkerPool {
     return Array.from(this.workers.values()).reduce((result, current) => current.size + result, 0);
   };
 
-  isBeyondLimit = (workerPath, limit) => {
-    return (
-      (this.workers.has(workerPath) && limit > 0 && this.getWorkerCountForPath(workerPath) >= limit) ||
-      (this.overallLimit > 0 && this.getWorkerCount() >= this.overallLimit)
-    );
+  /** hands out the existing workers of a path in turns, so a single worker process does not become the bottleneck */
+  private pickWorker = (workerPath: string): Worker => {
+    const candidates = Array.from(this.workers.get(workerPath).values());
+    const cursor = (this.cursors.get(workerPath) ?? 0) % candidates.length;
+    this.cursors.set(workerPath, cursor + 1);
+
+    return candidates[cursor];
   };
 
+  private createWorker = (workerPath: string, options): Worker => {
+    const id = uuid();
+    const instance = new Worker(createWorkerCommand(workerPath), options);
+    // every in-flight request listens for the messages of its worker, so more than the default 10 is expected
+    instance.instance.setMaxListeners(0);
+    const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
+    this.workers.set(workerPath, workersForPath);
+
+    instance.addEventListenerOnce('close', (code: number) => {
+      workersForPath.delete(id);
+      this.onExit(code, workerPath, id);
+    });
+
+    workersForPath.set(id, instance);
+
+    return instance;
+  };
+
+  /**
+   * Returns a worker for the path, starting new ones until `limit` workers run for it, then rotating between them.
+   * A limit of 0 (or less) keeps a single worker for the path.
+   */
   getWorker = async (workerPath, options = {}, limit = 0): Promise<Worker> => {
-    const nonBusyId = this.getNonBusyId(workerPath);
-    // TODO: tidy up
-    if (nonBusyId !== undefined) {
-      return this.workers.get(workerPath).get(nonBusyId);
-    } else if (this.isBeyondLimit(workerPath, limit) || this.creating) {
-      await new Promise((r) => setTimeout(r, this.idleCheckTimeout));
-      return this.getWorker(workerPath, options, limit);
+    const belowPathLimit = this.getWorkerCountForPath(workerPath) < Math.max(limit, 1);
+    const belowOverallLimit = this.overallLimit <= 0 || this.getWorkerCount() < this.overallLimit;
+
+    if (belowPathLimit && belowOverallLimit) {
+      return this.createWorker(workerPath, options);
     }
 
-    this.creating = true;
-
-    try {
-      const id = uuid();
-      const instance = new Worker(createWorkerCommand(workerPath), options);
-
-      const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
-      this.workers.set(workerPath, workersForPath);
-
-      instance.addEventListenerOnce('close', (code: number) => {
-        workersForPath.delete(id);
-        this.onExit(code, workerPath, id);
-      });
-
-      workersForPath.set(id, instance);
-
-      return instance;
-    } finally {
-      // a failed spawn must not leave the pool waiting for a worker that never gets created
-      this.creating = false;
+    if (this.getWorkerCountForPath(workerPath) > 0) {
+      return this.pickWorker(workerPath);
     }
+
+    await new Promise((r) => setTimeout(r, this.idleCheckTimeout));
+    return this.getWorker(workerPath, options, limit);
   };
 }
 

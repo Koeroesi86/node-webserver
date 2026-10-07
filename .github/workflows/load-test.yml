@@ -40,6 +40,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Package bundle
         run: pnpm build
+      - name: Runner resources
+        run: |
+          echo "cores: $(nproc), memory: $(free -h | awk '/Mem:/ {print $2}')"
       - name: Start example server
         run: |
           cd packages/node-webserver

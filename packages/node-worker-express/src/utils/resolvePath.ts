@@ -32,12 +32,10 @@ async function resolvePath(rootPath: string, pathFragments: string[], indexFiles
         }
       }
 
+      // a directory without an index worker is served by the static worker, which also answers with the 404
       if (checkIndexFilePath) {
         isWorker = true;
         indexPath = path.join(currentPath, checkIndexFilePath);
-      } else {
-        isWorker = true;
-        indexPath = path.join(...currentPathFragments);
       }
     } else if (stats.isFile() && indexFiles.includes(currentPathFragments[currentPathFragments.length - 1])) {
       isWorker = true;

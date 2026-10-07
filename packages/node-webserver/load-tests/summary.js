@@ -15,6 +15,10 @@ const percent = (value) => `${(value * 100).toFixed(2)}%`;
 const thresholds = Object.entries(metrics).flatMap(([metric, { thresholds: results = {} }]) =>
   Object.entries(results).map(([expression, breached]) => `| \`${metric}\` | \`${expression}\` | ${breached ? '❌ failed' : '✅ passed'} |`)
 );
+const routes = Object.entries(metrics)
+  .map(([metric, values]) => [metric.match(/^http_req_duration\{route:(.+)\}$/)?.[1], values])
+  .filter(([route]) => route !== undefined)
+  .map(([route, values]) => `| ${route} | ${ms(values.med)} | ${ms(values['p(95)'])} | ${ms(values.max)} |`);
 const breachedCount = Object.values(metrics)
   .flatMap(({ thresholds: results = {} }) => Object.values(results))
   .filter(Boolean).length;
@@ -38,6 +42,7 @@ console.log(
     `| Latency max | ${ms(duration.max)} |`,
     `| Data received | ${(received.count / 1024 / 1024).toFixed(1)} MiB |`,
     '',
+    ...(routes.length === 0 ? [] : ['### Latency per route', '', '| Route | Median | p95 | Max |', '| --- | --- | --- | --- |', ...routes, '']),
     '### Thresholds',
     '',
     '| Metric | Expression | Result |',

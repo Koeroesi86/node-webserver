@@ -15,6 +15,10 @@ const configuration = {
     error: true,
     warning: true,
   },
+  servers: exampleConfiguration.servers.map((server) => ({
+    ...server,
+    options: { ...server.options, ...(process.env.WORKERS_PER_PATH && { limitPerPath: Number(process.env.WORKERS_PER_PATH) }) },
+  })),
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;
