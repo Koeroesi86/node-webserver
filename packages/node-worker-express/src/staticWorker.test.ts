@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { StaticStreamThreshold } from './constants';
 import staticWorker from './staticWorker';
-import type { RequestEvent, ResponseEvent } from './types';
+import type { ResponseEvent, WorkerRequestEvent } from './types';
 
 jest.mock('./utils/getCharset', () => ({ __esModule: true, default: jest.fn().mockResolvedValue('utf-8') }));
 
@@ -32,7 +32,7 @@ describe('staticWorker', () => {
   });
 
   const event = (requestPath: string, httpMethod = 'GET', headers: Record<string, string> = {}) =>
-    ({ httpMethod, path: requestPath, rootPath: root, headers } as RequestEvent);
+    ({ httpMethod, path: requestPath, rootPath: root, headers } as WorkerRequestEvent);
 
   /** the first response of the worker */
   const request = (requestPath: string, httpMethod = 'GET', headers: Record<string, string> = {}) =>

@@ -254,6 +254,43 @@ describe('httpMiddleware', () => {
     });
   });
 
+  describe('stats', () => {
+    it('is empty before a lambda was started', async () => {
+      const { getLambdaStats } = load();
+
+      expect(getLambdaStats()).toEqual({ lambdas: 0, starting: 0, busy: 0, files: {} });
+    });
+
+    it('counts the lambdas, and the ones that are busy, per file', async () => {
+      // without a limit: the default is the number of cores, which a small machine does not have two of
+      await start({ limit: 0 });
+      const { getLambdaStats } = require(path.join(build, 'index.js'));
+
+      const responses = Promise.all([fetch(`${baseUrl}/hold`), fetch(`${baseUrl}/hold`)]);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const during = getLambdaStats();
+      await responses;
+      const after = getLambdaStats();
+
+      expect(during).toMatchObject({ lambdas: 2, busy: 2, starting: 0, files: { [lambdaPath]: { lambdas: 2, busy: 2 } } });
+      expect(after).toMatchObject({ lambdas: 2, busy: 0, files: { [lambdaPath]: { lambdas: 2, busy: 0 } } });
+    });
+
+    it('counts a lambda that is still starting', async () => {
+      await start({ limit: 0 });
+      const { getLambdaStats } = require(path.join(build, 'index.js'));
+
+      const response = fetch(`${baseUrl}/`);
+      // the request has to arrive first, the lambda announces itself some time after it was started
+      for (let waited = 0; getLambdaStats().starting === 0 && waited < 3000; waited += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+
+      expect(getLambdaStats()).toMatchObject({ lambdas: 1, starting: 1 });
+      await response;
+    });
+  });
+
   it('stops the lambdas when the process that started them is killed', async () => {
     const parent = fork(path.join(build, 'parent.js'), [lambdaPath], { env: process.env, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
     spawned.push(parent);

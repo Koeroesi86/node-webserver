@@ -220,4 +220,34 @@ describe('WorkerPool', () => {
       expect(pool.getWorkerCount()).toBe(2);
     });
   });
+
+  describe('getStats', () => {
+    it('counts the workers, the requests they handle and the ones that wait, per path', async () => {
+      const pool = createPool({ overallLimit: 3 });
+      const leases = await acquireAll(pool, pathA, 2, 3);
+      (await acquireAll(pool, pathB, 1, 1))[0].release();
+
+      const waiting = pool.acquire('/root/c/exampleWorker.js', {}, 1).catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const stats = pool.getStats();
+      await waiting;
+
+      expect(stats).toMatchObject({ workers: 3, active: 3, waiting: 1 });
+      expect(stats.paths).toEqual({ [pathA]: { workers: 2, active: 3 }, [pathB]: { workers: 1, active: 0 } });
+      leases.forEach((lease) => lease.release());
+    });
+
+    it('stops counting a request as waiting once it got a worker or gave up', async () => {
+      const pool = createPool({ overallLimit: 1, acquireTimeout: 30 });
+      await pool.acquire(pathA, {}, 1);
+
+      await expect(pool.acquire(pathB, {}, 1)).rejects.toThrow(/No worker became available/);
+
+      expect(pool.getStats().waiting).toBe(0);
+    });
+
+    it('is empty for a pool that has not started a worker', () => {
+      expect(createPool().getStats()).toEqual({ workers: 0, active: 0, waiting: 0, paths: {} });
+    });
+  });
 });

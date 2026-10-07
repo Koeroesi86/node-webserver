@@ -19,7 +19,7 @@ const readBody = async (event) => {
     hash.update(chunk);
     size += chunk.length;
   }
-  return JSON.stringify({ size, sha256: hash.digest('hex'), body: event.body });
+  return JSON.stringify({ size, sha256: hash.digest('hex') });
 };
 const part = (body) => ({ statusCode: 200, headers: {}, emit: true, body, isBase64Encoded: false });
 
@@ -36,7 +36,15 @@ module.exports = async (event, callback) => {
     await callback(part(null));
     return;
   }
-  if (event.path === '/has-stream') return callback({ statusCode: 200, headers: {}, body: typeof event.bodyStream, isBase64Encoded: false });
+  if (event.path === '/has-stream') return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
+  if (event.path === '/metrics') {
+    const metrics = await event.getMetrics();
+    return callback({ statusCode: 200, headers: {}, body: JSON.stringify(metrics), isBase64Encoded: false });
+  }
+  if (event.path === '/metrics-twice') {
+    const [first, second] = await Promise.all([event.getMetrics(), event.getMetrics()]);
+    return callback({ statusCode: 200, headers: {}, body: JSON.stringify([first.uptimeSeconds, second.uptimeSeconds]), isBase64Encoded: false });
+  }
   if (event.path === '/upload') return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
   if (event.path === '/upload-late') {
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -87,8 +95,8 @@ describe('workerInvoke', () => {
     child.kill();
   });
 
-  const send = (type: string, requestId: string, requestPath = '/', streamed = false) =>
-    child.send({ type, requestId, event: { path: requestPath, rootPath: folder, headers: {}, body: '', ...(streamed && { bodyStreamed: true }) } });
+  const send = (type: string, requestId: string, requestPath = '/', hasBody = false) =>
+    child.send({ type, requestId, event: { path: requestPath, rootPath: folder, headers: {}, ...(hasBody && { hasBody: true }) } });
   /** a part of a streamed request body, no argument ends it */
   const sendPart = (requestId: string, bytes?: Buffer) =>
     child.send({
@@ -218,15 +226,16 @@ describe('workerInvoke', () => {
     const answerOf = (requestId: string) => JSON.parse(of(requestId, WORKER_EVENT.RESPONSE)[0].event.body);
     const acknowledgements = (requestId: string) => of(requestId, WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE).length;
 
-    it('gives the worker a stream only for a streamed body', async () => {
+    it('gives every request a stream, an empty one when it has no body', async () => {
       send(WORKER_EVENT.REQUEST, 'plain', '/has-stream');
       send(WORKER_EVENT.REQUEST, 'streamed', '/has-stream', true);
+      sendPart('streamed', Buffer.from('hello'));
       sendPart('streamed');
 
       await until(() => of('plain', WORKER_EVENT.RESPONSE).length === 1 && of('streamed', WORKER_EVENT.RESPONSE).length === 1);
 
-      expect(of('plain', WORKER_EVENT.RESPONSE)[0].event.body).toBe('undefined');
-      expect(of('streamed', WORKER_EVENT.RESPONSE)[0].event.body).toBe('object');
+      expect(answerOf('plain').size).toBe(0);
+      expect(answerOf('streamed').size).toBe(5);
     });
 
     it('delivers the parts of the body in order and unchanged', async () => {
@@ -240,7 +249,6 @@ describe('workerInvoke', () => {
       expect(answerOf('a')).toEqual({
         size: Buffer.concat(parts).length,
         sha256: crypto.createHash('sha256').update(Buffer.concat(parts)).digest('hex'),
-        body: '',
       });
     });
 
@@ -295,6 +303,52 @@ describe('workerInvoke', () => {
       await settle();
 
       expect(of('a').map(({ type }) => type)).toEqual([WORKER_EVENT.RESPONSE]);
+    });
+  });
+
+  describe('metrics', () => {
+    /** plays the server: answers every question of a worker for metrics with the next of the given uptimes */
+    const serveMetrics = (...uptimes: number[]) => {
+      let answered = 0;
+      const timer = setInterval(() => {
+        const asked = received.filter(({ type }) => type === WORKER_EVENT.METRICS_REQUEST);
+        asked.slice(answered).forEach(({ requestId }) => {
+          child.send({ type: WORKER_EVENT.METRICS, requestId, event: { uptimeSeconds: uptimes[answered] } });
+          answered += 1;
+        });
+      }, 5);
+
+      return () => clearInterval(timer);
+    };
+
+    it('gives the worker the metrics of the server on request', async () => {
+      const stop = serveMetrics(42);
+      send(WORKER_EVENT.REQUEST, 'a', '/metrics');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(JSON.parse(of('a', WORKER_EVENT.RESPONSE)[0].event.body)).toEqual({ uptimeSeconds: 42 });
+      expect(of('a', WORKER_EVENT.METRICS_REQUEST)).toHaveLength(1);
+      stop();
+    });
+
+    it('answers the questions of one request in the order they were asked', async () => {
+      const stop = serveMetrics(1, 2);
+      send(WORKER_EVENT.REQUEST, 'a', '/metrics-twice');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(JSON.parse(of('a', WORKER_EVENT.RESPONSE)[0].event.body)).toEqual([1, 2]);
+      stop();
+    });
+
+    it('does not ask for metrics unless the worker does', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/plain');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+      await settle();
+
+      expect(received.filter(({ type }) => type === WORKER_EVENT.METRICS_REQUEST)).toHaveLength(0);
     });
   });
 });

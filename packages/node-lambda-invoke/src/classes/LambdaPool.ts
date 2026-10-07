@@ -29,6 +29,22 @@ function getOverallCount() {
   return Array.from(new Set([...lambdaInstances.keys(), ...starting.keys()])).reduce((result, current) => getCount(current) + result, 0);
 }
 
+/** what the lambdas are doing right now, for metrics */
+export function getLambdaStats() {
+  return {
+    lambdas: getOverallCount(),
+    /** lambdas that were asked for and have not announced themselves yet */
+    starting: Array.from(starting.values()).reduce((result, current) => result + current, 0),
+    busy: Array.from(lambdaInstances.values()).reduce((result, instances) => result + Array.from(instances.values()).filter(({ busy }) => busy).length, 0),
+    files: Object.fromEntries(
+      Array.from(lambdaInstances.entries()).map(([file, instances]) => [
+        file,
+        { lambdas: instances.size, busy: Array.from(instances.values()).filter(({ busy }) => busy).length },
+      ])
+    ),
+  };
+}
+
 function getNonBusyId(lambdaToInvoke: string) {
   const timeLimit = Date.now() - 15 * 60 * 1000 + 5000; // lifespan of lambda, to give enough time to respond before killed
   return Array.from(lambdaInstances.get(lambdaToInvoke)?.entries() ?? []).find(

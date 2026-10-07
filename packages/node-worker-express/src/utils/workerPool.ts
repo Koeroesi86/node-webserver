@@ -53,6 +53,8 @@ class WorkerPool {
   private readonly leases: Map<Worker, Set<LeaseState>>;
   private readonly subscriptions: Map<string, LeaseState>;
   private readonly cursors: Map<string, number>;
+  /** requests that are waiting for a worker to become available */
+  private waiting = 0;
 
   constructor({ overallLimit = 0, idleCheckTimeout = 5, acquireTimeout = 10000, onExit = () => {} }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
@@ -165,22 +167,47 @@ class WorkerPool {
     }
   };
 
+  /** keeps trying until a worker is available, rejects when none could be started within the acquire timeout */
+  private waitForWorker = async (workerPath: string, options: SpawnOptions, limit: number): Promise<Worker> => {
+    const deadline = Date.now() + this.acquireTimeout;
+    this.waiting += 1;
+
+    try {
+      for (;;) {
+        if (Date.now() >= deadline) {
+          throw new Error(`No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`);
+        }
+        await new Promise((r) => setTimeout(r, this.idleCheckTimeout));
+        const worker = this.tryGetWorker(workerPath, options, limit);
+        if (worker !== undefined) return worker;
+      }
+    } finally {
+      this.waiting -= 1;
+    }
+  };
+
+  /** what the pool is doing right now, for metrics */
+  getStats = () => ({
+    workers: this.getWorkerCount(),
+    /** requests that are being handled by a worker */
+    active: Array.from(this.leases.values()).reduce((result, current) => result + current.size, 0),
+    /** requests that wait for a worker */
+    waiting: this.waiting,
+    paths: Object.fromEntries(
+      Array.from(this.workers.entries()).map(([workerPath, current]) => [
+        workerPath,
+        { workers: current.size, active: Array.from(current.values()).reduce((result, worker) => result + this.getLoad(worker), 0) },
+      ])
+    ),
+  });
+
   /**
    * Hands out a worker for the path: an idle one, otherwise a new one while fewer than `limit` run for the path, otherwise the least busy.
    * A limit of 0 (or less) keeps a single worker for the path.
    * Rejects when no worker could be started within the acquire timeout, as the overall limit is used up by other paths.
    */
   acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0): Promise<WorkerLease> => {
-    const deadline = Date.now() + this.acquireTimeout;
-    let worker = this.tryGetWorker(workerPath, options, limit);
-
-    while (worker === undefined) {
-      if (Date.now() >= deadline) {
-        throw new Error(`No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`);
-      }
-      await new Promise((r) => setTimeout(r, this.idleCheckTimeout));
-      worker = this.tryGetWorker(workerPath, options, limit);
-    }
+    const worker = this.tryGetWorker(workerPath, options, limit) ?? (await this.waitForWorker(workerPath, options, limit));
 
     const state: LeaseState = {};
     const leased = worker;

@@ -45,14 +45,9 @@ you set a `Content-Length`. Static files above 1 MiB are streamed the same way.
 
 Producing very small chunks is wasteful, as every part takes a message to the main process: collect them into parts of some KiB.
 
-## Streaming a request body
+## Reading the body of a request
 
-The body of a request is read into memory first (up to `limitRequestBody`) and passed to the worker as the string `event.body`. With `streamRequestBody: true` (or a function of the worker file that decides) the worker is called at once instead,
-and reads the body from `event.bodyStream`, a `Readable`:
-
-```javascript
-app.use(middleware({ root: path.resolve('./public'), streamRequestBody: true, limitStreamedRequestBody: 0 }));
-```
+The body is not part of the event a worker is called with: the worker is called at once, and reads the body from `event.bodyStream`, a `Readable` (empty for requests without a body):
 
 ```javascript
 module.exports = async (event, callback) => {
@@ -62,6 +57,11 @@ module.exports = async (event, callback) => {
 };
 ```
 
-Only a few parts are on their way to the worker before it has read the earlier ones, so uploads of any size take a flat amount of memory. Read the body before you answer, as the rest of it is dropped once the response is complete.
-A client that goes away during the upload destroys the stream with an error. Requests without a body, websockets and static files are never streamed. `limitStreamedRequestBody` (bytes, 0 for none) answers a bigger body with 413.
+Only a few parts are on their way to the worker before it has read the earlier ones, so uploads of any size take a flat amount of memory. A worker that needs all of it uses `stream/consumers`:
+`const body = await text(event.bodyStream)` (also `json` and `buffer`). **`event.body` does not exist any more.** Read the body before you answer, as the rest of it is dropped once the response is complete.
+A client that goes away during the upload destroys the stream with an error. `limitRequestBody` (bytes, 0 for none, the default) answers a bigger body with 413. Websockets and static files never have a body.
 
+## Metrics
+
+`await event.getMetrics()` in a worker gives a snapshot of the server (uptime, memory, event loop delay, request counts, worker pools) for health and metrics endpoints, see the README of `@koeroesi86/node-webserver`.
+In the server process `getServerMetrics()` gives the same, and `registerMetricsSource(name, read)` adds a source to it.

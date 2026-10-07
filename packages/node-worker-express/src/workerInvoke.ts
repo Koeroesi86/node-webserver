@@ -1,6 +1,7 @@
 import { Readable } from 'stream';
 import { WORKER_EVENT } from './constants';
-import { InvokableWorker, RequestBodyEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WSFrameEvent } from './types';
+import { InvokableWorker, RequestBodyEvent, RequestEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WorkerRequestEvent, WSFrameEvent } from './types';
+import type { ServerMetrics } from './utils/metrics';
 
 const worker = require(process.argv.pop()) as InvokableWorker;
 
@@ -21,6 +22,30 @@ const streams = new Map<string, Stream>();
 
 /** the streamed request bodies that are still coming in, per request */
 const uploads = new Map<string, { stream: Readable; receive: (part: RequestBodyEvent) => void }>();
+
+/** the workers that wait for the metrics of the server, per request: the answers come in the order of the questions */
+const metricsWaiting = new Map<string, Array<(metrics: ServerMetrics) => void>>();
+
+const getMetrics = (requestId: string) =>
+  new Promise<ServerMetrics>((resolve) => {
+    metricsWaiting.set(requestId, [...(metricsWaiting.get(requestId) ?? []), resolve]);
+    process.send({ type: WORKER_EVENT.METRICS_REQUEST, requestId });
+  });
+
+/** the body of a request that has none */
+const createEmptyBody = () =>
+  new Readable({
+    read() {
+      this.push(null);
+    },
+  });
+
+/** what a worker is called with, the websocket frames and the closing of a connection too */
+const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Readable): WorkerRequestEvent => ({
+  ...event,
+  bodyStream,
+  getMetrics: () => getMetrics(requestId),
+});
 
 /**
  * The stream a worker reads a streamed request body from. A part is acknowledged once the reader has room for it,
@@ -81,6 +106,10 @@ function messageListener(message: WorkerInputEvent) {
     uploads.get(message.requestId)?.receive(message.event);
   }
 
+  if (message.type === WORKER_EVENT.METRICS) {
+    metricsWaiting.get(message.requestId)?.shift()?.(message.event);
+  }
+
   if (message.type === WORKER_EVENT.REQUEST_ABORT) {
     uploads.get(message.requestId)?.stream.destroy(new Error('The request was aborted.'));
     const stream = streams.get(message.requestId);
@@ -134,6 +163,7 @@ function messageListener(message: WorkerInputEvent) {
       // once the response is complete the server drops the rest of the request body, so the stream has nothing more to give
       if (e.type === WORKER_EVENT.RESPONSE || (e.type === WORKER_EVENT.RESPONSE_EMIT && e.event?.body === null)) {
         uploads.get(message.requestId)?.stream.destroy();
+        metricsWaiting.delete(message.requestId);
       }
 
       if (e.type !== WORKER_EVENT.RESPONSE_EMIT) {
@@ -153,7 +183,7 @@ function messageListener(message: WorkerInputEvent) {
     };
 
     invoke(
-      message.event.bodyStreamed ? { ...message.event, bodyStream: createUpload(message.requestId) } : message.event,
+      toWorkerEvent(message.event, message.requestId, message.event.hasBody ? createUpload(message.requestId) : createEmptyBody()),
       callback,
       (error) => {
         console.error(error);
@@ -163,7 +193,10 @@ function messageListener(message: WorkerInputEvent) {
         }
       },
       // a worker that answered without streaming is done, one that still streams cleans up after its last part
-      () => stream.waiting.length === 0 && streams.delete(message.requestId)
+      () => {
+        metricsWaiting.delete(message.requestId);
+        return stream.waiting.length === 0 && streams.delete(message.requestId);
+      }
     );
   }
 
@@ -176,12 +209,12 @@ function messageListener(message: WorkerInputEvent) {
       };
       process.send(e);
     };
-    invoke(message.event, callback, console.error);
+    invoke(toWorkerEvent(message.event, message.requestId, createEmptyBody()), callback, console.error);
   }
 
   if (message.type === WORKER_EVENT.WS_CONNECTION_CLOSE) {
     invoke(
-      { ...message.event, closed: true },
+      toWorkerEvent({ ...message.event, closed: true }, message.requestId, createEmptyBody()),
       (responseEvent: ResponseEvent) => {
         process.send({
           type: WORKER_EVENT.WS_CONNECTION_CLOSE_ACKNOWLEDGE,
@@ -189,7 +222,9 @@ function messageListener(message: WorkerInputEvent) {
           event: responseEvent,
         });
       },
-      console.error
+      console.error,
+      // the connection is closed, nothing will ask the worker for metrics through it any more
+      () => metricsWaiting.delete(message.requestId)
     );
   }
 }

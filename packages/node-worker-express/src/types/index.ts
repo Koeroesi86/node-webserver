@@ -1,25 +1,34 @@
 import { WORKER_EVENT } from '../constants';
 import { Request, Response } from 'express';
 import type { Readable } from 'stream';
+import type { ServerMetrics } from '../utils/metrics';
 
 export type RequestEvent = {
   httpMethod: string;
   protocol: string;
   path: string;
   pathFragments: string[];
-  queryStringParameters: { [key: string]: string };
+  /** a parameter given more than once is an array */
+  queryStringParameters: { [key: string]: string | string[] };
   headers: { [key: string]: string };
   remoteAddress: string;
-  body: string;
   rootPath: string;
   closed?: boolean;
   frame?: string;
-  /** the body is not in `body`, it is read from the `bodyStream` the worker is called with */
-  bodyStreamed?: boolean;
+  /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
+  hasBody?: boolean;
 };
 
-/** what a worker is called with: the request, and the stream to read the body from when it is streamed */
-export type WorkerRequestEvent = RequestEvent & { bodyStream?: Readable };
+/**
+ * What a worker is called with: the request, the stream to read its body from, and a way to ask for the metrics of the server.
+ * The body is not part of the request, it is read as it arrives. Read it before answering, once the response is complete the rest is dropped.
+ */
+export type WorkerRequestEvent = RequestEvent & {
+  /** the body of the request, empty for requests that have none. It ends with an error when the client goes away. */
+  bodyStream: Readable;
+  /** a snapshot of the server: uptime, memory, event loop delay, requests, worker pools and what else registered itself */
+  getMetrics: () => Promise<ServerMetrics>;
+};
 
 /** a part of a streamed request body, `null` ends it */
 export type RequestBodyEvent = { body: string | null; isBase64Encoded: boolean };
@@ -31,7 +40,12 @@ export type WorkerInputEvent =
       event: RequestBodyEvent;
     }
   | {
-      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY>;
+      type: WORKER_EVENT.METRICS;
+      requestId: string;
+      event: ServerMetrics;
+    }
+  | {
+      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS>;
       requestId: string;
       event?: RequestEvent;
     };
@@ -67,28 +81,21 @@ export type WSFrameEvent = {
  */
 export type ResponseCallback = (e: ResponseEvent) => unknown;
 
-/**
- * The function a worker file exports. With `streamRequestBody` on, `event.bodyStream` is a Readable of the request body and `event.body` is empty.
- * Read the body before answering: once the response is complete the rest of the body is dropped and the stream is destroyed.
- */
+/** The function a worker file exports. */
 export type InvokableWorker = (event: WorkerRequestEvent, callback: ResponseCallback) => unknown;
 
 export interface MiddlewareOptions {
   root: string;
+  /** names the worker pool in the metrics, as `workers:<name>`. Defaults to the root folder. */
+  name?: string;
   limit?: number;
   /** workers started per path, requests are spread over them. Defaults to the available CPU cores, 0 or 1 keeps a single worker. */
   limitPerPath?: number | ((path: string) => number);
   /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
   warmStaticWorker?: boolean;
-  /** the largest request body that is read into memory before the worker is called, in bytes */
+  /** the largest request body in bytes, a bigger one is answered with 413. 0 for no limit, which is the default. The body is streamed to the worker, so it is never held in memory. */
   limitRequestBody?: number;
-  /**
-   * pass the body of requests to workers as a stream (`event.bodyStream`) instead of reading it into memory first, `true` for all workers or a function that decides per worker file.
-   * The body is sent in parts the worker has to take before the next one is sent, so memory stays flat for uploads of any size. Defaults to false.
-   */
-  streamRequestBody?: boolean | ((workerPath: string) => boolean);
-  /** the largest streamed request body in bytes, a bigger one is answered with 413. 0 for no limit, which is the default. */
-  limitStreamedRequestBody?: number;
+  /** how long a request may wait for a worker when none can be started, in milliseconds */
   limitRequestTimeout?: number;
   /** how long the worker may stay silent while answering an HTTP request before it is answered with 504, 0 disables it */
   limitResponseTimeout?: number;

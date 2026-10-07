@@ -12,6 +12,9 @@ export enum WORKER_EVENT {
   REQUEST_BODY = 'WORKER_REQUEST_BODY',
   /** the worker took a part of the streamed request body, the server may send another one */
   REQUEST_BODY_ACKNOWLEDGE = 'WORKER_REQUEST_BODY_ACK',
+  /** a worker asks for the metrics of the server */
+  METRICS_REQUEST = 'WORKER_METRICS_REQUEST',
+  METRICS = 'WORKER_METRICS',
   RESPONSE = 'WORKER_RESPONSE',
   RESPONSE_EMIT = 'WORKER_RESPONSE_EMIT',
   RESPONSE_ACKNOWLEDGE = 'WORKER_RESPONSE_ACK',
@@ -39,9 +42,7 @@ export const DefaultOptions: MiddlewareOptions = {
   limit: 0,
   limitPerPath: os.availableParallelism(),
   warmStaticWorker: true,
-  limitRequestBody: 1000000,
-  streamRequestBody: false,
-  limitStreamedRequestBody: 0,
+  limitRequestBody: 0,
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
   idleCheckTimeout: 5,

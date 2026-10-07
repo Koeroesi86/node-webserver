@@ -1,4 +1,4 @@
-import { v4 as uuid } from 'uuid';
+import { randomBytes } from 'crypto';
 import path from 'path';
 import url from 'url';
 import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WORKER_EVENT } from '../constants';
@@ -7,11 +7,22 @@ import isWebSocket from '../utils/isWebSocket';
 import parseWsMessage from '../utils/parseWsMessage';
 import constructWsMessage from '../utils/constructWsMessage';
 import getClientIp from '../utils/getClientIp';
-import createBodyParser, { hasBody } from './bodyParser';
+import hasBody from '../utils/hasBody';
 import { RequestHandler } from 'express';
 import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
 import resolvePath from '../utils/resolvePath';
-import fileExists from '../utils/fileExists';
+import createProbe from '../utils/createProbe';
+import TtlCache from '../utils/ttlCache';
+import { getServerMetrics, registerMetricsSource, trackRequest } from '../utils/metrics';
+
+/** how long the way to a path is remembered, and how many paths are, so that a client asking for endless different ones cannot grow the cache */
+const routeCacheTtl = 5000;
+const routeCacheSize = 10000;
+
+// ids only have to differ inside this process, which is cheaper to make than a random uuid
+const requestIdPrefix = randomBytes(4).toString('hex');
+let requestCount = 0;
+const createRequestId = () => `${requestIdPrefix}-${(requestCount += 1).toString(36)}`;
 
 const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   const config = {
@@ -38,77 +49,45 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
   }
-  const bodyParser = createBodyParser({ limitRequestBody: config.limitRequestBody, shouldError: true });
-  const aliasCache = new Map<string, string>();
-  const workerCache = new Map<string, string>();
+  const routeCache = new TtlCache<{ indexPath: string; isWorker: boolean }>(routeCacheTtl, routeCacheSize);
+  const probe = createProbe();
+  registerMetricsSource(`workers:${config.name ?? rootPath}`, workerPool.getStats);
 
   return async (request, response, next) => {
     const { query: queryStringParameters, pathname } = url.parse(request.url, true);
+    trackRequest(response);
 
     try {
-      let isWorker = false;
       const pathFragments = pathname.split(/\//gi).filter(Boolean);
-      let currentPathFragments = pathFragments.slice(0);
-      let pathExists = false;
 
       if (pathFragments.find((p) => ForbiddenPaths.includes(p))) {
         config.onForbiddenPath(request, response);
         return;
       }
 
-      let indexPath: string;
-      // the cache entries expire on a timer, so read them once before awaiting anything
-      const cachedAliasPath = aliasCache.get(pathname);
-      const cachedWorkerPath = workerCache.get(pathname);
+      // a path that was resolved lately is trusted until its entry expires, without asking the file system again
+      const cached = routeCache.get(pathname);
+      const { indexPath, isWorker, pathExists } = cached ? { ...cached, pathExists: true } : await resolvePath(rootPath, pathFragments, config.index, probe);
 
-      if (cachedAliasPath && (await fileExists(cachedAliasPath))) {
-        isWorker = false;
-        indexPath = cachedAliasPath;
-        pathExists = true;
-      } else if (cachedWorkerPath && (await fileExists(cachedWorkerPath))) {
-        isWorker = true;
-        indexPath = cachedWorkerPath;
-        pathExists = true;
-      } else {
-        const resolved = await resolvePath(rootPath, currentPathFragments, config.index);
-        indexPath = resolved.indexPath;
-        isWorker = resolved.isWorker;
-        pathExists = resolved.pathExists;
-      }
-
-      if (!pathExists) {
-        //
-      } else if (isWorker && !workerCache.has(pathname)) {
-        workerCache.set(pathname, indexPath);
-        setTimeout(() => workerCache.delete(pathname), 5000);
-      } else if (!isWorker && !aliasCache.has(pathname)) {
-        aliasCache.set(pathname, indexPath);
-        setTimeout(() => aliasCache.delete(pathname), 5000);
+      if (pathExists && !cached) {
+        routeCache.set(pathname, { indexPath, isWorker });
       }
 
       const requestProtocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
-      const streamsBody =
-        isWorker &&
-        requestProtocol === Protocols.http &&
-        hasBody(request) &&
-        (typeof config.streamRequestBody === 'function' ? config.streamRequestBody(indexPath) : config.streamRequestBody);
-
-      // a body that is streamed is not read here: the worker takes it part by part, while the request goes on
-      if (!streamsBody) {
-        await Promise.race([new Promise((_res, rej) => setTimeout(rej, config.limitRequestTimeout)), new Promise((res) => bodyParser(request, response, res))]);
-      }
+      // the static worker has no use for a body, node drops what is not read when the response is done
+      const streamsBody = requestProtocol === Protocols.http && hasBody(request) && isWorker;
 
       const event: RequestEvent = {
         httpMethod: request.method.toUpperCase(),
         protocol: requestProtocol,
         path: pathname,
         pathFragments: pathFragments,
-        queryStringParameters: JSON.parse(JSON.stringify(queryStringParameters)),
+        queryStringParameters: { ...queryStringParameters },
         headers: request.headers as Record<string, string>,
         remoteAddress: getClientIp(request),
-        body: streamsBody ? '' : `${request.body}`,
         rootPath: rootPath,
-        ...(streamsBody && { bodyStreamed: true }),
+        // the body is not part of the event, the worker takes it from a stream while it arrives
+        ...(streamsBody && { hasBody: true }),
       };
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
@@ -117,7 +96,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         : workerPool.acquire(config.staticWorker, staticWorkerOptions, limitPerPath));
       const { worker } = lease;
 
-      const requestId = uuid();
+      const requestId = createRequestId();
 
       let firstReceived = false;
       const requestSocketListener = (data) => {
@@ -176,7 +155,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       const forwardBodyPart = (chunk: Buffer) => {
         receivedBytes += chunk.length;
 
-        if (config.limitStreamedRequestBody && receivedBytes > config.limitStreamedRequestBody) {
+        if (config.limitRequestBody && receivedBytes > config.limitRequestBody) {
           response.once('finish', () => request.socket.destroy());
           failRequest(413, 'Request body too large.');
           return;
@@ -193,6 +172,10 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       const messageListener = (responseEvent: WorkerOutputEvent) => {
         armResponseTimeout();
+
+        if (responseEvent.type === WORKER_EVENT.METRICS_REQUEST) {
+          worker.postMessage({ type: WORKER_EVENT.METRICS, requestId, event: getServerMetrics() });
+        }
 
         if (responseEvent.type === WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE) {
           unacknowledged -= 1;
