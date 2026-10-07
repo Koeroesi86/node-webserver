@@ -67,6 +67,8 @@ export interface ServerInstance {
 export interface Configuration {
   /** set to false to disable file logging */
   fileLogPath: string | false;
+  /** how long log lines are collected before they are written to the files, in milliseconds. 0 writes every line right away. Defaults to 100. */
+  fileLogFlushInterval?: number;
   logLevels?: LogLevels;
   portHttp: number;
   portHttps: number;

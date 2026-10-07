@@ -27,6 +27,8 @@ function exitHandler(instances: ServerInstance[]) {
 
 function exitListener(instances: ServerInstance[], reason: ExitReason, event: unknown) {
   logger.error(`${reason} triggered:\n`, event);
+  // the signal is raised again below, and a process ended by a signal does not run its exit handlers
+  logger.flush();
 
   exitHandler(instances);
 
