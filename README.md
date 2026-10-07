@@ -7,6 +7,24 @@
 A local web server that hosts workers, lambdas and proxied apps by virtual host, and the libraries it is built on.
 Everything in this repository is published to npm under the `@koeroesi86` scope.
 
+## Design
+
+One Node.js server sits in front and acts as a lightweight, cheap proxy to other processes. It accepts the connections, finds the server definition for the host name, and hands each request to whatever runs behind it:
+
+| Server type | What runs behind the front server |
+|---|---|
+| `worker` | a pool of Node processes per worker file, which answer requests with a function (`event`, `callback`), also by streaming the response and reading the request body as a stream |
+| `lambda` | AWS Lambda style handlers, each in a process of its own |
+| `child` | any other application, started as a child process and proxied to |
+
+The front server stays a single process on purpose. It does as little as possible for every request, and the work, the memory and the isolation live in the processes behind it: a worker that crashes or leaks takes only itself down,
+and CPU heavy handlers spread over the cores through their own pools. What this means for the code:
+
+- The cost of a request on the front process is what limits the throughput of the whole server, so everything that is done for every request there (resolving the path, the messages to the worker, logging) is kept small and measured, see [the load test](packages/node-webserver/load-tests/README.md).
+  Work that does not have to happen there, like heavy compression, is better done behind it or in front of it, by a reverse proxy or CDN.
+- Scaling out means more workers, lambdas or child processes behind the front server, not more front servers.
+- Backends talk to the front server over channels it controls (messages with acknowledgements, so a slow side slows the other down instead of filling memory), which also lets a worker ask the server for its metrics.
+
 ## Packages
 
 | Package | Latest version | Description |
