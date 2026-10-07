@@ -29,13 +29,15 @@ describe('summary', () => {
 
   afterAll(() => rmSync(folder, { recursive: true, force: true }));
 
-  const summarize = (summary, serverLog) => {
+  const summarize = (summary, serverLog, title) => {
     const summaryPath = join(folder, 'k6-summary.json');
     const logPath = join(folder, 'server.log');
     if (summary) writeFileSync(summaryPath, JSON.stringify({ metrics: summary }));
     if (serverLog !== undefined) writeFileSync(logPath, serverLog);
 
-    return execFileSync('node', [resolve(__dirname, 'summary.js'), summary ? summaryPath : join(folder, 'missing.json'), logPath], { encoding: 'utf8' });
+    const args = [summary ? summaryPath : join(folder, 'missing.json'), serverLog === undefined ? '' : logPath, ...(title ? [title] : [])];
+
+    return execFileSync('node', [resolve(__dirname, 'summary.js'), ...args], { encoding: 'utf8' });
   };
 
   it('reports the totals, the routes and the websocket sessions', () => {
@@ -76,5 +78,14 @@ describe('summary', () => {
 
   it('explains that there was no summary when k6 did not produce one', () => {
     expect(summarize(undefined, '')).toContain('No k6 summary was produced');
+  });
+
+  it('uses the title it was given', () => {
+    expect(summarize(metrics(), '', 'Load test: CPU bound worker')).toContain('## Load test: CPU bound worker ✅ passed');
+    expect(summarize(undefined, '', 'Load test: CPU bound worker')).toContain('## Load test: CPU bound worker\n');
+  });
+
+  it('leaves out the server log section when there is no log', () => {
+    expect(summarize(metrics(), undefined)).not.toContain('### Server log');
   });
 });

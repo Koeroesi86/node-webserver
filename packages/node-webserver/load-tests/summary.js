@@ -1,9 +1,9 @@
 const { existsSync, readFileSync } = require('fs');
 
-const [summaryPath = 'k6-summary.json', serverLogPath = 'server.log'] = process.argv.slice(2);
+const [summaryPath = 'k6-summary.json', serverLogPath, title = 'Load test'] = process.argv.slice(2);
 
 if (!existsSync(summaryPath)) {
-  console.log('## Load test\n\n❌ No k6 summary was produced, the run failed before or during the test. Check the step logs.');
+  console.log(`## ${title}\n\n❌ No k6 summary was produced, the run failed before or during the test. Check the step logs.`);
   process.exit(0);
 }
 
@@ -37,15 +37,21 @@ const websocket =
 const breachedCount = Object.values(metrics)
   .flatMap(({ thresholds: results = {} }) => Object.values(results))
   .filter(Boolean).length;
-const serverErrors = existsSync(serverLogPath)
-  ? readFileSync(serverLogPath, 'utf8')
-      .split('\n')
-      .filter((line) => /\b(Error|TypeError|500 Internal Server Error)\b/.test(line))
-  : [];
+// the log of the server is only looked at when there is one
+const serverErrors =
+  serverLogPath && existsSync(serverLogPath)
+    ? readFileSync(serverLogPath, 'utf8')
+        .split('\n')
+        .filter((line) => /\b(Error|TypeError|500 Internal Server Error)\b/.test(line))
+    : undefined;
+const serverLog =
+  serverErrors === undefined
+    ? []
+    : [serverErrors.length === 0 ? '### Server log\n\nNo errors logged.' : `### Server log\n\n${serverErrors.length} error line(s), first ones:\n\n\`\`\`\n${serverErrors.slice(0, 5).join('\n')}\n\`\`\``];
 
 console.log(
   [
-    `## Load test ${breachedCount === 0 ? '✅ passed' : '❌ failed'}`,
+    `## ${title} ${breachedCount === 0 ? '✅ passed' : '❌ failed'}`,
     '',
     '| Metric | Value |',
     '| --- | --- |',
@@ -65,6 +71,6 @@ console.log(
     '| --- | --- | --- |',
     ...thresholds,
     '',
-    serverErrors.length === 0 ? '### Server log\n\nNo errors logged.' : `### Server log\n\n${serverErrors.length} error line(s), first ones:\n\n\`\`\`\n${serverErrors.slice(0, 5).join('\n')}\n\`\`\``,
+    ...serverLog,
   ].join('\n')
 );
