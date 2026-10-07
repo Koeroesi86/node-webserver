@@ -1,4 +1,7 @@
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 // Byte order mark
 const isUtf8 = (body: Buffer) => body[0] === 0xef && body[1] === 0xbb && body[2] === 0xbf;
@@ -12,13 +15,10 @@ async function getCharset(body: Buffer, fileName: string): Promise<string> {
   if (isUtf16le(body)) return 'utf16le';
   if (body.indexOf('ï»¿') === 0) return 'iso-8859-1';
 
-  try {
-    return execSync(`file -b --mime-encoding ${fileName}`, { encoding: 'utf8' }).trim();
-  } catch (e) {
-    //
-  }
-
-  return '';
+  // no shell is involved and the event loop is not blocked while the file command runs
+  return execFileAsync('file', ['-b', '--mime-encoding', fileName], { encoding: 'utf8' })
+    .then(({ stdout }) => stdout.trim())
+    .catch(() => '');
 }
 
 export default getCharset;

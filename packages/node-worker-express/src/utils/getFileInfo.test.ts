@@ -1,0 +1,79 @@
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import getCharset from './getCharset';
+import getFileInfo, { getEtag } from './getFileInfo';
+
+jest.mock('./getCharset', () => ({ __esModule: true, default: jest.fn() }));
+
+const getCharsetMock = getCharset as jest.MockedFunction<typeof getCharset>;
+
+describe('getFileInfo', () => {
+  let folder: string;
+
+  beforeAll(async () => {
+    folder = await fs.mkdtemp(path.join(os.tmpdir(), 'file-info-'));
+  });
+
+  afterAll(() => fs.rm(folder, { recursive: true, force: true }));
+
+  beforeEach(() => {
+    getCharsetMock.mockReset().mockResolvedValue('utf-8');
+  });
+
+  const create = async (name: string, content: string | Buffer) => {
+    const fileName = path.join(folder, name);
+    await fs.writeFile(fileName, content);
+
+    return { fileName, stats: await fs.stat(fileName) };
+  };
+
+  it('describes a text file with its type and charset', async () => {
+    const { fileName, stats } = await create('page.html', '<h1>hi</h1>');
+
+    expect(await getFileInfo(fileName, stats)).toMatchObject({ contentType: 'text/html', charset: 'utf-8', etag: getEtag(stats) });
+  });
+
+  it('hands the beginning of the file to the charset detection', async () => {
+    const { fileName, stats } = await create('bom.txt', Buffer.from([0xef, 0xbb, 0xbf, 0x61, 0x62]));
+
+    await getFileInfo(fileName, stats);
+
+    expect(getCharsetMock).toHaveBeenCalledWith(Buffer.from([0xef, 0xbb, 0xbf, 0x61]), fileName);
+  });
+
+  it('does not look for a charset of binary files', async () => {
+    const { fileName, stats } = await create('icon.ico', Buffer.from([0, 1, 2, 3]));
+
+    expect(await getFileInfo(fileName, stats)).toMatchObject({ contentType: 'image/vnd.microsoft.icon', charset: '' });
+    expect(getCharsetMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the result until the file changes', async () => {
+    const { fileName, stats } = await create('cached.css', 'a {}');
+
+    await getFileInfo(fileName, stats);
+    await getFileInfo(fileName, stats);
+    expect(getCharsetMock).toHaveBeenCalledTimes(1);
+
+    await fs.writeFile(fileName, 'a { color: red }');
+    const changed = await fs.stat(fileName);
+    const info = await getFileInfo(fileName, changed);
+
+    expect(getCharsetMock).toHaveBeenCalledTimes(2);
+    expect(info.etag).toBe(getEtag(changed));
+    expect(info.etag).not.toBe(getEtag(stats));
+  });
+
+  it('forgets the oldest files when there are too many', async () => {
+    const files = await Promise.all(Array.from({ length: 1001 }, (_, index) => create(`many-${index}.txt`, 'x')));
+    await files.reduce((previous, { fileName, stats }) => previous.then(() => getFileInfo(fileName, stats).then(() => undefined)), Promise.resolve());
+    getCharsetMock.mockClear();
+
+    await getFileInfo(files[1000].fileName, files[1000].stats);
+    expect(getCharsetMock).not.toHaveBeenCalled();
+
+    await getFileInfo(files[0].fileName, files[0].stats);
+    expect(getCharsetMock).toHaveBeenCalledTimes(1);
+  });
+});

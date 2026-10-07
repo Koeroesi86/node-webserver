@@ -40,6 +40,25 @@ export interface InstanceServerOptions {
 export interface LambdaOptions {
   lambda?: string;
   handler?: string;
+  /** how requests and responses reach the lambda process: `ipc` (default) or through files */
+  communication?: 'ipc' | 'file';
+  /** how many lambdas may run in total. Defaults to the number of CPU cores, 0 means no limit. */
+  limit?: number;
+  /** how long a request waits for a lambda when the limit is reached before it is answered with 503, in milliseconds. Defaults to 10000. */
+  acquireTimeout?: number;
+}
+
+export type CompressionEncoding = 'br' | 'gzip' | 'deflate';
+
+export interface CompressionOptions {
+  /** responses of a known size below this many bytes are sent as they are. Defaults to 1024. */
+  threshold?: number;
+  /** level of gzip and deflate, 1 (fast) to 9 (small). Defaults to 6. */
+  level?: number;
+  /** quality of brotli, 0 (fast) to 11 (small). Defaults to 4, as higher qualities are slow. */
+  brotliQuality?: number;
+  /** what may be used, in the order of preference when the client likes them the same. Defaults to all of them: br, gzip, deflate. */
+  encodings?: CompressionEncoding[];
 }
 
 export interface ServerInstance {
@@ -50,6 +69,8 @@ export interface ServerInstance {
   cert?: string;
   ca?: string;
   options?: WorkerOptions;
+  /** compress the responses of this server for the clients that accept it. Off by default. `true` uses the defaults, an object tunes them. */
+  compression?: boolean | CompressionOptions;
   childOptions?: ChildOptions;
   proxyOptions?: ProxyOptions;
   serverOptions?: InstanceServerOptions;
@@ -65,9 +86,18 @@ export interface ServerInstance {
 export interface Configuration {
   /** set to false to disable file logging */
   fileLogPath: string | false;
+  /** how long log lines are collected before they are written to the files, in milliseconds. 0 writes every line right away. Defaults to 100. */
+  fileLogFlushInterval?: number;
   logLevels?: LogLevels;
   portHttp: number;
   portHttps: number;
+  /**
+   * how long an idle connection of a client is kept open, in milliseconds, for both the http and the https server. Defaults to 65000, longer than what load balancers keep theirs for.
+   * Node itself closes them after 5 seconds.
+   */
+  keepAliveTimeout?: number;
+  /** the number of open connections per server after which new ones are dropped, 0 for no limit. Defaults to 10000. */
+  maxConnections?: number;
   portLookup?: PortLookup;
   /** set to false to disable */
   statsDomain: string | false;

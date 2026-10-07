@@ -1,9 +1,16 @@
-module.exports = (event, callback) => {
+const { buffer } = require('stream/consumers');
+
+module.exports = async (event, callback) => {
+  // the body of the request is a stream, read it before answering
+  const body = await buffer(event.bodyStream);
+
   callback({
     statusCode: 200,
     headers: {
       'Content-Type': 'text/html',
       'Cache-Control': 'public, max-age=0',
+      // lets clients verify that the request body arrived
+      'X-Request-Body-Length': String(body.length),
     },
     body: `
     <html>

@@ -4,9 +4,12 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import fs from 'fs';
+import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
+import { registerMetricsSource } from '@koeroesi86/node-worker-express';
 import exampleConfig from '../configuration.example';
 import accessLogsMiddleware from '../middlewares/accessLogs';
 import addExitListeners from './exitHandler';
+import configureServer from './configureServer';
 import setupSecureContexts from './setupSecureContexts';
 import setupStatsHandler from './setupStatsHandler';
 import setupVirtualHosts from './setupVirtualHosts';
@@ -61,6 +64,10 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
     },
     httpsApp
   );
+
+  configureServer(httpServer, 'http', hydratedConfiguration);
+  configureServer(httpsServer, 'https', hydratedConfiguration);
+  registerMetricsSource('lambdas', getLambdaStats);
 
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);

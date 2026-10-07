@@ -1,9 +1,9 @@
 import path from 'path';
-import fs from 'fs/promises';
-import fileExists from './fileExists';
+import { uncachedProbe } from './createProbe';
+import type { Probe } from './createProbe';
 import { Stats } from 'fs';
 
-async function resolvePath(rootPath: string, pathFragments: string[], indexFiles: string[]) {
+async function resolvePath(rootPath: string, pathFragments: string[], indexFiles: string[], probe: Probe = uncachedProbe) {
   const currentPathFragments = pathFragments.slice();
   let indexPath = path.join(rootPath, ...currentPathFragments);
   let isWorker = false;
@@ -14,9 +14,14 @@ async function resolvePath(rootPath: string, pathFragments: string[], indexFiles
     if (pathExists) continue;
     currentPathFragments.splice(i);
     const currentPath = path.join(rootPath, ...currentPathFragments);
-    pathExists = await fileExists(currentPath);
+    pathExists = await probe.exists(currentPath);
     if (!pathExists) continue;
-    stats = await fs.stat(currentPath);
+    stats = await probe.stat(currentPath);
+    // gone since it was found
+    if (stats === undefined) {
+      pathExists = false;
+      continue;
+    }
 
     if (stats.isDirectory()) {
       // index fallback
@@ -27,17 +32,15 @@ async function resolvePath(rootPath: string, pathFragments: string[], indexFiles
         }
 
         const current = path.join(currentPath, indexFile);
-        if (await fileExists(current)) {
+        if (await probe.exists(current)) {
           checkIndexFilePath = indexFile;
         }
       }
 
+      // a directory without an index worker is served by the static worker, which also answers with the 404
       if (checkIndexFilePath) {
         isWorker = true;
         indexPath = path.join(currentPath, checkIndexFilePath);
-      } else {
-        isWorker = true;
-        indexPath = path.join(...currentPathFragments);
       }
     } else if (stats.isFile() && indexFiles.includes(currentPathFragments[currentPathFragments.length - 1])) {
       isWorker = true;

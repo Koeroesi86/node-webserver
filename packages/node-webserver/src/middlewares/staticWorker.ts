@@ -116,13 +116,22 @@ function getCharset(body: Buffer): string | false {
   return false;
 }
 
+const isInside = (folder: string, target: string) => {
+  const relative = path.relative(path.resolve(folder), path.resolve(target));
+
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
+};
+
+const isFile = (fileName: string) => fs.statSync(fileName, { throwIfNoEntry: false })?.isFile() === true;
+
 const staticWorker = (event: RequestEvent, callback: (response: ResponseEvent) => void = () => {}) => {
   debounce(() => {
     // console.log('Exiting static worker.')
   }, 5000);
-  const currentPath = `${event.path.replace(/\.{2,}/, '')}${/\/$/.test(event.path) ? 'index.html' : ''}`;
+  const currentPath = `${event.path}${/\/$/.test(event.path) ? 'index.html' : ''}`;
   const fileName = path.resolve(event.rootPath, `.${currentPath}`);
-  if (fs.existsSync(fileName)) {
+  // only files below the root are served, a directory or anything outside of it is answered as missing
+  if (isInside(event.rootPath, fileName) && isFile(fileName)) {
     // TODO: range request
     const bodyBuffer = fs.readFileSync(fileName);
     const stats = fs.statSync(fileName);
@@ -161,7 +170,7 @@ const staticWorker = (event: RequestEvent, callback: (response: ResponseEvent) =
         'Content-Type': 'text/plain',
         'Cache-Control': 'public, max-age=0',
       },
-      body: `${fileName} does not exist`,
+      body: `${event.path} does not exist`,
       isBase64Encoded: false,
     });
   }

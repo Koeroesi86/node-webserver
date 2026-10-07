@@ -1,18 +1,18 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { createReadStream } from 'fs';
-import { Writable } from 'stream';
-import { InvokableWorker, ResponseEvent } from './types';
-import fileExists from './utils/fileExists';
-import getContentType from './utils/getContentType';
-import getEtag from './utils/getEtag';
-import getCharset from './utils/getCharset';
+import { StaticStreamThreshold } from './constants';
+import { InvokableWorker, ResponseCallback, ResponseEvent } from './types';
+import streamResponse from './streamResponse';
+import getFileInfo from './utils/getFileInfo';
+import isInside from './utils/isInside';
+import isNotModified from './utils/isNotModified';
 
 let timer: NodeJS.Timeout | undefined;
 
-const features = {
-  enableEmit: false,
-};
+const chunkSize = 64 * 1024;
+/** parts that may wait to be written to the client while the next ones are read */
+const streamWindow = 4;
 
 function debounce(fn = () => {}, timeout = 0) {
   if (timer) clearTimeout(timer);
@@ -22,91 +22,56 @@ function debounce(fn = () => {}, timeout = 0) {
   }, timeout);
 }
 
+/** Sends the file in parts and waits for the client to take them, it stops when the client is gone. */
+const streamFile = (fileName: string, { statusCode, headers }: ResponseEvent, callback: ResponseCallback) =>
+  streamResponse(callback, { statusCode, headers, window: streamWindow }, createReadStream(fileName, { highWaterMark: chunkSize }));
+
 const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   debounce(() => {
     console.log('Exiting static worker.');
     process.exit(0);
   }, 1000 * 60 * 30);
 
-  const currentPath = `${event.path.replace(/\.{2,}/, '')}${/\/$/.test(event.path) ? 'index.html' : ''}`;
+  const currentPath = `${event.path}${/\/$/.test(event.path) ? 'index.html' : ''}`;
   const fileName = path.resolve(event.rootPath, `.${currentPath}`);
+  // only files below the root are served, a directory or anything outside of it is answered as missing
+  const stats = ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, fileName) ? await fs.stat(fileName).catch(() => undefined) : undefined;
 
-  if (['GET', 'HEAD'].includes(event.httpMethod) && (await fileExists(fileName))) {
-    // TODO: range request
-    const bodyBuffer = await fs.readFile(fileName);
-    const stats = await fs.stat(fileName);
-    const extension = path.extname(fileName);
-    const contentType = getContentType(extension);
-    const currentEtag = getEtag(bodyBuffer);
-    const charset = await getCharset(bodyBuffer, fileName);
-
-    const lastModified = new Date(stats.mtime);
-    let isModified = true;
-
-    if (event.headers['if-none-match'] === currentEtag) {
-      isModified = false;
-    } else if (stats.mtime && event.headers['if-modified-since']) {
-      const ifModifiedSince = new Date(event.headers['if-modified-since']);
-      isModified = ifModifiedSince.toUTCString() !== lastModified.toUTCString();
-    }
-
-    const response: ResponseEvent = {
-      statusCode: isModified ? 200 : 304,
-      headers: {
-        'Content-Type': `${contentType}${charset ? `; charset=${charset}` : ''}`,
-        'Cache-Control': 'public, max-age=0',
-        'Content-Length': String(bodyBuffer.byteLength),
-        ETag: currentEtag,
-        ...(stats.mtime && { 'Last-Modified': lastModified.toUTCString() }),
-      },
-      body: '',
-      isBase64Encoded: false,
-    };
-
-    if (features.enableEmit && isModified) {
-      const writer = new Writable({
-        write(chunk: Buffer, encoding: string, next: () => unknown) {
-          response.emit = true;
-          response.isBase64Encoded = true;
-          response.body = chunk.toString('base64');
-          // console.log('sending', chunk.length, 'bytes')
-          callback(response);
-          next();
-        },
-        destroy() {
-          response.isBase64Encoded = false;
-          response.emit = true;
-          response.body = null;
-          callback(response);
-        },
-      });
-
-      createReadStream(fileName, {
-        // encoding: 'binary',
-        // encoding: 'utf-8',
-        emitClose: false,
-        autoClose: false,
-        // highWaterMark: 16,
-        start: 0,
-        end: Infinity,
-      }).pipe(writer);
-      return;
-    } else if (isModified) {
-      response.body = bodyBuffer.toString('base64');
-      response.isBase64Encoded = true;
-    }
-
-    callback(response);
-  } else {
+  if (!stats?.isFile()) {
     callback({
       statusCode: 404,
       headers: {
         'Content-Type': 'text/plain',
         'Cache-Control': 'public, max-age=0',
       },
-      body: `${currentPath} does not exist`,
+      body: `${event.path} does not exist`,
       isBase64Encoded: false,
     });
+    return;
+  }
+
+  // TODO: range request
+  const { etag, contentType, charset } = await getFileInfo(fileName, stats);
+  const notModified = isNotModified(event.headers, etag, stats.mtimeMs);
+  const response: ResponseEvent = {
+    statusCode: notModified ? 304 : 200,
+    headers: {
+      'Content-Type': `${contentType}${charset ? `; charset=${charset}` : ''}`,
+      'Cache-Control': 'public, max-age=0',
+      ...(!notModified && { 'Content-Length': String(stats.size) }),
+      ETag: etag,
+      'Last-Modified': stats.mtime.toUTCString(),
+    },
+    body: '',
+    isBase64Encoded: false,
+  };
+
+  if (notModified || event.httpMethod === 'HEAD') {
+    callback(response);
+  } else if (stats.size > StaticStreamThreshold) {
+    await streamFile(fileName, response, callback);
+  } else {
+    callback({ ...response, body: (await fs.readFile(fileName)).toString('base64'), isBase64Encoded: true });
   }
 };
 
