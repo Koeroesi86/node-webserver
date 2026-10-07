@@ -144,4 +144,35 @@ describe('logger', () => {
     expect(consoleError).toHaveBeenCalled();
     expect(appendFileSync).toHaveBeenLastCalledWith(expect.any(String), 'kept\n', 'utf8');
   });
+
+  describe('isEnabled', () => {
+    it('says which levels are logged, the ones that are not off', () => {
+      const { logger } = load({ logLevels: { info: true, error: true, success: false, warning: false } });
+
+      expect(['info', 'error', 'success', 'warning'].map((level) => logger.isEnabled(level as 'info'))).toEqual([true, true, false, false]);
+    });
+
+    it('counts a level that is not mentioned as logged', () => {
+      const { logger } = load({ logLevels: { info: false } });
+
+      expect(logger.isEnabled('system')).toBe(true);
+    });
+
+    it('logs everything when there are no levels at all', () => {
+      const { logger } = load({ logLevels: undefined });
+
+      expect(logger.isEnabled('success')).toBe(true);
+    });
+
+    it('agrees with what the logger prints', () => {
+      const { logger } = load({ logLevels: { info: true, success: false } });
+
+      logger.success('hidden');
+      logger.info('shown');
+
+      expect(consoleLog).toHaveBeenCalledTimes(1);
+      expect(logger.isEnabled('success')).toBe(false);
+      expect(logger.isEnabled('info')).toBe(true);
+    });
+  });
 });

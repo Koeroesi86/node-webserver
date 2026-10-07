@@ -67,10 +67,13 @@ function fileLog(level: keyof LogLevels, args: unknown[]) {
 
 process.on('exit', flush);
 
+/** whether lines of the level are logged, to spare building the lines that would be dropped. The levels do not change while the server runs. */
+const isEnabled = (level: keyof LogLevels) => !(logLevels && logLevels[level] === false);
+
 const createLog =
   (level: keyof LogLevels) =>
   (...args: unknown[]) => {
-    if (logLevels && logLevels[level] === false) return;
+    if (!isEnabled(level)) return;
     fileLog(level, args);
     return console.log(...args);
   };
@@ -82,6 +85,7 @@ const logger = {
   error: createLog('error'),
   warning: createLog('warning'),
   flush,
+  isEnabled,
 };
 
 export default logger;
