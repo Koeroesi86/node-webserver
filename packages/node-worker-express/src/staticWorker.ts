@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import { StaticStreamThreshold } from './constants';
 import { InvokableWorker, ResponseCallback, ResponseEvent } from './types';
+import streamResponse from './streamResponse';
 import getFileInfo from './utils/getFileInfo';
 import isInside from './utils/isInside';
 import isNotModified from './utils/isNotModified';
@@ -21,28 +22,9 @@ function debounce(fn = () => {}, timeout = 0) {
   }, timeout);
 }
 
-const proceeds = (result: unknown) => result !== false;
-
 /** Sends the file in parts and waits for the client to take them, it stops when the client is gone. */
-async function streamFile(fileName: string, response: ResponseEvent, callback: ResponseCallback) {
-  const stream = createReadStream(fileName, { highWaterMark: chunkSize });
-  const written: Array<Promise<unknown>> = [];
-
-  try {
-    for await (const chunk of stream) {
-      written.push(Promise.resolve(callback({ ...response, emit: true, body: chunk.toString('base64'), isBase64Encoded: true })));
-      if (written.length >= streamWindow && !proceeds(await written.shift())) return;
-    }
-  } catch (error) {
-    // the headers are out, so the best left to do is ending the response early, which the client sees as a truncated one
-    console.error(error);
-  } finally {
-    stream.destroy();
-  }
-
-  written.push(Promise.resolve(callback({ ...response, emit: true, body: null, isBase64Encoded: false })));
-  await Promise.all(written);
-}
+const streamFile = (fileName: string, { statusCode, headers }: ResponseEvent, callback: ResponseCallback) =>
+  streamResponse(callback, { statusCode, headers, window: streamWindow }, createReadStream(fileName, { highWaterMark: chunkSize }));
 
 const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   debounce(() => {

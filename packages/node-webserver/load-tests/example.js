@@ -18,6 +18,8 @@ const wsSessionOk = new Rate('ws_session_ok');
 // 1520-1930 req/s overall, p95 of 12-15 ms for the worker, secure and static routes, 23-29 ms for the 404, 30-34 ms for the lambda, 132-180 ms to connect a websocket
 const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 760);
 const postBody = JSON.stringify({ hello: 'world' });
+const streamChunks = 8;
+const streamChunkSize = 4096;
 
 // every iteration walks through all routes, so each of them gets the same share of the load, unless `every` says otherwise
 const routes = {
@@ -41,6 +43,20 @@ const routes = {
   // the example lambda serves the files of the static folder, in a lambda process. A lambda answers one request at a time and there are as many as cores,
   // so only a share of the iterations goes there: the route is meant to measure the lambda, not the queue in front of them
   lambda: { method: 'GET', url: `${baseUrl}/index.html`, host: lambdaHostname, status: 200, every: 4, validate: (r) => r.body.includes('It works!'), maxP95: 50 },
+  // generated while it is sent, in 8 parts of 4 KiB, so it takes a share of the traffic only
+  stream: {
+    method: 'GET',
+    url: `${baseUrl}/stream/?chunks=${streamChunks}&size=${streamChunkSize}`,
+    status: 200,
+    every: 4,
+    binary: true,
+    validate: (r) => {
+      const bytes = new Uint8Array(r.body);
+
+      return bytes.length === streamChunks * streamChunkSize && Array.from({ length: streamChunks }, (_, index) => index).every((index) => bytes[index * streamChunkSize] === index && bytes[(index + 1) * streamChunkSize - 1] === index);
+    },
+    maxP95: 35,
+  },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
   notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 60 },
   ...(httpsPort && {
@@ -79,12 +95,13 @@ export const options = {
 export default function () {
   Object.entries(routes)
     .filter(([, { every = 1 }]) => __ITER % every === 0)
-    .forEach(([route, { method, url, host, body, status, validate }]) => {
+    .forEach(([route, { method, url, host, body, binary, status, validate }]) => {
       const response = http.request(method, url, body, {
         headers: { Host: host || (url.startsWith('https') ? secureHostname : hostname), ...(body && { 'Content-Type': 'application/json' }) },
         tags: { route },
         timeout: '5s',
         responseCallback: http.expectedStatuses(status),
+        ...(binary && { responseType: 'binary' }),
       });
 
       check(
