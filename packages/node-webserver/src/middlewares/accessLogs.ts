@@ -23,7 +23,8 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
 
   return (request: Request, response: Response, next: NextFunction) => {
     if (logsRequests) {
-      setTimeout(() => {
+      // after the request was handed on, with the cheapest way to wait for that
+      setImmediate(() => {
         const timePrefix = `[${getDate()}]`;
         logger.success(
           [
@@ -36,7 +37,7 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
             `${serialiseHeaders(request)}`,
           ].join(' ')
         );
-      }, 0);
+      });
     }
 
     if (logsResponses) {

@@ -64,12 +64,94 @@ describe('logger', () => {
     expect(appendFileSync.mock.calls.every(([file]) => path.dirname(file) === logFolder)).toBe(true);
   });
 
-  it('still logs to the console right away', () => {
-    const { logger } = load();
+  describe('the console', () => {
+    it('gets the lines at the end of the turn of the event loop, not before', () => {
+      const { logger } = load();
 
-    logger.info('now');
+      logger.info('now');
+      expect(consoleLog).not.toHaveBeenCalled();
 
-    expect(consoleLog).toHaveBeenCalledWith('now');
+      jest.runOnlyPendingTimers();
+      expect(consoleLog).toHaveBeenCalledWith('now');
+    });
+
+    it('gets the lines of a turn in one write, in order', () => {
+      const { logger } = load();
+
+      logger.info('first');
+      logger.error('second');
+      logger.info('third');
+      jest.runOnlyPendingTimers();
+
+      expect(consoleLog).toHaveBeenCalledTimes(1);
+      expect(consoleLog).toHaveBeenCalledWith('first\nsecond\nthird');
+    });
+
+    it('gets the lines of the next turn in another write', () => {
+      const { logger } = load();
+
+      logger.info('first');
+      jest.runOnlyPendingTimers();
+      logger.info('second');
+      jest.runOnlyPendingTimers();
+
+      expect(consoleLog.mock.calls).toEqual([['first'], ['second']]);
+    });
+
+    it('is written when flushed, and not again afterwards', () => {
+      const { logger } = load();
+
+      logger.info('now');
+      logger.flush();
+      jest.runOnlyPendingTimers();
+
+      expect(consoleLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('is written when the process exits', () => {
+      const { logger, onExit } = load();
+
+      logger.info('last words');
+      onExit();
+
+      expect(consoleLog).toHaveBeenCalledWith('last words');
+    });
+
+    it('formats the arguments as console.log does', () => {
+      const { logger } = load();
+
+      logger.info('a', 1, { b: 2 }, ['c']);
+      jest.runOnlyPendingTimers();
+
+      expect(consoleLog).toHaveBeenCalledWith("a 1 { b: 2 } [ 'c' ]");
+    });
+
+    it('leaves what looks like a format specifier in a line as it is', () => {
+      const { logger } = load();
+
+      logger.info('cpu 100% %s %d');
+      jest.runOnlyPendingTimers();
+
+      expect(consoleLog).toHaveBeenCalledWith('cpu 100% %s %d');
+    });
+
+    it('shows the stack of an error', () => {
+      const { logger } = load();
+
+      logger.error(new Error('broken'));
+      jest.runOnlyPendingTimers();
+
+      expect(consoleLog.mock.calls[0][0]).toContain('Error: broken');
+      expect(consoleLog.mock.calls[0][0]).toContain('logger.test');
+    });
+
+    it('does not wait for anything for a level that is off', () => {
+      const { logger } = load();
+
+      logger.success('quiet');
+
+      expect(jest.getTimerCount()).toBe(0);
+    });
   });
 
   it('writes what is waiting when flushed, and only once', () => {
@@ -169,8 +251,10 @@ describe('logger', () => {
 
       logger.success('hidden');
       logger.info('shown');
+      logger.flush();
 
       expect(consoleLog).toHaveBeenCalledTimes(1);
+      expect(consoleLog).toHaveBeenCalledWith('shown');
       expect(logger.isEnabled('success')).toBe(false);
       expect(logger.isEnabled('info')).toBe(true);
     });
