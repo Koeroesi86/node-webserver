@@ -9,6 +9,7 @@ import parseWsMessage from '../utils/parseWsMessage';
 import constructWsMessage from '../utils/constructWsMessage';
 import getClientIp from '../utils/getClientIp';
 import hasBody from '../utils/hasBody';
+import takeSmallBody from '../utils/takeSmallBody';
 import { RequestHandler } from 'express';
 import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
 import resolvePath from '../utils/resolvePath';
@@ -78,7 +79,21 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       const requestProtocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
       // the static worker has no use for a body, node drops what is not read when the response is done
-      const streamsBody = requestProtocol === Protocols.http && hasBody(request) && isWorker;
+      const hasWorkerBody = requestProtocol === Protocols.http && hasBody(request) && isWorker;
+      // The headers and the first part of the body can come in one chunk, which the parser reads to its end after it told this handler about the request, so what has
+      // arrived is only known after that. When the way was found without waiting, a turn of the event loop has to go by (a microtask is not enough, it runs in between).
+      if (hasWorkerBody) await new Promise((resolve) => setImmediate(resolve));
+      // a body that has arrived with the request and is small goes along with it, which spares the messages of a stream for what is often a few bytes
+      const inlineBody = hasWorkerBody ? takeSmallBody(request, config.inlineRequestBody) : undefined;
+
+      if (inlineBody !== undefined && config.limitRequestBody && inlineBody.length > config.limitRequestBody) {
+        response.writeHead(413, { 'Content-Type': 'text/plain' });
+        response.end('Request body too large.');
+        return;
+      }
+
+      // the parts of a body that is not inline follow the request
+      const streamsBody = hasWorkerBody && inlineBody === undefined;
 
       const event: RequestEvent = {
         httpMethod: request.method.toUpperCase(),
@@ -91,6 +106,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         rootPath: rootPath,
         // the body is not part of the event, the worker takes it from a stream while it arrives
         ...(streamsBody && { hasBody: true }),
+        ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
       };
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;

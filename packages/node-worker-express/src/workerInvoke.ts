@@ -40,6 +40,13 @@ const createEmptyBody = () =>
     },
   });
 
+/** the stream of the body of a request: the parts that follow, the one that came with the request, or no bytes */
+const createBodyStream = ({ hasBody, inlineBody }: RequestEvent, requestId: string) => {
+  if (hasBody) return createUpload(requestId);
+
+  return inlineBody ? Readable.from([Buffer.from(inlineBody, 'base64')], { objectMode: false }) : createEmptyBody();
+};
+
 /** what a worker is called with, the websocket frames and the closing of a connection too */
 const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Readable): WorkerRequestEvent => ({
   ...event,
@@ -183,7 +190,7 @@ function messageListener(message: WorkerInputEvent) {
     };
 
     invoke(
-      toWorkerEvent(message.event, message.requestId, message.event.hasBody ? createUpload(message.requestId) : createEmptyBody()),
+      toWorkerEvent(message.event, message.requestId, createBodyStream(message.event, message.requestId)),
       callback,
       (error) => {
         console.error(error);

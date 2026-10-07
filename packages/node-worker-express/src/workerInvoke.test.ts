@@ -95,8 +95,18 @@ describe('workerInvoke', () => {
     child.kill();
   });
 
-  const send = (type: string, requestId: string, requestPath = '/', hasBody = false) =>
-    child.send({ type, requestId, event: { path: requestPath, rootPath: folder, headers: {}, ...(hasBody && { hasBody: true }) } });
+  const send = (type: string, requestId: string, requestPath = '/', hasBody = false, inlineBody?: Buffer) =>
+    child.send({
+      type,
+      requestId,
+      event: {
+        path: requestPath,
+        rootPath: folder,
+        headers: {},
+        ...(hasBody && { hasBody: true }),
+        ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
+      },
+    });
   /** a part of a streamed request body, no argument ends it */
   const sendPart = (requestId: string, bytes?: Buffer) =>
     child.send({
@@ -303,6 +313,67 @@ describe('workerInvoke', () => {
       await settle();
 
       expect(of('a').map(({ type }) => type)).toEqual([WORKER_EVENT.RESPONSE]);
+    });
+  });
+
+  describe('a body that came with the request', () => {
+    const answerOf = (requestId: string) => JSON.parse(of(requestId, WORKER_EVENT.RESPONSE)[0].event.body);
+    const sha256 = (bytes: Buffer) => crypto.createHash('sha256').update(bytes).digest('hex');
+
+    it('is what the worker reads from the stream, without any part after the request', async () => {
+      const body = Buffer.from('hello inline world');
+      send(WORKER_EVENT.REQUEST, 'a', '/upload', false, body);
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).toEqual({ size: body.length, sha256: sha256(body) });
+    });
+
+    it('keeps every byte', async () => {
+      const body = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
+      send(WORKER_EVENT.REQUEST, 'a', '/upload', false, body);
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).toEqual({ size: 256, sha256: sha256(body) });
+    });
+
+    it('is empty when it has no bytes', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/upload', false, Buffer.alloc(0));
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a').size).toBe(0);
+    });
+
+    it('is read whole when it is a couple of hundred kilobytes', async () => {
+      const body = crypto.randomBytes(200 * 1024);
+      send(WORKER_EVENT.REQUEST, 'a', '/upload', false, body);
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).toEqual({ size: body.length, sha256: sha256(body) });
+    });
+
+    it('is not acknowledged, as there are no parts, and parts that arrive for the request anyway are left alone', async () => {
+      const body = Buffer.from('inline');
+      send(WORKER_EVENT.REQUEST, 'a', '/upload-late', false, body);
+      sendPart('a', Buffer.alloc(100));
+      sendPart('a');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a').size).toBe(body.length);
+      expect(of('a', WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE)).toHaveLength(0);
+    });
+
+    it('keeps the bodies of requests that run at the same time apart', async () => {
+      const bodies = ['one', 'two two', 'three three three'].map((text) => Buffer.from(text));
+      bodies.forEach((body, index) => send(WORKER_EVENT.REQUEST, `r${index}`, '/upload', false, body));
+
+      await until(() => bodies.every((_, index) => of(`r${index}`, WORKER_EVENT.RESPONSE).length === 1));
+
+      bodies.forEach((body, index) => expect(answerOf(`r${index}`)).toEqual({ size: body.length, sha256: sha256(body) }));
     });
   });
 

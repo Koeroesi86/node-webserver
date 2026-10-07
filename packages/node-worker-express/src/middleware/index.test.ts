@@ -422,7 +422,8 @@ describe('workerMiddleware', () => {
     });
 
     it('sends the request without its body and says that the body follows', async () => {
-      await start();
+      // streamed, as even a small body that arrived with the request would go along with it otherwise
+      await start({ inlineRequestBody: 0 });
       const lease = mockUploadLease(answerWhenEnded);
 
       await send([Buffer.from('hello')]);
@@ -479,7 +480,7 @@ describe('workerMiddleware', () => {
     });
 
     it('does not take the worker away when the body has been read, while it works on the answer', async () => {
-      await start({ limitResponseTimeout: 2000 });
+      await start({ limitResponseTimeout: 2000, inlineRequestBody: 0 });
       const lease = mockUploadLease((message, handlers) => {
         if (message.type !== WORKER_EVENT.REQUEST_BODY) return;
         if (message.event.body === null) setTimeout(() => respond(handlers, message.requestId, 200, 'late answer'), 200);
@@ -772,6 +773,232 @@ describe('workerMiddleware', () => {
       const response = await fetch(`${baseUrl}/`);
 
       expect(await response.text()).toBe('part 1 part 2 part 3 part 4 part 5 ');
+    });
+  });
+
+  describe('bodies that arrive with the request', () => {
+    type Sent = { type: string; requestId: string; event?: { inlineBody?: string; hasBody?: boolean; body?: string | null } };
+
+    /** answers the request as soon as it is there, and the parts of a body as they come */
+    const answerAtOnce = (message: Sent, handlers: Handlers) => {
+      if (message.type === WORKER_EVENT.REQUEST) respond(handlers, message.requestId);
+      if (message.type === WORKER_EVENT.REQUEST_BODY) acknowledge(handlers, message.requestId);
+    };
+    const respond = (handlers: Handlers, requestId: string) =>
+      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } });
+    const acknowledge = (handlers: Handlers, requestId: string) => handlers.onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
+
+    interface Lease {
+      worker: { postMessage: jest.Mock<unknown, [Sent]> };
+      subscribe: jest.Mock;
+      release: jest.Mock;
+    }
+
+    const mockLeaseAnswering = (answer: (message: Sent, handlers: Handlers) => void = answerAtOnce) => {
+      const created: Lease[] = [];
+      FakePool.last.acquire.mockImplementation(async () => {
+        let handlers: Handlers;
+        const stream = { on: jest.fn(), off: jest.fn() };
+        const lease = {
+          worker: { instance: { stdout: stream, stderr: stream }, postMessage: jest.fn((message: Sent) => setImmediate(() => answer(message, handlers))) },
+          subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
+            handlers = { onMessage, onExit };
+          }),
+          release: jest.fn(),
+        };
+        created.push(lease);
+
+        return lease;
+      });
+
+      return created;
+    };
+
+    const messagesOf = (leases: Lease[], type: string): Sent[] =>
+      leases.flatMap(({ worker }) => worker.postMessage.mock.calls.map(([message]) => message)).filter((message) => message.type === type);
+
+    /** sends a request over a socket of its own, in the writes that are given: whatever is in one write arrives together, which fetch does not let one decide */
+    const rawRequest = (head: string, writes: Array<Buffer | string>, pauseBetweenWrites = 0) =>
+      new Promise<string>((resolve, reject) => {
+        const socket = net.connect(Number(new URL(baseUrl).port), '127.0.0.1');
+        const received: Buffer[] = [];
+        socket.on('data', (chunk) => received.push(chunk));
+        socket.on('end', () => resolve(Buffer.concat(received).toString()));
+        socket.on('error', reject);
+        socket.on('connect', async () => {
+          for (const part of [`${head}\r\nHost: web.localhost\r\nConnection: close\r\n\r\n`, ...writes]) {
+            socket.write(part);
+            if (pauseBetweenWrites) await new Promise((r) => setTimeout(r, pauseBetweenWrites));
+          }
+        });
+      });
+
+    /** the head and the body in a single write, so they arrive together */
+    const postTogether = (body: Buffer | string, path = '/') => {
+      const bytes = Buffer.from(body);
+
+      return rawRequest(`POST ${path} HTTP/1.1\r\nContent-Length: ${bytes.length}`, [bytes]);
+    };
+
+    /** the head in a write of its own, the body in the next one, when the request has been handed on */
+    const postApart = (body: string) => rawRequest(`POST / HTTP/1.1\r\nContent-Length: ${Buffer.byteLength(body)}`, [body], 60);
+
+    it('goes along with the request when it is small, with no parts after it', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+
+      const response = await postTogether('hello world');
+
+      expect(response).toContain('200 OK');
+      const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
+      expect(Buffer.from(request.event.inlineBody, 'base64').toString()).toBe('hello world');
+      expect(request.event).not.toHaveProperty('hasBody');
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
+    });
+
+    it('keeps every byte', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+      const bytes = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
+
+      await postTogether(bytes);
+
+      expect(Buffer.from(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.inlineBody, 'base64')).toEqual(bytes);
+    });
+
+    it('is empty for a request of no bytes, which needs no parts either', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+
+      await postTogether('');
+
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.inlineBody).toBe('');
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
+    });
+
+    it('also holds for the requests after the first one, which find their way in the cache', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+
+      await postTogether('first');
+      await postTogether('second');
+      await postTogether('third');
+
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST).map(({ event }) => Buffer.from(event.inlineBody, 'base64').toString())).toEqual([
+        'first',
+        'second',
+        'third',
+      ]);
+    });
+
+    it('is also how a small body with chunks of its own, sent in one write, arrives', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+
+      await rawRequest('POST / HTTP/1.1\r\nTransfer-Encoding: chunked', ['5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n']);
+
+      expect(Buffer.from(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.inlineBody, 'base64').toString()).toBe('hello world');
+    });
+
+    it('is streamed instead when the body comes after the request', async () => {
+      await start();
+      // the worker answers once it has the whole body, as the rest of a body is dropped when the response is done
+      const leases = mockLeaseAnswering((message, handlers) => {
+        if (message.type === WORKER_EVENT.REQUEST_BODY && message.event.body === null) respond(handlers, message.requestId);
+        if (message.type === WORKER_EVENT.REQUEST_BODY && message.event.body !== null) acknowledge(handlers, message.requestId);
+      });
+
+      await postApart('a body that was sent later');
+
+      const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
+      expect(request.event).toMatchObject({ hasBody: true });
+      expect(request.event).not.toHaveProperty('inlineBody');
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY).length).toBeGreaterThan(0);
+    });
+
+    it('is streamed whole, never in two ways, when it is bigger than the limit for inline bodies', async () => {
+      await start({ inlineRequestBody: 100 });
+      const leases = mockLeaseAnswering();
+
+      await postTogether(Buffer.alloc(101, 1));
+
+      const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
+      expect(request.event).toMatchObject({ hasBody: true });
+      expect(request.event).not.toHaveProperty('inlineBody');
+      const sent = Buffer.concat(
+        messagesOf(leases, WORKER_EVENT.REQUEST_BODY)
+          .filter(({ event }) => event.body !== null)
+          .map(({ event }) => Buffer.from(event.body, 'base64'))
+      );
+      expect(sent).toEqual(Buffer.alloc(101, 1));
+    });
+
+    it('goes along with the request when it is exactly as big as the limit', async () => {
+      await start({ inlineRequestBody: 100 });
+      const leases = mockLeaseAnswering();
+
+      await postTogether(Buffer.alloc(100, 1));
+
+      expect(Buffer.from(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.inlineBody, 'base64')).toHaveLength(100);
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
+    });
+
+    it('is always streamed with a limit of 0', async () => {
+      await start({ inlineRequestBody: 0 });
+      const leases = mockLeaseAnswering();
+
+      await postTogether('small');
+
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).toMatchObject({ hasBody: true });
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('inlineBody');
+    });
+
+    it('is refused with 413 before a worker is asked for when it is bigger than the limit for bodies', async () => {
+      await start({ limitRequestBody: 50 });
+      mockLeaseAnswering();
+
+      const response = await postTogether(Buffer.alloc(60, 1));
+
+      expect(response).toContain('413');
+      expect(FakePool.last.acquire).not.toHaveBeenCalled();
+    });
+
+    it('is let through when it is exactly as big as the limit for bodies', async () => {
+      await start({ limitRequestBody: 50 });
+      mockLeaseAnswering();
+
+      expect(await postTogether(Buffer.alloc(50, 1))).toContain('200 OK');
+    });
+
+    it('is not there for requests without a body', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+
+      await rawRequest('GET / HTTP/1.1', []);
+
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('inlineBody');
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('hasBody');
+    });
+
+    it('is not there for what the static worker answers', async () => {
+      await start();
+      const leases = mockLeaseAnswering();
+
+      await postTogether('ignored', '/plain/missing');
+
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('inlineBody');
+    });
+
+    it('lets the worker take its time to answer, without telling it that the client left', async () => {
+      await start({ limitResponseTimeout: 2000 });
+      const leases = mockLeaseAnswering((message, handlers) => {
+        if (message.type === WORKER_EVENT.REQUEST) setTimeout(() => respond(handlers, message.requestId), 150);
+      });
+
+      const response = await postTogether('hello');
+
+      expect(response).toContain('200 OK');
+      expect(messagesOf(leases, WORKER_EVENT.REQUEST_ABORT)).toHaveLength(0);
     });
   });
 });

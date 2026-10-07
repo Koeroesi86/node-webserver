@@ -17,6 +17,8 @@ export type RequestEvent = {
   frame?: string;
   /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
   hasBody?: boolean;
+  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
+  inlineBody?: string;
 };
 
 /**
@@ -93,6 +95,11 @@ export interface MiddlewareOptions {
   limitPerPath?: number | ((path: string) => number);
   /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
   warmStaticWorker?: boolean;
+  /**
+   * a request body that has arrived with the request, and is not bigger than this many bytes, is sent to the worker along with the request, which saves the messages for its parts.
+   * Bigger ones, and ones that arrive later, are streamed. 0 streams all. Defaults to 65536.
+   */
+  inlineRequestBody?: number;
   /** the largest request body in bytes, a bigger one is answered with 413. 0 for no limit, which is the default. The body is streamed to the worker, so it is never held in memory. */
   limitRequestBody?: number;
   /** how long a request may wait for a worker when none can be started, in milliseconds */
