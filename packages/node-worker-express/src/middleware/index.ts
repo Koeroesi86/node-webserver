@@ -160,11 +160,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       const messageListener = (responseEvent: WorkerOutputEvent) => {
         armResponseTimeout();
 
+        // a plain response is not acknowledged: the worker does not wait for it, and every message is a write to the pipe of the worker
         if (responseEvent.type === WORKER_EVENT.RESPONSE) {
-          worker.postMessage({
-            type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE,
-            requestId,
-          });
           const { event } = responseEvent;
           const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
 

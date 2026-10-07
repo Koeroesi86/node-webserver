@@ -4,6 +4,7 @@ import { MiddlewareOptions } from '../types';
 
 export enum WORKER_EVENT {
   REQUEST = 'WORKER_REQUEST',
+  /** not sent any more, nothing listened to it */
   REQUEST_ACKNOWLEDGE = 'WORKER_REQUEST_ACK',
   /** the client went away before the response was complete, a worker streaming it should stop */
   REQUEST_ABORT = 'WORKER_REQUEST_ABORT',

@@ -72,13 +72,21 @@ describe('workerInvoke', () => {
     received.filter((message) => message.requestId === requestId && (type === undefined || message.type === type));
   const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
 
-  it('acknowledges the request and passes the response of the worker on', async () => {
+  it('passes the response of the worker on', async () => {
     send(WORKER_EVENT.REQUEST, 'a', '/plain');
 
     await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
 
-    expect(of('a')[0].type).toBe(WORKER_EVENT.REQUEST_ACKNOWLEDGE);
     expect(of('a', WORKER_EVENT.RESPONSE)[0].event).toMatchObject({ statusCode: 200, body: 'plain' });
+  });
+
+  it('sends nothing else for a plain request, as every message is a write to the pipe of the parent', async () => {
+    send(WORKER_EVENT.REQUEST, 'a', '/plain');
+
+    await until(() => of('a').length >= 1);
+    await settle();
+
+    expect(of('a').map(({ type }) => type)).toEqual([WORKER_EVENT.RESPONSE]);
   });
 
   it.each(['/throws', '/rejects'])('answers 500 when the worker fails on %s', async (requestPath) => {

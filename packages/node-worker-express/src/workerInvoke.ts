@@ -42,10 +42,6 @@ function messageListener(message: WorkerInputEvent) {
   }
 
   if (message.type === WORKER_EVENT.REQUEST) {
-    process.send({
-      type: WORKER_EVENT.REQUEST_ACKNOWLEDGE,
-      requestId: message.requestId,
-    });
     let responded = false;
     const stream: Stream = { waiting: [], aborted: false };
     streams.set(message.requestId, stream);

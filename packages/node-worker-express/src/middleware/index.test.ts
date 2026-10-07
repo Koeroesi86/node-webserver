@@ -142,6 +142,20 @@ describe('workerMiddleware', () => {
     expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7);
   });
 
+  describe('messages to the worker', () => {
+    it('sends the request and nothing else for a plain response, which the worker does not wait for', async () => {
+      await start();
+      const lease = mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: 'hello', isBase64Encoded: false } })
+      );
+
+      await (await fetch(`${baseUrl}/`)).text();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(lease.worker.postMessage.mock.calls.map(([message]) => message.type)).toEqual([WORKER_EVENT.REQUEST]);
+    });
+  });
+
   describe('response headers', () => {
     const respondWith = (headers: Record<string, string | number>) =>
       mockLease((handlers, requestId) =>
