@@ -6,6 +6,9 @@
   "typings": "dist/index.d.ts",
   "files": [
     "dist",
+    "!dist/scripts/load-test-server.*",
+    "!dist/scripts/load-test-env.*",
+    "!dist/configuration.load-test.*",
     "examples",
     "logs/.gitkeep",
     "requests/.gitkeep",
@@ -27,7 +30,7 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "test": "jest",
-    "start:load-test": "NODE_WEBSERVER_CONFIG=../configuration.load-test node dist/scripts/load-test-server.js",
+    "start:load-test": "node dist/scripts/load-test-server.js",
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/server.js\""
   },
   "license": "MIT",

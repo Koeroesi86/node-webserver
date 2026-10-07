@@ -4,6 +4,8 @@ module.exports = (event, callback) => {
     headers: {
       'Content-Type': 'text/html',
       'Cache-Control': 'public, max-age=0',
+      // lets clients verify that the request body arrived
+      'X-Request-Body-Length': String(Buffer.byteLength(event.body === 'undefined' ? '' : event.body)),
     },
     body: `
     <html>

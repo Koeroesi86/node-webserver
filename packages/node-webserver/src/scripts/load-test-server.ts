@@ -1,3 +1,4 @@
+import './load-test-env';
 import { findPorts } from '../utils/ports';
 import logger from '../utils/logger';
 import startServer from '../utils/startServer';

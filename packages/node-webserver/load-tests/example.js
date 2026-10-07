@@ -5,25 +5,48 @@ import { Rate } from 'k6/metrics';
 
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
+// the https and secure websocket routes are only tested when the server runs with a certificate, see README.md
+const httpsPort = __ENV.HTTPS_PORT;
+const secureHostname = 'secure.localhost';
 const wsUrl = baseUrl.replace(/^http/, 'ws');
 // the example worker pushes a frame every second, so this many whole seconds of listening is expected to yield this many frames
 const wsHoldSeconds = Number(__ENV.WS_HOLD_SECONDS || 3.5);
 const wsMinMessages = Math.floor(wsHoldSeconds) - 1;
 const wsSessionOk = new Rate('ws_session_ok');
-// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs
-// (1050-1580 req/s overall, 135-150 ms websocket connect p95), as run to run noise is around 25%
-const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 700);
+// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs:
+// 1570-1810 req/s overall, p95 of 10-12 ms for the worker and secure routes, 26-32 ms for the static ones, 19-22 ms for the 404, 117-134 ms to connect a websocket
+const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 760);
+const postBody = JSON.stringify({ hello: 'world' });
 
-// every iteration walks through all routes, so each of them gets the same share of the load
+// every iteration walks through all routes, so each of them gets the same share of the load, unless `every` says otherwise
 const routes = {
-  worker: { method: 'GET', path: '/', status: 200, includes: 'It works!', maxP95: 25 },
-  workerPost: { method: 'POST', path: '/', status: 200, includes: 'It works!', body: JSON.stringify({ hello: 'world' }), maxP95: 25 },
-  static: { method: 'GET', path: '/static/index.html', status: 200, maxP95: 100 },
-  staticBinary: { method: 'GET', path: '/static/favicon.ico', status: 200, maxP95: 100 },
-  notFound: { method: 'GET', path: '/static/missing.html', status: 404, maxP95: 60 },
+  worker: { method: 'GET', url: `${baseUrl}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 25 },
+  workerPost: {
+    method: 'POST',
+    url: `${baseUrl}/`,
+    body: postBody,
+    status: 200,
+    validate: (r) => r.body.includes('It works!') && r.headers['X-Request-Body-Length'] === String(postBody.length),
+    maxP95: 25,
+  },
+  static: { method: 'GET', url: `${baseUrl}/static/index.html`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 65 },
+  staticBinary: {
+    method: 'GET',
+    url: `${baseUrl}/static/favicon.ico`,
+    status: 200,
+    validate: (r) => r.headers['Content-Type'].startsWith('image/') && Number(r.headers['Content-Length']) > 0,
+    maxP95: 65,
+  },
+  // every request to a missing file is logged as an error, so it is only a small share of the traffic
+  notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 45 },
+  ...(httpsPort && {
+    secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 25 },
+  }),
 };
 
 export const options = {
+  insecureSkipTLSVerify: true,
+  hosts: { [secureHostname]: '127.0.0.1' },
   scenarios: {
     constantLoad: {
       executor: 'constant-vus',
@@ -44,37 +67,42 @@ export const options = {
     http_reqs: [`rate>${minRequestRate}`],
     // a session is ok when the upgrade succeeded, frames kept arriving and the connection closed cleanly
     ws_session_ok: ['rate>0.99'],
-    ws_connecting: ['p(95)<500'],
+    ws_connecting: ['p(95)<300'],
     ...Object.fromEntries(Object.entries(routes).map(([route, { maxP95 }]) => [`http_req_duration{route:${route}}`, [`p(95)<${maxP95}`]])),
   },
 };
 
 export default function () {
-  Object.entries(routes).forEach(([route, { method, path, status, includes, body }]) => {
-    const response = http.request(method, `${baseUrl}${path}`, body, {
-      headers: { Host: hostname, ...(body && { 'Content-Type': 'application/json' }) },
-      tags: { route },
-      timeout: '5s',
-      responseCallback: http.expectedStatuses(status),
-    });
+  Object.entries(routes)
+    .filter(([, { every = 1 }]) => __ITER % every === 0)
+    .forEach(([route, { method, url, body, status, validate }]) => {
+      const response = http.request(method, url, body, {
+        headers: { Host: url.startsWith('https') ? secureHostname : hostname, ...(body && { 'Content-Type': 'application/json' }) },
+        tags: { route },
+        timeout: '5s',
+        responseCallback: http.expectedStatuses(status),
+      });
 
-    check(
-      response,
-      {
-        [`${route} status is ${status}`]: (r) => r.status === status,
-        [`${route} body is as expected`]: (r) => includes === undefined || (typeof r.body === 'string' && r.body.includes(includes)),
-      },
-      { route }
-    );
-  });
+      check(
+        response,
+        {
+          [`${route} status is ${status}`]: (r) => r.status === status,
+          [`${route} response is as expected`]: (r) => r.status === status && validate(r),
+        },
+        { route }
+      );
+    });
 }
 
 export function websocketSession() {
+  const secure = Boolean(httpsPort) && __ITER % 2 === 1;
+  const route = secure ? 'websocketSecure' : 'websocket';
+  const url = secure ? `wss://${secureHostname}:${httpsPort}/websocket/exampleWorker.js` : `${wsUrl}/websocket/exampleWorker.js`;
   let received = 0;
   let valid = true;
   let closedCleanly = false;
 
-  const response = ws.connect(`${wsUrl}/websocket/exampleWorker.js`, { headers: { Host: hostname }, tags: { route: 'websocket' } }, (socket) => {
+  const response = ws.connect(url, { headers: { Host: secure ? secureHostname : hostname }, tags: { route } }, (socket) => {
     socket.on('message', (data) => {
       received += 1;
       valid = valid && typeof JSON.parse(data).now === 'number';
@@ -85,7 +113,7 @@ export function websocketSession() {
     socket.setTimeout(() => socket.close(), wsHoldSeconds * 1000);
   });
 
-  const ok = check(response, { 'websocket upgraded': (r) => r && r.status === 101 }, { route: 'websocket' }) && received >= wsMinMessages && valid && closedCleanly;
-  check(null, { 'websocket frames received': () => received >= wsMinMessages, 'websocket frames are valid': () => valid }, { route: 'websocket' });
-  wsSessionOk.add(ok);
+  const upgraded = check(response, { [`${route} upgraded`]: (r) => r && r.status === 101 }, { route });
+  check(null, { [`${route} frames received`]: () => received >= wsMinMessages, [`${route} frames are valid`]: () => valid }, { route });
+  wsSessionOk.add(upgraded && received >= wsMinMessages && valid && closedCleanly);
 }
