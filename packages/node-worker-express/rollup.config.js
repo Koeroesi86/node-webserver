@@ -5,7 +5,7 @@ const packageJson = require('./package.json');
 /** @type {import('rollup').RollupOptions} */
 module.exports = {
   input: fs.readdirSync('./src')
-    .filter((file) => file.endsWith('.ts'))
+    .filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts'))
     .map((file) => `./src/${file}`),
   output: {
     dir: './dist',
@@ -19,8 +19,10 @@ module.exports = {
     'fs/promises',
     'crypto',
     'child_process',
+    'os',
+    'util',
     'stream',
     'url',
   ],
-  plugins: [typescript()],
+  plugins: [typescript({ tsconfig: './tsconfig.build.json' })],
 };

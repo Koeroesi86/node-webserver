@@ -55,6 +55,8 @@ export interface MiddlewareOptions {
   limitPerPath?: number | ((path: string) => number);
   limitRequestBody?: number;
   limitRequestTimeout?: number;
+  /** how long the worker may stay silent while answering an HTTP request before it is answered with 504, 0 disables it */
+  limitResponseTimeout?: number;
   idleCheckTimeout?: number;
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;

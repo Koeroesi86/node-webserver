@@ -3,7 +3,8 @@ import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import { Writable } from 'stream';
 import { InvokableWorker, ResponseEvent } from './types';
-import fileExists from './utils/fileExists';
+import isFile from './utils/isFile';
+import isInside from './utils/isInside';
 import getContentType from './utils/getContentType';
 import getEtag from './utils/getEtag';
 import getCharset from './utils/getCharset';
@@ -28,10 +29,11 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
     process.exit(0);
   }, 1000 * 60 * 30);
 
-  const currentPath = `${event.path.replace(/\.{2,}/, '')}${/\/$/.test(event.path) ? 'index.html' : ''}`;
+  const currentPath = `${event.path}${/\/$/.test(event.path) ? 'index.html' : ''}`;
   const fileName = path.resolve(event.rootPath, `.${currentPath}`);
 
-  if (['GET', 'HEAD'].includes(event.httpMethod) && (await fileExists(fileName))) {
+  // only files below the root are served, a directory or anything outside of it is answered as missing
+  if (['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, fileName) && (await isFile(fileName))) {
     // TODO: range request
     const bodyBuffer = await fs.readFile(fileName);
     const stats = await fs.stat(fileName);
@@ -104,7 +106,7 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
         'Content-Type': 'text/plain',
         'Cache-Control': 'public, max-age=0',
       },
-      body: `${currentPath} does not exist`,
+      body: `${event.path} does not exist`,
       isBase64Encoded: false,
     });
   }

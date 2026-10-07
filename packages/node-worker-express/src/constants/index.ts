@@ -27,6 +27,7 @@ export const DefaultOptions: MiddlewareOptions = {
   limitPerPath: os.availableParallelism(),
   limitRequestBody: 1000000,
   limitRequestTimeout: 5000,
+  limitResponseTimeout: 30000,
   idleCheckTimeout: 5,
   onStdout: () => {},
   onStderr: () => {},
