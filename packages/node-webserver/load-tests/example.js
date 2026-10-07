@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import ws from 'k6/ws';
+import crypto from 'k6/crypto';
 import { check } from 'k6';
 import { Rate } from 'k6/metrics';
 
@@ -7,6 +8,7 @@ const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
 const lambdaHostname = 'lambda.localhost';
 const compressedHostname = 'compressed.localhost';
+const uploadHostname = 'upload.localhost';
 // the https and secure websocket routes are only tested when the server runs with a certificate, see README.md
 const httpsPort = __ENV.HTTPS_PORT;
 const secureHostname = 'secure.localhost';
@@ -20,6 +22,9 @@ const wsSessionOk = new Rate('ws_session_ok');
 // 20-23 ms for the lambda, 100-200 ms to connect a websocket
 const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 1000);
 const postBody = JSON.stringify({ hello: 'world' });
+// four parts of 64 KiB on their way to the worker, all byte values included
+const uploadBody = new Uint8Array(256 * 1024).map((_, index) => (index * 31) % 251).buffer;
+const uploadSha256 = crypto.sha256(uploadBody, 'hex');
 const streamChunks = 8;
 const streamChunkSize = 4096;
 
@@ -69,6 +74,18 @@ const routes = {
       return bytes.length === streamChunks * streamChunkSize && Array.from({ length: streamChunks }, (_, index) => index).every((index) => bytes[index * streamChunkSize] === index && bytes[(index + 1) * streamChunkSize - 1] === index);
     },
     maxP95: 35,
+  },
+  // the body is passed on to the worker as a stream while it arrives, the worker answers with the size and the hash of what it received
+  upload: {
+    method: 'POST',
+    url: `${baseUrl}/`,
+    host: uploadHostname,
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: uploadBody,
+    status: 200,
+    every: 4,
+    validate: (r) => r.json('size') === uploadBody.byteLength && r.json('sha256') === uploadSha256,
+    maxP95: 60,
   },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
   notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 40 },

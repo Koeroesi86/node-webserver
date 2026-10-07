@@ -15,7 +15,8 @@ pnpm --filter @koeroesi86/node-webserver start:load-test &   # http on 8080, htt
 k6 run -e HTTPS_PORT=8443 packages/node-webserver/load-tests/example.js
 ```
 
-The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses.
+The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses,
+and `upload.localhost`, where `examples/upload/exampleWorker.js` reads the request body as a stream (`streamRequestBody`) and answers with its size and sha256, which the `upload` route checks.
 
 ## CPU bound worker
 
