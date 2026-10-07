@@ -19,6 +19,21 @@ const routes = Object.entries(metrics)
   .map(([metric, values]) => [metric.match(/^http_req_duration\{route:(.+)\}$/)?.[1], values])
   .filter(([route]) => route !== undefined)
   .map(([route, values]) => `| ${route} | ${ms(values.med)} | ${ms(values['p(95)'])} | ${ms(values.max)} |`);
+const { ws_sessions: sessions, ws_session_ok: sessionsOk, ws_msgs_received: frames, ws_connecting: connecting, ws_session_duration: sessionDuration } = metrics;
+const websocket =
+  sessions === undefined
+    ? []
+    : [
+        '### WebSocket',
+        '',
+        '| Metric | Value |',
+        '| --- | --- |',
+        `| Sessions | ${sessions.count} (${sessionsOk?.passes ?? 0} ok, ${sessionsOk?.fails ?? 0} failed) |`,
+        `| Frames received | ${frames?.count ?? 0} |`,
+        `| Connect time median / p95 / max | ${ms(connecting?.med)} / ${ms(connecting?.['p(95)'])} / ${ms(connecting?.max)} |`,
+        `| Session duration avg | ${sessionDuration === undefined ? 'n/a' : `${(sessionDuration.avg / 1000).toFixed(2)} s`} |`,
+        '',
+      ];
 const breachedCount = Object.values(metrics)
   .flatMap(({ thresholds: results = {} }) => Object.values(results))
   .filter(Boolean).length;
@@ -43,6 +58,7 @@ console.log(
     `| Data received | ${(received.count / 1024 / 1024).toFixed(1)} MiB |`,
     '',
     ...(routes.length === 0 ? [] : ['### Latency per route', '', '| Route | Median | p95 | Max |', '| --- | --- | --- | --- |', ...routes, '']),
+    ...websocket,
     '### Thresholds',
     '',
     '| Metric | Expression | Result |',
