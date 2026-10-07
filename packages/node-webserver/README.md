@@ -43,23 +43,11 @@ Responses of text like types (text, JSON, JavaScript, XML, SVG, some fonts) are 
 when they are at least `threshold` bytes (1024 by default) or of unknown size. Streamed responses stay streamed, as every part is flushed. The compression runs on the
 threads of node, not on the one that serves the requests, but it still takes CPU: leave it to a reverse proxy or CDN if there is one in front of the server.
 
-### Streaming request bodies
+### Request bodies
 
-By default the body of a request is read into memory (up to `limitRequestBody`, 1 MB, bigger ones are answered with 413) before the worker is called, and the worker gets it as the string `event.body`.
-Switch streaming on for a server with `streamRequestBody` in its options, then the worker is called at once and reads the body from `event.bodyStream`, a Readable:
-
-```javascript
-{
-  hostname: 'upload.localhost',
-  protocol: 'http',
-  type: 'worker',
-  options: {
-    root: '/path/to/workers',
-    streamRequestBody: true, // or (workerPath) => workerPath.endsWith('upload.js')
-    limitStreamedRequestBody: 0, // bytes, 0 (the default) for no limit, a bigger body is answered with 413
-  },
-}
-```
+The body of a request is not part of the event a worker is called with. The worker is called as soon as the request arrives, and reads the body from `event.bodyStream`, a Readable, while it comes in.
+Every request has one, it is empty when the request has no body. The body goes to the worker in parts, and only a few ahead of what the worker has read, so a slow worker, or a fast client, does not fill the memory:
+uploads of any size need a flat amount of it.
 
 ```javascript
 module.exports = async (event, callback) => {
@@ -69,12 +57,54 @@ module.exports = async (event, callback) => {
 };
 ```
 
-The body is sent to the worker in parts, and only a few ahead of what the worker has read, so a worker that is slow, or a client that is fast, does not fill the memory: uploads of any size
-need a flat amount of it. Things to know:
+A worker that needs the whole body reads it into memory itself, with what node has for it (`stream/consumers`):
+
+```javascript
+const { buffer, json, text } = require('stream/consumers');
+
+module.exports = async (event, callback) => {
+  const payload = await json(event.bodyStream); // or text(...), or buffer(...) for the bytes
+  callback({ statusCode: 200, headers: {}, body: JSON.stringify({ received: payload }), isBase64Encoded: false });
+};
+```
+
+Things to know:
+- **`event.body` is gone.** Workers that read it get `undefined` and have to read `event.bodyStream` instead, as above. The server does not read bodies into memory any more, nor stop at 1 MB:
+  `limitRequestBody` in the options of the server is the largest body in bytes that is let through (413 above it), 0 for no limit, which is the default.
 - Read the body before you answer. Once the response is complete the rest of the body is dropped and the stream is destroyed.
 - The stream is destroyed with an error when the client goes away during the upload, `for await` throws it.
-- `event.body` is empty for a streamed request. Requests without a body (GET, HEAD, DELETE, OPTIONS), websockets and the static worker are never streamed.
+- Requests that have no body (GET, HEAD, DELETE, OPTIONS), websockets and the static worker never get one.
 - The worker holds a request for as long as the upload takes. `limitResponseTimeout` counts from the last part that moved, a stalled upload is answered with 504 after it.
+- The `lambda` server type still reads the whole body first.
+
+### Metrics for workers
+
+A worker can ask the server how it is doing with `event.getMetrics()`, which makes it easy to add a health or metrics endpoint. The server is one process and the workers are others, so this is a question over the channel to the server,
+answered with a snapshot:
+
+```javascript
+module.exports = async (event, callback) => {
+  const metrics = await event.getMetrics();
+  callback({ statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(metrics), isBase64Encoded: false });
+};
+```
+
+| | |
+| --- | --- |
+| `uptimeSeconds`, `memory` | of the server process: `rss`, `heapTotal`, `heapUsed`, `external` |
+| `eventLoopDelayMs` | `mean`, `p99` and `max` of how late the event loop ran since the metrics were read the last time (all zero the first time): the best sign that the server is too busy |
+| `requests` | `total`, `active` (no complete response yet) and `status`, the responses by class (`2xx` ... `5xx`) |
+| `sources` | `workers:<root>` for each worker server (`workers`, `active` requests, `waiting` requests, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
+
+`examples/health/exampleWorker.js` is a worker with `/health` (200, or 503 while requests wait for a worker) and `/metrics`. Mind that a health endpoint is a worker like the others: it is reachable by anyone who can reach its host name.
+Part of the numbers are counted since the server started, a scraper computes rates from them. The existing stats domain (`statsDomain`) reports CPU and memory per process.
+`getServerMetrics()` and `registerMetricsSource(name, read)` are exported by `@koeroesi86/node-worker-express`, to read the same numbers in the server process or add your own.
+
+### Connections
+
+`keepAliveTimeout` (milliseconds, default 65000) is how long the server keeps an idle connection of a client open. Node closes them after 5 seconds, which is shorter than what load balancers and proxies keep theirs for (60 seconds is common),
+and a request that was sent over a connection that has just been closed fails. `maxConnections` (default 10000, 0 for no limit) is the number of open connections per server (http and https each) after which new ones are dropped,
+which the `connections:*` metrics count. Both are in the top level of the configuration, next to the ports.
 
 ### Build
 

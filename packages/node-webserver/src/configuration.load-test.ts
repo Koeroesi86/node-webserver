@@ -33,7 +33,15 @@ const uploadServer: ServerInstance = {
   options: {
     root: resolve(PACKAGE_ROOT, 'examples/upload'),
     index: ['exampleWorker.js'],
-    streamRequestBody: true,
+  },
+};
+const healthServer: ServerInstance = {
+  hostname: 'health.localhost',
+  protocol: 'http',
+  type: 'worker',
+  options: {
+    root: resolve(PACKAGE_ROOT, 'examples/health'),
+    index: ['exampleWorker.js'],
   },
 };
 const secureServers: ServerInstance[] =
@@ -63,6 +71,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  *
  * `compressed.localhost` serves the example worker with compression on.
  * `upload.localhost` serves a worker that reads the request body as a stream.
+ * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see load-tests/README.md.
  * WORKERS_PER_PATH overrides the number of workers started per path.
  */
@@ -75,7 +84,7 @@ const configuration = {
     error: true,
     warning: true,
   },
-  servers: [...exampleConfiguration.servers, lambdaServer, compressedServer, uploadServer, ...secureServers].map(withWorkerLimit),
+  servers: [...exampleConfiguration.servers, lambdaServer, compressedServer, uploadServer, healthServer, ...secureServers].map(withWorkerLimit),
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

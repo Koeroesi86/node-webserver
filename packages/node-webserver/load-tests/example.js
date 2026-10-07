@@ -9,6 +9,7 @@ const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
 const lambdaHostname = 'lambda.localhost';
 const compressedHostname = 'compressed.localhost';
 const uploadHostname = 'upload.localhost';
+const healthHostname = 'health.localhost';
 // the https and secure websocket routes are only tested when the server runs with a certificate, see README.md
 const httpsPort = __ENV.HTTPS_PORT;
 const secureHostname = 'secure.localhost';
@@ -86,6 +87,16 @@ const routes = {
     every: 4,
     validate: (r) => r.json('size') === uploadBody.byteLength && r.json('sha256') === uploadSha256,
     maxP95: 60,
+  },
+  // the worker asks the server for its metrics: process, requests and the pools of workers, which only a share of the iterations needs
+  metrics: {
+    method: 'GET',
+    url: `${baseUrl}/metrics`,
+    host: healthHostname,
+    status: 200,
+    every: 8,
+    validate: (r) => r.json('memory.rss') > 0 && r.json('requests.total') > 0 && r.json('uptimeSeconds') > 0 && r.json('sources.lambdas') !== undefined,
+    maxP95: 50,
   },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
   notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 40 },
