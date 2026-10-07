@@ -162,4 +162,35 @@ describe('WorkerPool', () => {
 
     expect(lease.worker).toBe(FakeWorker.instances[1]);
   });
+
+  describe('warm', () => {
+    it('starts a worker that the first request gets, without starting another one', async () => {
+      const pool = createPool();
+
+      pool.warm(pathA, {});
+      expect(FakeWorker.instances).toHaveLength(1);
+      const lease = await pool.acquire(pathA, {}, 4);
+
+      expect(lease.worker).toBe(FakeWorker.instances[0]);
+      expect(FakeWorker.instances).toHaveLength(1);
+    });
+
+    it('starts as many workers as asked for, and not more when called again', () => {
+      const pool = createPool();
+
+      pool.warm(pathA, {}, 3);
+      pool.warm(pathA, {}, 3);
+
+      expect(FakeWorker.instances).toHaveLength(3);
+    });
+
+    it('does not go beyond the overall limit', () => {
+      const pool = createPool({ overallLimit: 2 });
+
+      pool.warm(pathA, {}, 5);
+      pool.warm(pathB, {});
+
+      expect(pool.getWorkerCount()).toBe(2);
+    });
+  });
 });

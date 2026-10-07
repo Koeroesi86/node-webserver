@@ -12,6 +12,7 @@ jest.mock('../utils/workerPool', () => {
   class FakePool {
     static last: FakePool;
     acquire = jest.fn();
+    warm = jest.fn();
 
     constructor() {
       FakePool.last = this;
@@ -32,6 +33,7 @@ describe('workerMiddleware', () => {
   beforeAll(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'middleware-'));
     await fs.writeFile(path.join(root, 'exampleWorker.js'), '');
+    await fs.mkdir(path.join(root, 'plain'));
   });
 
   afterAll(() => fs.rm(root, { recursive: true, force: true }));
@@ -137,6 +139,32 @@ describe('workerMiddleware', () => {
     await fetch(`${baseUrl}/`);
 
     expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7);
+  });
+
+  describe('warming the static worker', () => {
+    it('starts a static worker together with the middleware', async () => {
+      await start({ staticWorker: '/static-worker.js' });
+
+      expect(FakePool.last.warm).toHaveBeenCalledTimes(1);
+      expect(FakePool.last.warm).toHaveBeenCalledWith('/static-worker.js', expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe', 'ipc'] }));
+    });
+
+    it('can be switched off', async () => {
+      await start({ warmStaticWorker: false });
+
+      expect(FakePool.last.warm).not.toHaveBeenCalled();
+    });
+
+    it('asks for the static worker with the same options when a file is requested, so the started one is used', async () => {
+      await start({ staticWorker: '/static-worker.js' });
+      mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: '', isBase64Encoded: false } })
+      );
+
+      await fetch(`${baseUrl}/plain/file.txt`);
+
+      expect(FakePool.last.acquire.mock.calls[0][1]).toBe(FakePool.last.warm.mock.calls[0][1]);
+    });
   });
 
   describe('streamed responses', () => {

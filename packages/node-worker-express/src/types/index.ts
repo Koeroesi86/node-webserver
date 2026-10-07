@@ -59,6 +59,8 @@ export interface MiddlewareOptions {
   limit?: number;
   /** workers started per path, requests are spread over them. Defaults to the available CPU cores, 0 or 1 keeps a single worker. */
   limitPerPath?: number | ((path: string) => number);
+  /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
+  warmStaticWorker?: boolean;
   limitRequestBody?: number;
   limitRequestTimeout?: number;
   /** how long the worker may stay silent while answering an HTTP request before it is answered with 504, 0 disables it */

@@ -28,6 +28,10 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
     idleCheckTimeout: config.idleCheckTimeout,
     acquireTimeout: config.limitRequestTimeout,
   });
+  const staticWorkerOptions = { cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe', 'ipc'] };
+  if (config.warmStaticWorker) {
+    workerPool.warm(config.staticWorker, staticWorkerOptions);
+  }
   const bodyParser = createBodyParser({ limitRequestBody: config.limitRequestBody, shouldError: true });
   const aliasCache = new Map<string, string>();
   const workerCache = new Map<string, string>();
@@ -100,14 +104,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
             },
             limitPerPath
           )
-        : workerPool.acquire(
-            config.staticWorker,
-            {
-              cwd: process.cwd(),
-              stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-            },
-            limitPerPath
-          ));
+        : workerPool.acquire(config.staticWorker, staticWorkerOptions, limitPerPath));
       const { worker } = lease;
 
       const requestId = uuid();

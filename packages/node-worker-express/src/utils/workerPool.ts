@@ -155,6 +155,13 @@ class WorkerPool {
     return belowPathLimit && hasRoom ? this.createWorker(workerPath, options) : leastLoaded;
   };
 
+  /** Starts workers for the path ahead of its first request, so that one does not have to wait for a process to start. */
+  warm = (workerPath: string, options = {}, count = 1) => {
+    while (this.getWorkerCountForPath(workerPath) < count && this.belowOverallLimit()) {
+      this.createWorker(workerPath, options);
+    }
+  };
+
   /**
    * Hands out a worker for the path: an idle one, otherwise a new one while fewer than `limit` run for the path, otherwise the least busy.
    * A limit of 0 (or less) keeps a single worker for the path.
