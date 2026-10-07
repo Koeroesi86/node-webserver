@@ -30,6 +30,15 @@ export const StaticStreamThreshold = 1024 * 1024;
 /** how many parts of a streamed request body may be on their way to the worker before it takes one */
 export const RequestBodyWindow = 4;
 
+/** a worker that stops sooner than this after it started, or with an error, has crashed, in milliseconds */
+export const WorkerMinUptime = 5000;
+
+/**
+ * Starting a worker for a path that crashed twice in a row is refused for this long, doubling with every crash until the maximum,
+ * so that a worker that fails at start does not cost a process for every request. In milliseconds.
+ */
+export const WorkerRestartBackoff = { base: 100, max: 10000 };
+
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
 export enum Protocols {

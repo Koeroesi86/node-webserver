@@ -7,6 +7,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { RequestBodyWindow, WORKER_EVENT } from '../constants';
 import { getServerMetrics } from '../utils/metrics';
+import WorkerUnavailableError from '../utils/workerUnavailableError';
 import workerMiddleware from './index';
 
 type Handlers = { onMessage: (message: unknown) => void; onExit: (code: number | null) => void };
@@ -18,7 +19,7 @@ jest.mock('../utils/workerPool', () => {
     warm = jest.fn();
     getStats = () => ({ workers: 2, active: 1, waiting: 0, paths: {} });
 
-    constructor() {
+    constructor(readonly params: { onStdout?: () => void; onStderr?: () => void }) {
       FakePool.last = this;
     }
   }
@@ -683,6 +684,94 @@ describe('workerMiddleware', () => {
       expect(sources[`workers:${root}`]).toEqual({ workers: 2, active: 1, waiting: 0, paths: {} });
       expect(requests.total - before.total).toBe(1);
       expect(requests.status['4xx'] - before.status['4xx']).toBe(1);
+    });
+  });
+
+  describe('output of the workers', () => {
+    it('leaves handing the output of the workers to the pool, once for each worker, not for every request', async () => {
+      const onStdout = jest.fn();
+      const onStderr = jest.fn();
+      await start({ onStdout, onStderr });
+      const lease = mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
+      );
+
+      await fetch(`${baseUrl}/`);
+      await fetch(`${baseUrl}/`);
+
+      expect(FakePool.last.params).toMatchObject({ onStdout, onStderr });
+      expect(lease.worker.instance.stdout.on).not.toHaveBeenCalled();
+      expect(lease.worker.instance.stderr.on).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('workers that keep failing', () => {
+    it('answers 503 with the time to wait, without telling where the worker is', async () => {
+      await start();
+      FakePool.last.acquire.mockRejectedValue(new WorkerUnavailableError('/srv/secret/worker.js', 2500));
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get('retry-after')).toBe('3');
+      expect(await response.text()).toBe('Service unavailable.');
+    });
+
+    it('asks to wait at least a second', async () => {
+      await start();
+      FakePool.last.acquire.mockRejectedValue(new WorkerUnavailableError('/srv/worker.js', 100));
+
+      expect((await fetch(`${baseUrl}/`)).headers.get('retry-after')).toBe('1');
+    });
+  });
+
+  describe('the time a response may take', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    const part = (requestId: string, body: Buffer | null) => ({
+      type: WORKER_EVENT.RESPONSE_EMIT,
+      requestId,
+      event: { statusCode: 200, headers: {}, emit: true, body: body === null ? null : body.toString('base64'), isBase64Encoded: body !== null },
+    });
+
+    it('is watched by one timer for the whole response, however many parts come in', async () => {
+      await start({ limitResponseTimeout: 777 });
+      mockLease((handlers, requestId) => {
+        Array.from({ length: 50 }).forEach(() => handlers.onMessage(part(requestId, Buffer.from('part'))));
+        handlers.onMessage(part(requestId, null));
+      });
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+
+      const response = await fetch(`${baseUrl}/`);
+      await response.arrayBuffer();
+
+      // one for the response, a second at most when it looked again
+      expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 777).length).toBeLessThanOrEqual(2);
+    });
+
+    it('runs out when nothing moves for as long as the limit, also after parts came in', async () => {
+      await start({ limitResponseTimeout: 150 });
+      mockLease((handlers, requestId) => handlers.onMessage(part(requestId, Buffer.from('first part'))));
+
+      const response = await fetch(`${baseUrl}/`);
+
+      // the headers are out, so the connection is cut instead of answered with 504
+      await expect(response.arrayBuffer()).rejects.toThrow();
+    });
+
+    it('goes on while parts keep coming, for longer than the limit', async () => {
+      await start({ limitResponseTimeout: 150 });
+      mockLease((handlers, requestId) => {
+        const parts = [1, 2, 3, 4, 5].map((number) => () => handlers.onMessage(part(requestId, Buffer.from(`part ${number} `))));
+        parts.forEach((send, index) => setTimeout(send, index * 80));
+        setTimeout(() => handlers.onMessage(part(requestId, null)), parts.length * 80);
+      });
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(await response.text()).toBe('part 1 part 2 part 3 part 4 part 5 ');
     });
   });
 });

@@ -3,6 +3,7 @@ import path from 'path';
 import url from 'url';
 import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WORKER_EVENT } from '../constants';
 import WorkerPool from '../utils/workerPool';
+import WorkerUnavailableError from '../utils/workerUnavailableError';
 import isWebSocket from '../utils/isWebSocket';
 import parseWsMessage from '../utils/parseWsMessage';
 import constructWsMessage from '../utils/constructWsMessage';
@@ -38,6 +39,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
     onExit: config.onExit,
     idleCheckTimeout: config.idleCheckTimeout,
     acquireTimeout: config.limitRequestTimeout,
+    onStdout: config.onStdout,
+    onStderr: config.onStderr,
   });
   // a function, as copying the environment is costly and only needed when a worker is started, not for every request
   const workerOptions = () => ({
@@ -120,13 +123,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         request.socket.on('data', requestSocketListener);
       }
 
-      worker.instance.stdout.off('data', config.onStdout);
-      worker.instance.stdout.on('data', config.onStdout);
-
-      worker.instance.stderr.off('data', config.onStderr);
-      worker.instance.stderr.on('data', config.onStderr);
-
       let responseTimer: NodeJS.Timeout | undefined;
+      /** when the response runs out of time, moved forward by every sign of progress, which only costs a number, not a timer */
+      let responseDeadline = 0;
 
       const failRequest = (statusCode: number, message: string) => {
         if (event.protocol === Protocols.websocket) {
@@ -140,12 +139,24 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         cleanupConnection();
       };
 
+      const checkResponseTimeout = () => {
+        const remaining = responseDeadline - Date.now();
+
+        if (remaining > 0) {
+          responseTimer = setTimeout(checkResponseTimeout, remaining);
+          return;
+        }
+
+        failRequest(504, 'Worker did not respond in time.');
+      };
+
       // the response has to keep progressing, either by the worker answering or by the client taking what was written, as a streamed file can take longer than the timeout
       const armResponseTimeout = () => {
         if (event.protocol !== Protocols.http || !config.limitResponseTimeout) return;
 
-        clearTimeout(responseTimer);
-        responseTimer = setTimeout(() => failRequest(504, 'Worker did not respond in time.'), config.limitResponseTimeout);
+        responseDeadline = Date.now() + config.limitResponseTimeout;
+        // one timer for the whole response, that looks again when it fires if there was progress since. After the cleanup the handle is still set, so no new one starts.
+        responseTimer ??= setTimeout(checkResponseTimeout, config.limitResponseTimeout);
       };
 
       /** how many parts of the streamed request body the worker has not taken yet */
@@ -273,6 +284,12 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         response.on('finish', cleanupConnection);
       }
     } catch (e) {
+      if (e instanceof WorkerUnavailableError && !response.headersSent) {
+        // the details name a file of the server, the client only needs to know when to come back
+        response.writeHead(503, { 'Content-Type': 'text/plain', 'Retry-After': Math.max(1, Math.ceil(e.retryAfterMs / 1000)) });
+        response.end('Service unavailable.');
+        return;
+      }
       next(e);
     }
   };

@@ -1,4 +1,6 @@
+import type { EventEmitter } from 'events';
 import WorkerPool from './workerPool';
+import WorkerUnavailableError from './workerUnavailableError';
 import type { WorkerLease } from './workerPool';
 
 jest.mock('@koeroesi86/node-worker', () => {
@@ -6,7 +8,7 @@ jest.mock('@koeroesi86/node-worker', () => {
 
   class FakeWorker {
     static instances: FakeWorker[] = [];
-    readonly instance = Object.assign(new EventEmitter(), { exitCode: null as number | null });
+    readonly instance = Object.assign(new EventEmitter(), { exitCode: null as number | null, stdout: new EventEmitter(), stderr: new EventEmitter() });
     readonly terminate = jest.fn(() => this.exit(0));
 
     constructor(readonly command: string, readonly options: unknown) {
@@ -247,7 +249,195 @@ describe('WorkerPool', () => {
     });
 
     it('is empty for a pool that has not started a worker', () => {
-      expect(createPool().getStats()).toEqual({ workers: 0, active: 0, waiting: 0, paths: {} });
+      expect(createPool().getStats()).toEqual({ workers: 0, active: 0, waiting: 0, failing: {}, paths: {} });
+    });
+  });
+
+  describe('output of the workers', () => {
+    const output = (worker: { instance: { stdout: EventEmitter; stderr: EventEmitter } }) => ({
+      stdout: worker.instance.stdout,
+      stderr: worker.instance.stderr,
+    });
+
+    it('hands what a worker writes to the callbacks, from the moment it starts', () => {
+      const onStdout = jest.fn();
+      const onStderr = jest.fn();
+      const pool = createPool({ onStdout, onStderr });
+
+      pool.warm(pathA, {});
+      output(FakeWorker.instances[0]).stdout.emit('data', Buffer.from('out'));
+      output(FakeWorker.instances[0]).stderr.emit('data', Buffer.from('err'));
+
+      expect(onStdout).toHaveBeenCalledWith(Buffer.from('out'));
+      expect(onStderr).toHaveBeenCalledWith(Buffer.from('err'));
+    });
+
+    it('listens once for a worker, however many requests it gets', async () => {
+      const pool = createPool({ onStdout: jest.fn(), onStderr: jest.fn() });
+
+      await Promise.all(Array.from({ length: 5 }, async () => (await pool.acquire(pathA, {}, 1)).release()));
+      Array.from({ length: 5 }).forEach(async () => (await pool.acquire(pathA, {}, 1)).release());
+
+      const { stdout, stderr } = output(FakeWorker.instances[0]);
+      expect([stdout.listenerCount('data'), stderr.listenerCount('data')]).toEqual([1, 1]);
+    });
+
+    it('does not listen when there is nothing to hand the output to', async () => {
+      await createPool().acquire(pathA, {}, 1);
+
+      const { stdout, stderr } = output(FakeWorker.instances[0]);
+      expect([stdout.listenerCount('data'), stderr.listenerCount('data')]).toEqual([0, 0]);
+    });
+  });
+
+  describe('workers that crash', () => {
+    const restartBackoff = { minUptime: 5000, base: 100, max: 400 };
+
+    beforeEach(() => {
+      jest.useFakeTimers({ now: 1000000, doNotFake: ['setImmediate', 'nextTick'] });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    /** starts a worker for the path and lets it crash right away */
+    const crash = async (pool: WorkerPool, code = 1) => {
+      const lease = await pool.acquire(pathA, {}, 1);
+      FakeWorker.instances[FakeWorker.instances.length - 1].exit(code);
+      lease.release();
+    };
+
+    it('is started again right away after the first crash', async () => {
+      const pool = createPool({ restartBackoff });
+      await crash(pool);
+
+      const lease = await pool.acquire(pathA, {}, 1);
+
+      expect(FakeWorker.instances).toHaveLength(2);
+      expect(lease.worker).toBe(FakeWorker.instances[1]);
+    });
+
+    it('is not started again for a while after it crashed twice in a row, the request is refused at once', async () => {
+      const pool = createPool({ restartBackoff });
+      await crash(pool);
+      await crash(pool);
+
+      const refused = pool.acquire(pathA, {}, 1);
+
+      await expect(refused).rejects.toBeInstanceOf(WorkerUnavailableError);
+      await expect(refused).rejects.toMatchObject({ workerPath: pathA, retryAfterMs: 100 });
+      expect(FakeWorker.instances).toHaveLength(2);
+    });
+
+    it('is started again when the time is over', async () => {
+      const pool = createPool({ restartBackoff });
+      await crash(pool);
+      await crash(pool);
+
+      jest.advanceTimersByTime(100);
+      const lease = await pool.acquire(pathA, {}, 1);
+
+      expect(lease.worker).toBe(FakeWorker.instances[2]);
+    });
+
+    it('waits twice as long after every crash, up to the maximum', async () => {
+      const pool = createPool({ restartBackoff });
+      const waits: number[] = [];
+
+      for (let crashes = 0; crashes < 6; crashes += 1) {
+        await crash(pool);
+        waits.push(pool.getStats().failing[pathA].retryInMs);
+        jest.advanceTimersByTime(1000);
+      }
+
+      // the first crash does not hold anything back
+      expect(waits).toEqual([0, 100, 200, 400, 400, 400]);
+    });
+
+    it('counts a worker that stops with an error after it ran for a long time, but only once', async () => {
+      const pool = createPool({ restartBackoff });
+      await pool.acquire(pathA, {}, 1);
+      jest.advanceTimersByTime(5000);
+
+      FakeWorker.instances[0].exit(1);
+
+      expect(pool.getStats().failing[pathA]).toEqual({ crashes: 1, retryInMs: 0 });
+    });
+
+    it('does not count a worker that stops without an error after it ran for a long time, as an idle one does', async () => {
+      const pool = createPool({ restartBackoff });
+      await pool.acquire(pathA, {}, 1);
+      jest.advanceTimersByTime(5000);
+
+      FakeWorker.instances[0].exit(0);
+
+      expect(pool.getStats().failing).toEqual({});
+    });
+
+    it('counts a worker that stops without an error right after it started', async () => {
+      const pool = createPool({ restartBackoff });
+
+      await crash(pool, 0);
+
+      expect(pool.getStats().failing[pathA]).toMatchObject({ crashes: 1 });
+    });
+
+    it('forgets the crashes once a worker has been up for a while', async () => {
+      const pool = createPool({ restartBackoff });
+      await crash(pool);
+      await crash(pool);
+      jest.advanceTimersByTime(100);
+      await pool.acquire(pathA, {}, 1);
+
+      jest.advanceTimersByTime(5000);
+
+      expect(pool.getStats().failing).toEqual({});
+    });
+
+    it('does not count the workers that the pool stops itself', async () => {
+      const pool = createPool({ restartBackoff, overallLimit: 2 });
+      (await acquireAll(pool, pathA, 2, 2)).forEach((lease) => lease.release());
+      (await acquireAll(pool, pathB, 1, 1))[0].release();
+
+      pool.onClose();
+
+      expect(pool.getStats().failing).toEqual({});
+    });
+
+    it('keeps the crashes of one path from holding back another', async () => {
+      const pool = createPool({ restartBackoff });
+      await crash(pool);
+      await crash(pool);
+
+      const lease = await pool.acquire(pathB, {}, 1);
+
+      expect(lease.worker).toBe(FakeWorker.instances[2]);
+    });
+
+    it('hands out the workers that still run, instead of refusing, while no new one may be started', async () => {
+      const pool = createPool({ restartBackoff });
+      const [first, second] = await acquireAll(pool, pathA, 2, 2);
+      first.release();
+      second.release();
+      // two crashes in a row, while the other worker keeps running
+      const busy = FakeWorker.instances[0];
+      await crash(pool);
+      FakeWorker.instances[FakeWorker.instances.length - 1].exit(1);
+
+      const lease = await pool.acquire(pathA, {}, 3);
+
+      expect([busy, FakeWorker.instances[1]]).toContain(lease.worker);
+    });
+
+    it('does not warm a worker for a path that is held back', async () => {
+      const pool = createPool({ restartBackoff });
+      await crash(pool);
+      await crash(pool);
+
+      pool.warm(pathA, {});
+
+      expect(FakeWorker.instances).toHaveLength(2);
     });
   });
 });

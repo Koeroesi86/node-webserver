@@ -94,11 +94,20 @@ module.exports = async (event, callback) => {
 | `uptimeSeconds`, `memory` | of the server process: `rss`, `heapTotal`, `heapUsed`, `external` |
 | `eventLoopDelayMs` | `mean`, `p99` and `max` of how late the event loop ran since the metrics were read the last time (all zero the first time): the best sign that the server is too busy |
 | `requests` | `total`, `active` (no complete response yet) and `status`, the responses by class (`2xx` ... `5xx`) |
-| `sources` | `workers:<root>` for each worker server (`workers`, `active` requests, `waiting` requests, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
+| `sources` | `workers:<host name>` for each worker server (`workers`, `active` requests, `waiting` requests, `failing`, the worker files that crashed in a row, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
 
 `examples/health/exampleWorker.js` is a worker with `/health` (200, or 503 while requests wait for a worker) and `/metrics`. Mind that a health endpoint is a worker like the others: it is reachable by anyone who can reach its host name.
 Part of the numbers are counted since the server started, a scraper computes rates from them. The existing stats domain (`statsDomain`) reports CPU and memory per process.
 `getServerMetrics()` and `registerMetricsSource(name, read)` are exported by `@koeroesi86/node-worker-express`, to read the same numbers in the server process or add your own.
+
+### Workers that crash
+
+A worker that stops with an error, or at all within 5 seconds of starting, has crashed. The first crash is answered by starting another worker for the next request, as before.
+After the second one in a row the server stops starting workers for that path for a while, 100 milliseconds at first and twice as long after every further crash up to 10 seconds, instead of starting a process for every request.
+Requests that arrive in the meantime are answered with 503 and a `Retry-After`, unless a worker for the path is still running, which takes them. A worker that stays up for 5 seconds clears the count.
+`failing` in the metrics lists the paths that are held back, with their crashes and the time left. Workers the server stops itself (an idle one that makes room, the shutdown) are no crash.
+
+What a worker writes to its stdout and stderr is handed to `onStdout` and `onStderr` from the moment it starts.
 
 ### Connections
 
