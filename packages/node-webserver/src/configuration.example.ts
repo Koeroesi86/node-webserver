@@ -1,5 +1,5 @@
 import { resolve } from 'path';
-import { PACKAGE_ROOT } from './constants';
+import { DEFAULT_KEEP_ALIVE_TIMEOUT, DEFAULT_MAX_CONNECTIONS, PACKAGE_ROOT } from './constants';
 import type { Configuration } from './types';
 
 const configuration = {
@@ -13,6 +13,8 @@ const configuration = {
   },
   portHttp: 80,
   portHttps: 443,
+  keepAliveTimeout: DEFAULT_KEEP_ALIVE_TIMEOUT, // milliseconds an idle connection stays open
+  maxConnections: DEFAULT_MAX_CONNECTIONS, // per server, 0 for no limit
   portLookup: {
     from: 3000,
     to: 3010,

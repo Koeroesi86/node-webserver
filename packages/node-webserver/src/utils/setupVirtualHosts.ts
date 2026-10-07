@@ -17,6 +17,7 @@ function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
   }
 
   return workerMiddleware({
+    name: instance.hostname,
     ...options,
     onStdout(data) {
       logger.info(`[${getDate()}] ${data.toString().trim()}`);

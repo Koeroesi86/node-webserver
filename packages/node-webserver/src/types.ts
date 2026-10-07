@@ -91,6 +91,13 @@ export interface Configuration {
   logLevels?: LogLevels;
   portHttp: number;
   portHttps: number;
+  /**
+   * how long an idle connection of a client is kept open, in milliseconds, for both the http and the https server. Defaults to 65000, longer than what load balancers keep theirs for.
+   * Node itself closes them after 5 seconds.
+   */
+  keepAliveTimeout?: number;
+  /** the number of open connections per server after which new ones are dropped, 0 for no limit. Defaults to 10000. */
+  maxConnections?: number;
   portLookup?: PortLookup;
   /** set to false to disable */
   statsDomain: string | false;

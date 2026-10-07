@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
 import zlib from 'zlib';
+import { middleware } from '@koeroesi86/node-worker-express';
 import setupVirtualHosts from './setupVirtualHosts';
 import type { Express } from 'express';
 import type { ServerInstance } from '../types';
@@ -9,10 +10,10 @@ const text = 'It works! '.repeat(500);
 
 // the worker middleware starts processes, a handler that answers is enough here
 jest.mock('@koeroesi86/node-worker-express', () => ({
-  middleware: () => (request: http.IncomingMessage, response: http.ServerResponse) => {
+  middleware: jest.fn(() => (request: http.IncomingMessage, response: http.ServerResponse) => {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(text);
-  },
+  }),
 }));
 jest.mock('./logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 
@@ -109,5 +110,20 @@ describe('setupVirtualHosts', () => {
     setupVirtualHosts([instance({ protocol: 'https', compression: true })], express(), httpsApp, { portHttp: 80, portHttps: 443 });
 
     expect(use).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the worker pool of a server after its host name, for the metrics', () => {
+    setupVirtualHosts([instance({ hostname: 'named.localhost' })], express(), express(), { portHttp: 80, portHttps: 443 });
+
+    expect(middleware).toHaveBeenCalledWith(expect.objectContaining({ name: 'named.localhost' }));
+  });
+
+  it('lets the options of a server name the pool themselves', () => {
+    setupVirtualHosts([instance({ hostname: 'named.localhost', options: { root: '/', name: 'own-name' } })], express(), express(), {
+      portHttp: 80,
+      portHttps: 443,
+    });
+
+    expect(middleware).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'own-name' }));
   });
 });
