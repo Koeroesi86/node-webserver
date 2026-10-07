@@ -102,11 +102,17 @@ export interface MiddlewareOptions {
   inlineRequestBody?: number;
   /** the largest request body in bytes, a bigger one is answered with 413. 0 for no limit, which is the default. The body is streamed to the worker, so it is never held in memory. */
   limitRequestBody?: number;
-  /** how long a request may wait for a worker when none can be started, in milliseconds */
+  /** how long a request may wait for a worker when none can be started, in milliseconds, then it is answered with 503 */
   limitRequestTimeout?: number;
   /** how long the worker may stay silent while answering an HTTP request before it is answered with 504, 0 disables it */
   limitResponseTimeout?: number;
+  /** @deprecated nothing polls for a worker any more, requests that wait are woken when one is free. Has no effect. */
   idleCheckTimeout?: number;
+  /**
+   * how many requests may wait for a worker of a server (when the workers are all busy and no more can be started), the next ones are answered with 503 at once instead of waiting
+   * for the time they would be given (`limitRequestTimeout`). 0 for no limit. Defaults to 1000.
+   */
+  limitQueue?: number;
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
   onExit?: (code: number, workerPath: string, id: string) => void;

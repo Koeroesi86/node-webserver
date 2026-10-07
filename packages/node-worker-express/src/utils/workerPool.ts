@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 import path from 'path';
 import Worker from '@koeroesi86/node-worker';
 import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
+import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
 import type { WorkerOutputEvent } from '../types';
 
@@ -22,9 +23,10 @@ const createWorkerCommand = (workerPath) => {
 
 interface WorkerPoolParams {
   overallLimit?: number;
-  idleCheckTimeout?: number;
   /** how long a request may wait for a worker when none can be started, in milliseconds */
   acquireTimeout?: number;
+  /** how many requests may wait for a worker, the next ones are refused at once. 0 for no limit. */
+  maxQueue?: number;
   onExit?: (code: number, workerPath: string, id: string) => void;
   /** receive what the workers write to their stdout and stderr, attached once when a worker starts */
   onStdout?: (data: Buffer) => void;
@@ -45,6 +47,16 @@ export interface WorkerLease {
   release: () => void;
 }
 
+/** a request that waits for a worker */
+interface Waiter {
+  workerPath: string;
+  options: SpawnOptions;
+  limit: number;
+  resolve: (lease: WorkerLease) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
 interface LeaseState {
   requestId?: string;
   onMessage?: (message: WorkerOutputEvent) => void;
@@ -53,7 +65,6 @@ interface LeaseState {
 
 class WorkerPool {
   protected readonly overallLimit: number;
-  protected readonly idleCheckTimeout: number;
   protected readonly acquireTimeout: number;
   protected readonly onExit: (code: number, workerPath: string, id: string) => void;
   protected readonly workers: Map<string, Map<string, Worker>>;
@@ -67,21 +78,24 @@ class WorkerPool {
   private readonly onStdout?: (data: Buffer) => void;
   private readonly onStderr?: (data: Buffer) => void;
   private readonly restartBackoff: { minUptime: number; base: number; max: number };
-  /** requests that are waiting for a worker to become available */
-  private waiting = 0;
+  /** the requests that wait for a worker, in the order they came in */
+  private readonly queue: Waiter[] = [];
+  private readonly maxQueue: number;
+  /** how many requests were refused because too many waited, and how many gave up after waiting too long, since the pool started */
+  private refused = { queueFull: 0, timedOut: 0 };
 
   constructor({
     overallLimit = 0,
-    idleCheckTimeout = 5,
     acquireTimeout = 10000,
+    maxQueue = 0,
     onExit = () => {},
     onStdout,
     onStderr,
     restartBackoff = { minUptime: WorkerMinUptime, ...WorkerRestartBackoff },
   }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
-    this.idleCheckTimeout = idleCheckTimeout;
     this.acquireTimeout = acquireTimeout;
+    this.maxQueue = maxQueue;
     this.onExit = onExit;
     this.onStdout = onStdout;
     this.onStderr = onStderr;
@@ -197,6 +211,8 @@ class WorkerPool {
         state.onExit?.(code);
       });
       this.onExit(code, workerPath, id);
+      // there is room for another worker now, and the requests that wait may get one
+      this.wakeUp();
     });
 
     workersForPath.set(id, instance);
@@ -233,26 +249,73 @@ class WorkerPool {
     while (this.getWorkerCountForPath(workerPath) < count && this.belowOverallLimit() && this.getBackoff(workerPath) === 0) {
       this.createWorker(workerPath, options);
     }
+    this.wakeUp();
   };
 
-  /** keeps trying until a worker is available, rejects when none could be started within the acquire timeout */
-  private waitForWorker = async (workerPath: string, options: SpawnOptions, limit: number): Promise<Worker> => {
-    const deadline = Date.now() + this.acquireTimeout;
-    this.waiting += 1;
+  /** counts the request as a load of the worker right away, before anything else can look at the worker */
+  private createLease = (leased: Worker): WorkerLease => {
+    const state: LeaseState = {};
+    this.leases.get(leased).add(state);
 
-    try {
-      for (;;) {
-        if (Date.now() >= deadline) {
-          throw new Error(`No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`);
+    return {
+      worker: leased,
+      subscribe: (requestId, onMessage, onExit) => {
+        Object.assign(state, { requestId, onMessage, onExit });
+        this.subscriptions.set(requestId, state);
+      },
+      release: () => {
+        this.leases.get(leased)?.delete(state);
+        if (state.requestId !== undefined && this.subscriptions.get(state.requestId) === state) {
+          this.subscriptions.delete(state.requestId);
         }
-        await new Promise((r) => setTimeout(r, this.idleCheckTimeout));
-        const worker = this.tryGetWorker(workerPath, options, limit);
-        if (worker !== undefined) return worker;
+        // a worker has room again, for the request that has waited longest
+        this.wakeUp();
+      },
+    };
+  };
+
+  /** gives a worker to a waiting request if there is one for it, otherwise it keeps its place, and tells it when the worker is not to be had at all */
+  private serve = (waiter: Waiter) => {
+    try {
+      const worker = this.tryGetWorker(waiter.workerPath, waiter.options, waiter.limit);
+      if (worker === undefined) {
+        this.queue.push(waiter);
+        return;
       }
-    } finally {
-      this.waiting -= 1;
+      clearTimeout(waiter.timer);
+      waiter.resolve(this.createLease(worker));
+    } catch (error) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
     }
   };
+
+  /** looks at the requests that wait, in the order they came in, whenever a worker could have become available: a request that is finished, a worker that stopped or started */
+  private wakeUp = () => {
+    if (this.queue.length === 0) return;
+
+    this.queue.splice(0).forEach(this.serve);
+  };
+
+  /** the request waits in line for a worker, for as long as the acquire timeout, unless too many wait already */
+  private enqueue = (workerPath: string, options: SpawnOptions, limit: number) =>
+    new Promise<WorkerLease>((resolve, reject) => {
+      if (this.maxQueue > 0 && this.queue.length >= this.maxQueue) {
+        this.refused.queueFull += 1;
+        reject(new WorkerBusyError(workerPath, `${this.queue.length} requests wait for a worker for ${workerPath} already.`));
+        return;
+      }
+
+      // one timer for the time that the request waits, nothing polls
+      const timer = setTimeout(() => {
+        const index = this.queue.indexOf(waiter);
+        if (index >= 0) this.queue.splice(index, 1);
+        this.refused.timedOut += 1;
+        reject(new WorkerBusyError(workerPath, `No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`));
+      }, this.acquireTimeout);
+      const waiter: Waiter = { workerPath, options, limit, resolve, reject, timer };
+      this.queue.push(waiter);
+    });
 
   /** what the pool is doing right now, for metrics */
   getStats = () => ({
@@ -260,7 +323,9 @@ class WorkerPool {
     /** requests that are being handled by a worker */
     active: Array.from(this.leases.values()).reduce((result, current) => result + current.size, 0),
     /** requests that wait for a worker */
-    waiting: this.waiting,
+    waiting: this.queue.length,
+    /** requests that were refused because too many waited, and requests that gave up after waiting too long, since the pool started */
+    refused: { ...this.refused },
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
     failing: Object.fromEntries(
       Array.from(this.failures.entries()).map(([workerPath, { count }]) => [workerPath, { crashes: count, retryInMs: this.getBackoff(workerPath) }])
@@ -276,28 +341,13 @@ class WorkerPool {
   /**
    * Hands out a worker for the path: an idle one, otherwise a new one while fewer than `limit` run for the path, otherwise the least busy.
    * A limit of 0 (or less) keeps a single worker for the path.
-   * Rejects when no worker could be started within the acquire timeout, as the overall limit is used up by other paths.
+   * When none could be started, as the overall limit is used up by other paths, the request waits in line. Rejects with a WorkerBusyError when too many wait already
+   * or when it waited for the acquire timeout, and with a WorkerUnavailableError when the workers of the path keep crashing.
    */
   acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0): Promise<WorkerLease> => {
-    const worker = this.tryGetWorker(workerPath, options, limit) ?? (await this.waitForWorker(workerPath, options, limit));
+    const worker = this.tryGetWorker(workerPath, options, limit);
 
-    const state: LeaseState = {};
-    const leased = worker;
-    this.leases.get(leased).add(state);
-
-    return {
-      worker: leased,
-      subscribe: (requestId, onMessage, onExit) => {
-        Object.assign(state, { requestId, onMessage, onExit });
-        this.subscriptions.set(requestId, state);
-      },
-      release: () => {
-        this.leases.get(leased)?.delete(state);
-        if (state.requestId !== undefined && this.subscriptions.get(state.requestId) === state) {
-          this.subscriptions.delete(state.requestId);
-        }
-      },
-    };
+    return worker === undefined ? this.enqueue(workerPath, options, limit) : this.createLease(worker);
   };
 }
 

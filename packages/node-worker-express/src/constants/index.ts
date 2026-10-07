@@ -55,7 +55,7 @@ export const DefaultOptions: MiddlewareOptions = {
   inlineRequestBody: 64 * 1024,
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
-  idleCheckTimeout: 5,
+  limitQueue: 1000,
   onStdout: () => {},
   onStderr: () => {},
   onExit: () => {},

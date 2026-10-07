@@ -7,6 +7,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { RequestBodyWindow, WORKER_EVENT } from '../constants';
 import { getServerMetrics } from '../utils/metrics';
+import WorkerBusyError from '../utils/workerBusyError';
 import WorkerUnavailableError from '../utils/workerUnavailableError';
 import workerMiddleware from './index';
 
@@ -19,7 +20,7 @@ jest.mock('../utils/workerPool', () => {
     warm = jest.fn();
     getStats = () => ({ workers: 2, active: 1, waiting: 0, paths: {} });
 
-    constructor(readonly params: { onStdout?: () => void; onStderr?: () => void }) {
+    constructor(readonly params: { onStdout?: () => void; onStderr?: () => void; maxQueue?: number; acquireTimeout?: number }) {
       FakePool.last = this;
     }
   }
@@ -718,11 +719,50 @@ describe('workerMiddleware', () => {
       expect(await response.text()).toBe('Service unavailable.');
     });
 
+    it('answers 503 as well when the request waited for a worker for too long, or too many wait already', async () => {
+      await start();
+      FakePool.last.acquire.mockRejectedValue(
+        new WorkerBusyError('/srv/secret/worker.js', 'No worker became available for /srv/secret/worker.js within 5000ms.')
+      );
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get('retry-after')).toBe('1');
+      expect(await response.text()).toBe('Service unavailable.');
+    });
+
     it('asks to wait at least a second', async () => {
       await start();
       FakePool.last.acquire.mockRejectedValue(new WorkerUnavailableError('/srv/worker.js', 100));
 
       expect((await fetch(`${baseUrl}/`)).headers.get('retry-after')).toBe('1');
+    });
+  });
+
+  describe('the line for a worker', () => {
+    it('is 1000 requests long by default', async () => {
+      await start();
+
+      expect(FakePool.last.params.maxQueue).toBe(1000);
+    });
+
+    it('is as long as the limit for the queue says', async () => {
+      await start({ limitQueue: 5 });
+
+      expect(FakePool.last.params.maxQueue).toBe(5);
+    });
+
+    it('is as long as it is, with a limit of 0', async () => {
+      await start({ limitQueue: 0 });
+
+      expect(FakePool.last.params.maxQueue).toBe(0);
+    });
+
+    it('lets a request wait for as long as the request timeout says', async () => {
+      await start({ limitRequestTimeout: 1234 });
+
+      expect(FakePool.last.params.acquireTimeout).toBe(1234);
     });
   });
 

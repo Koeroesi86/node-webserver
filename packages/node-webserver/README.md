@@ -97,7 +97,7 @@ module.exports = async (event, callback) => {
 | `uptimeSeconds`, `memory` | of the server process: `rss`, `heapTotal`, `heapUsed`, `external` |
 | `eventLoopDelayMs` | `mean`, `p99` and `max` of how late the event loop ran since the metrics were read the last time (all zero the first time): the best sign that the server is too busy |
 | `requests` | `total`, `active` (no complete response yet) and `status`, the responses by class (`2xx` ... `5xx`) |
-| `sources` | `workers:<host name>` for each worker server (`workers`, `active` requests, `waiting` requests, `failing`, the worker files that crashed in a row, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
+| `sources` | `workers:<host name>` for each worker server (`workers`, `active` requests, `waiting` requests, `refused`, `failing`, the worker files that crashed in a row, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
 
 `examples/health/exampleWorker.js` is a worker with `/health` (200, or 503 while requests wait for a worker) and `/metrics`. Mind that a health endpoint is a worker like the others: it is reachable by anyone who can reach its host name.
 Part of the numbers are counted since the server started, a scraper computes rates from them. The existing stats domain (`statsDomain`) reports CPU and memory per process.
@@ -107,6 +107,13 @@ Part of the numbers are counted since the server started, a scraper computes rat
 
 The access logs and everything else that is logged go to the console in one write at the end of every turn of the event loop, and to the files in one write per file every 100 milliseconds (`fileLogFlushInterval`), as every write is a system call
 on the thread that serves the requests. Lines of other code that write to the console directly can come out before the lines of the turn, by at most that turn. A level that is switched off costs nothing, its lines are not even built.
+
+### Waiting for a worker
+
+A request is handed a worker of its worker file at once, also when all of them are busy: workers handle several requests at a time, and a request waits only when its file has no worker and no more can be started, because the limit for all
+workers (`limit`) is used up by other files. Those requests wait in line, the one that came first is served first, and are woken as soon as there is room (a request is finished and a worker of another file can make room, a worker stops),
+nothing polls. A request that has waited for `limitRequestTimeout` (5 seconds by default), or that finds `limitQueue` requests waiting already (1000 by default, 0 for no limit), is answered with 503 and `Retry-After: 1` at once,
+instead of piling up. `refused` in the metrics of the worker pool counts both.
 
 ### Workers that crash
 

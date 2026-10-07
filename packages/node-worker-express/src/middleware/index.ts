@@ -38,8 +38,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   const workerPool = new WorkerPool({
     overallLimit: config.limit,
     onExit: config.onExit,
-    idleCheckTimeout: config.idleCheckTimeout,
     acquireTimeout: config.limitRequestTimeout,
+    maxQueue: config.limitQueue,
     onStdout: config.onStdout,
     onStderr: config.onStderr,
   });
