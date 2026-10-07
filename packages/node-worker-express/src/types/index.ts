@@ -46,7 +46,13 @@ export type WSFrameEvent = {
   frame: string;
 };
 
-export type InvokableWorker = (event: RequestEvent, callback: (e: ResponseEvent) => void) => unknown;
+/**
+ * Answers the request. A response with `emit` streams the body in parts, ending with a part without a body.
+ * For those the returned promise resolves when the part was written to the client: `true` to go on, `false` when the client is gone and streaming should stop.
+ */
+export type ResponseCallback = (e: ResponseEvent) => unknown;
+
+export type InvokableWorker = (event: RequestEvent, callback: ResponseCallback) => unknown;
 
 export interface MiddlewareOptions {
   root: string;

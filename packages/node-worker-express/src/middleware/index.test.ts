@@ -138,4 +138,91 @@ describe('workerMiddleware', () => {
 
     expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7);
   });
+
+  describe('streamed responses', () => {
+    /** every byte value, as text decoding would damage the ones above 127 */
+    const bytes = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
+    const part = (requestId: string, body: Buffer | null) => ({
+      type: WORKER_EVENT.RESPONSE_EMIT,
+      requestId,
+      event: {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/octet-stream' },
+        emit: true,
+        body: body === null ? null : body.toString('base64'),
+        isBase64Encoded: body !== null,
+      },
+    });
+
+    it('writes the bytes of every part to the client and acknowledges them once they are written', async () => {
+      await start();
+      const lease = mockLease((handlers, requestId) => {
+        handlers.onMessage(part(requestId, bytes));
+        handlers.onMessage(part(requestId, bytes));
+        handlers.onMessage(part(requestId, null));
+      });
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.concat([bytes, bytes]));
+      const acknowledgements = lease.worker.postMessage.mock.calls.filter(([message]) => message.type === WORKER_EVENT.RESPONSE_ACKNOWLEDGE);
+      expect(acknowledgements).toHaveLength(3);
+    });
+
+    it('tells the worker to stop when the client goes away during the response', async () => {
+      await start();
+      const lease = mockLease((handlers, requestId) => handlers.onMessage(part(requestId, bytes)));
+
+      await new Promise<void>((resolve, reject) => {
+        const clientRequest = http.get(`${baseUrl}/`, (response) =>
+          response.once('data', () => {
+            response.destroy();
+            resolve();
+          })
+        );
+        clientRequest.on('error', reject);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(lease.worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
+      expect(lease.release).toHaveBeenCalled();
+    });
+
+    it('does not tell the worker to stop after a complete response', async () => {
+      await start();
+      const lease = mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: 'done', isBase64Encoded: false } })
+      );
+
+      await (await fetch(`${baseUrl}/`)).text();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(lease.worker.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
+    });
+
+    it('ends a response early when the worker stops sending parts', async () => {
+      await start({ limitResponseTimeout: 50 });
+      const lease = mockLease((handlers, requestId) => handlers.onMessage(part(requestId, bytes)));
+
+      const response = await fetch(`${baseUrl}/`);
+
+      await expect(response.arrayBuffer()).rejects.toThrow();
+      expect(lease.release).toHaveBeenCalled();
+    });
+
+    it('keeps a response going while parts keep coming, even if it takes longer than the timeout', async () => {
+      await start({ limitResponseTimeout: 80 });
+      mockLease((handlers, requestId) => {
+        const send = (index: number) => {
+          handlers.onMessage(part(requestId, index < 5 ? bytes : null));
+          if (index < 5) setTimeout(() => send(index + 1), 40);
+        };
+        send(0);
+      });
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect((await response.arrayBuffer()).byteLength).toBe(bytes.length * 5);
+    });
+  });
 });

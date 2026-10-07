@@ -154,7 +154,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         cleanupConnection();
       };
 
-      // the worker has to keep answering while a response is going on, an emitted file can take longer than the timeout
+      // the response has to keep progressing, either by the worker answering or by the client taking what was written, as a streamed file can take longer than the timeout
       const armResponseTimeout = () => {
         if (event.protocol !== Protocols.http || !config.limitResponseTimeout) return;
 
@@ -179,20 +179,21 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         }
 
         if (responseEvent.type === WORKER_EVENT.RESPONSE_EMIT) {
-          worker.postMessage({
-            type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE,
-            requestId,
-          });
           const { event } = responseEvent;
-          const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
+          const acknowledge = () => worker.postMessage({ type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE, requestId });
 
           if (!response.headersSent) {
             response.writeHead(event.statusCode, event.headers);
           }
-          if (event.body !== null) {
-            response.write(Buffer.from(event.body, bufferEncoding).toString());
-          } else {
+          if (event.body === null) {
             response.end();
+            acknowledge();
+          } else {
+            // the worker waits for the acknowledgement before it goes on, so a slow client slows the worker down instead of filling the memory
+            response.write(Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'utf8'), () => {
+              acknowledge();
+              armResponseTimeout();
+            });
           }
         }
 
@@ -213,6 +214,10 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       function cleanupConnection() {
         clearTimeout(responseTimer);
+        if (event.protocol === Protocols.http && !response.writableFinished) {
+          // a worker that is streaming the response can stop
+          worker.postMessage({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
+        }
         lease.release();
         if (request && request.off) {
           request.off('close', cleanupConnection);

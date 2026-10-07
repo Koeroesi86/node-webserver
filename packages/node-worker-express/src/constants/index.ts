@@ -5,6 +5,8 @@ import { MiddlewareOptions } from '../types';
 export enum WORKER_EVENT {
   REQUEST = 'WORKER_REQUEST',
   REQUEST_ACKNOWLEDGE = 'WORKER_REQUEST_ACK',
+  /** the client went away before the response was complete, a worker streaming it should stop */
+  REQUEST_ABORT = 'WORKER_REQUEST_ABORT',
   RESPONSE = 'WORKER_RESPONSE',
   RESPONSE_EMIT = 'WORKER_RESPONSE_EMIT',
   RESPONSE_ACKNOWLEDGE = 'WORKER_RESPONSE_ACK',
@@ -13,6 +15,9 @@ export enum WORKER_EVENT {
   WS_CONNECTION_CLOSE = 'WS_CONNECTION_CLOSE',
   WS_CONNECTION_CLOSE_ACKNOWLEDGE = 'WS_CONNECTION_CLOSE_ACK',
 }
+
+/** the static worker sends files up to this size in one part, bigger ones are streamed so they do not have to fit into the memory */
+export const StaticStreamThreshold = 1024 * 1024;
 
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
