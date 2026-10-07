@@ -1,4 +1,6 @@
 import { ChildProcess, fork } from 'child_process';
+import crypto from 'crypto';
+import fsSync from 'fs';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -9,6 +11,16 @@ import { WORKER_EVENT } from './constants';
 const workerSource = `
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const readBody = async (event) => {
+  const hash = crypto.createHash('sha256');
+  let size = 0;
+  for await (const chunk of event.bodyStream) {
+    hash.update(chunk);
+    size += chunk.length;
+  }
+  return JSON.stringify({ size, sha256: hash.digest('hex'), body: event.body });
+};
 const part = (body) => ({ statusCode: 200, headers: {}, emit: true, body, isBase64Encoded: false });
 
 module.exports = async (event, callback) => {
@@ -22,6 +34,21 @@ module.exports = async (event, callback) => {
   if (event.path === '/stream') {
     for (const body of ['one', 'two', 'three']) await callback(part(body));
     await callback(part(null));
+    return;
+  }
+  if (event.path === '/has-stream') return callback({ statusCode: 200, headers: {}, body: typeof event.bodyStream, isBase64Encoded: false });
+  if (event.path === '/upload') return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
+  if (event.path === '/upload-late') {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
+  }
+  if (event.path === '/upload-ignored') return callback({ statusCode: 413, headers: {}, body: 'too large', isBase64Encoded: false });
+  if (event.path === '/upload-catches') {
+    try {
+      await readBody(event);
+    } catch (error) {
+      fs.writeFileSync(path.join(event.rootPath, 'upload-error'), error.message);
+    }
     return;
   }
   if (event.path === '/stops-when-aborted') {
@@ -60,8 +87,15 @@ describe('workerInvoke', () => {
     child.kill();
   });
 
-  const send = (type: string, requestId: string, requestPath = '/') =>
-    child.send({ type, requestId, event: { path: requestPath, rootPath: folder, headers: {} } });
+  const send = (type: string, requestId: string, requestPath = '/', streamed = false) =>
+    child.send({ type, requestId, event: { path: requestPath, rootPath: folder, headers: {}, body: '', ...(streamed && { bodyStreamed: true }) } });
+  /** a part of a streamed request body, no argument ends it */
+  const sendPart = (requestId: string, bytes?: Buffer) =>
+    child.send({
+      type: WORKER_EVENT.REQUEST_BODY,
+      requestId,
+      event: bytes === undefined ? { body: null, isBase64Encoded: false } : { body: bytes.toString('base64'), isBase64Encoded: true },
+    });
   const until = async (condition: () => boolean) => {
     for (let waited = 0; !condition() && waited < 3000; waited += 10) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -178,5 +212,89 @@ describe('workerInvoke', () => {
     child.disconnect();
 
     await expect(Promise.race([exited, new Promise((resolve) => setTimeout(() => resolve('still running'), 3000))])).resolves.not.toBe('still running');
+  });
+
+  describe('streamed request bodies', () => {
+    const answerOf = (requestId: string) => JSON.parse(of(requestId, WORKER_EVENT.RESPONSE)[0].event.body);
+    const acknowledgements = (requestId: string) => of(requestId, WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE).length;
+
+    it('gives the worker a stream only for a streamed body', async () => {
+      send(WORKER_EVENT.REQUEST, 'plain', '/has-stream');
+      send(WORKER_EVENT.REQUEST, 'streamed', '/has-stream', true);
+      sendPart('streamed');
+
+      await until(() => of('plain', WORKER_EVENT.RESPONSE).length === 1 && of('streamed', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(of('plain', WORKER_EVENT.RESPONSE)[0].event.body).toBe('undefined');
+      expect(of('streamed', WORKER_EVENT.RESPONSE)[0].event.body).toBe('object');
+    });
+
+    it('delivers the parts of the body in order and unchanged', async () => {
+      const parts = Array.from({ length: 6 }, (_, index) => crypto.randomBytes(1000 + index));
+      send(WORKER_EVENT.REQUEST, 'a', '/upload', true);
+
+      parts.forEach((part) => sendPart('a', part));
+      sendPart('a');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+      expect(answerOf('a')).toEqual({
+        size: Buffer.concat(parts).length,
+        sha256: crypto.createHash('sha256').update(Buffer.concat(parts)).digest('hex'),
+        body: '',
+      });
+    });
+
+    it('acknowledges small parts right away', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/upload', true);
+
+      [1, 2, 3].forEach(() => sendPart('a', Buffer.alloc(100)));
+
+      await until(() => acknowledgements('a') === 3);
+    });
+
+    it('acknowledges a part only once the worker has room for it', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/upload-late', true);
+
+      [1, 2, 3].forEach(() => sendPart('a', Buffer.alloc(70000)));
+      await settle();
+      expect(acknowledgements('a')).toBe(0);
+
+      // the worker starts reading after a while
+      await until(() => acknowledgements('a') === 3);
+    });
+
+    it('ends the stream of the worker with an error when the request is aborted', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/upload-catches', true);
+      sendPart('a', Buffer.alloc(10));
+      await settle();
+
+      child.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'a' });
+
+      const marker = path.join(folder, 'upload-error');
+      await until(() => fsSync.existsSync(marker));
+      expect(await fs.readFile(marker, 'utf8')).toBe('The request was aborted.');
+    });
+
+    it('survives an abort while it is not reading the body', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/upload-late', true);
+      sendPart('a', Buffer.alloc(10));
+
+      child.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'a' });
+      await settle();
+      send(WORKER_EVENT.REQUEST, 'b', '/plain');
+
+      await until(() => of('b', WORKER_EVENT.RESPONSE).length === 1);
+    });
+
+    it('drops the parts that arrive after the worker answered', async () => {
+      send(WORKER_EVENT.REQUEST, 'a', '/upload-ignored', true);
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      sendPart('a', Buffer.alloc(100));
+      sendPart('a');
+      await settle();
+
+      expect(of('a').map(({ type }) => type)).toEqual([WORKER_EVENT.RESPONSE]);
+    });
   });
 });

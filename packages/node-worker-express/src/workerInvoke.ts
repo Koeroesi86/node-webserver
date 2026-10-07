@@ -1,5 +1,6 @@
+import { Readable } from 'stream';
 import { WORKER_EVENT } from './constants';
-import { InvokableWorker, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WSFrameEvent } from './types';
+import { InvokableWorker, RequestBodyEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WSFrameEvent } from './types';
 
 const worker = require(process.argv.pop()) as InvokableWorker;
 
@@ -18,6 +19,49 @@ interface Stream {
 
 const streams = new Map<string, Stream>();
 
+/** the streamed request bodies that are still coming in, per request */
+const uploads = new Map<string, { stream: Readable; receive: (part: RequestBodyEvent) => void }>();
+
+/**
+ * The stream a worker reads a streamed request body from. A part is acknowledged once the reader has room for it,
+ * so the server sends no more than a few parts ahead of what the worker has processed.
+ */
+function createUpload(requestId: string): Readable {
+  /** parts that were put into the stream but not acknowledged yet, as the reader was behind */
+  let owed = 0;
+  const acknowledge = () => process.send({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
+
+  const stream = new Readable({
+    // stated, as it is what decides how far the reader may fall behind before the acknowledgements stop, and the default differs between versions of node
+    highWaterMark: 64 * 1024,
+    read() {
+      for (; owed > 0; owed -= 1) acknowledge();
+    },
+    destroy(error, callback) {
+      uploads.delete(requestId);
+      callback(error);
+    },
+  });
+  // an upload that is cut off destroys the stream with an error, which must not take the process down when the worker is not reading it
+  stream.on('error', () => {});
+
+  uploads.set(requestId, {
+    stream,
+    receive: ({ body, isBase64Encoded }) => {
+      if (body === null) {
+        uploads.delete(requestId);
+        stream.push(null);
+      } else if (stream.push(Buffer.from(body, isBase64Encoded ? 'base64' : 'utf8'))) {
+        acknowledge();
+      } else {
+        owed += 1;
+      }
+    },
+  });
+
+  return stream;
+}
+
 /** runs the worker, a synchronous throw and a rejected promise end up in the same error handler instead of crashing the process */
 function invoke(event: Parameters<InvokableWorker>[0], callback: Parameters<InvokableWorker>[1], onError: (error: unknown) => void, onSettled = () => {}) {
   try {
@@ -33,7 +77,12 @@ function messageListener(message: WorkerInputEvent) {
     streams.get(message.requestId)?.waiting.shift()?.(true);
   }
 
+  if (message.type === WORKER_EVENT.REQUEST_BODY) {
+    uploads.get(message.requestId)?.receive(message.event);
+  }
+
   if (message.type === WORKER_EVENT.REQUEST_ABORT) {
+    uploads.get(message.requestId)?.stream.destroy(new Error('The request was aborted.'));
     const stream = streams.get(message.requestId);
     if (stream) {
       stream.aborted = true;
@@ -82,6 +131,11 @@ function messageListener(message: WorkerInputEvent) {
 
       process.send(e);
 
+      // once the response is complete the server drops the rest of the request body, so the stream has nothing more to give
+      if (e.type === WORKER_EVENT.RESPONSE || (e.type === WORKER_EVENT.RESPONSE_EMIT && e.event?.body === null)) {
+        uploads.get(message.requestId)?.stream.destroy();
+      }
+
       if (e.type !== WORKER_EVENT.RESPONSE_EMIT) {
         return undefined;
       }
@@ -99,7 +153,7 @@ function messageListener(message: WorkerInputEvent) {
     };
 
     invoke(
-      message.event,
+      message.event.bodyStreamed ? { ...message.event, bodyStream: createUpload(message.requestId) } : message.event,
       callback,
       (error) => {
         console.error(error);

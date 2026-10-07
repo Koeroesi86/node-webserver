@@ -1,13 +1,13 @@
 import { v4 as uuid } from 'uuid';
 import path from 'path';
 import url from 'url';
-import { DefaultOptions, ForbiddenPaths, Protocols, WORKER_EVENT } from '../constants';
+import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WORKER_EVENT } from '../constants';
 import WorkerPool from '../utils/workerPool';
 import isWebSocket from '../utils/isWebSocket';
 import parseWsMessage from '../utils/parseWsMessage';
 import constructWsMessage from '../utils/constructWsMessage';
 import getClientIp from '../utils/getClientIp';
-import createBodyParser from './bodyParser';
+import createBodyParser, { hasBody } from './bodyParser';
 import { RequestHandler } from 'express';
 import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
 import resolvePath from '../utils/resolvePath';
@@ -56,7 +56,6 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         return;
       }
 
-      await Promise.race([new Promise((_res, rej) => setTimeout(rej, config.limitRequestTimeout)), new Promise((res) => bodyParser(request, response, res))]);
       let indexPath: string;
       // the cache entries expire on a timer, so read them once before awaiting anything
       const cachedAliasPath = aliasCache.get(pathname);
@@ -87,16 +86,29 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         setTimeout(() => aliasCache.delete(pathname), 5000);
       }
 
+      const requestProtocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
+      const streamsBody =
+        isWorker &&
+        requestProtocol === Protocols.http &&
+        hasBody(request) &&
+        (typeof config.streamRequestBody === 'function' ? config.streamRequestBody(indexPath) : config.streamRequestBody);
+
+      // a body that is streamed is not read here: the worker takes it part by part, while the request goes on
+      if (!streamsBody) {
+        await Promise.race([new Promise((_res, rej) => setTimeout(rej, config.limitRequestTimeout)), new Promise((res) => bodyParser(request, response, res))]);
+      }
+
       const event: RequestEvent = {
         httpMethod: request.method.toUpperCase(),
-        protocol: isWebSocket(request) ? Protocols.websocket : Protocols.http,
+        protocol: requestProtocol,
         path: pathname,
         pathFragments: pathFragments,
         queryStringParameters: JSON.parse(JSON.stringify(queryStringParameters)),
         headers: request.headers as Record<string, string>,
         remoteAddress: getClientIp(request),
-        body: `${request.body}`,
+        body: streamsBody ? '' : `${request.body}`,
         rootPath: rootPath,
+        ...(streamsBody && { bodyStreamed: true }),
       };
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
@@ -157,8 +169,35 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         responseTimer = setTimeout(() => failRequest(504, 'Worker did not respond in time.'), config.limitResponseTimeout);
       };
 
+      /** how many parts of the streamed request body the worker has not taken yet */
+      let unacknowledged = 0;
+      let receivedBytes = 0;
+
+      const forwardBodyPart = (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+
+        if (config.limitStreamedRequestBody && receivedBytes > config.limitStreamedRequestBody) {
+          response.once('finish', () => request.socket.destroy());
+          failRequest(413, 'Request body too large.');
+          return;
+        }
+
+        worker.postMessage({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: chunk.toString('base64'), isBase64Encoded: true } });
+        unacknowledged += 1;
+        armResponseTimeout();
+        // the worker takes the parts at its pace, so a slow worker slows the upload down instead of filling the memory
+        if (unacknowledged >= RequestBodyWindow) request.pause();
+      };
+
+      const forwardBodyEnd = () => worker.postMessage({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: null, isBase64Encoded: false } });
+
       const messageListener = (responseEvent: WorkerOutputEvent) => {
         armResponseTimeout();
+
+        if (responseEvent.type === WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE) {
+          unacknowledged -= 1;
+          if (unacknowledged < RequestBodyWindow) request.resume();
+        }
 
         // a plain response is not acknowledged: the worker does not wait for it, and every message is a write to the pipe of the worker
         if (responseEvent.type === WORKER_EVENT.RESPONSE) {
@@ -214,10 +253,16 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
           worker.postMessage({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
         }
         lease.release();
+        if (streamsBody) {
+          // what is still to come of the body is read and dropped, a request that is not read keeps its connection stuck
+          request.off('data', forwardBodyPart);
+          request.off('end', forwardBodyEnd);
+          request.resume();
+        }
         if (request && request.off) {
-          request.off('close', cleanupConnection);
           request.off('aborted', cleanupConnection);
         }
+        response.off('close', cleanupConnection);
 
         if (request.socket && request.socket.off) {
           request.socket.off('data', requestSocketListener);
@@ -233,9 +278,15 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         event,
       });
 
+      if (streamsBody) {
+        request.on('data', forwardBodyPart);
+        request.once('end', forwardBodyEnd);
+      }
+
       request.on('aborted', cleanupConnection);
       if (event.protocol === Protocols.http) {
-        request.on('close', cleanupConnection);
+        // the close of the response, as the request closes as soon as its body was read, which says nothing about the client being gone
+        response.on('close', cleanupConnection);
         response.on('finish', cleanupConnection);
       }
     } catch (e) {

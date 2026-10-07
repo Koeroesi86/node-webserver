@@ -8,6 +8,10 @@ export enum WORKER_EVENT {
   REQUEST_ACKNOWLEDGE = 'WORKER_REQUEST_ACK',
   /** the client went away before the response was complete, a worker streaming it should stop */
   REQUEST_ABORT = 'WORKER_REQUEST_ABORT',
+  /** a part of a request body that is streamed to the worker, the last one has no body */
+  REQUEST_BODY = 'WORKER_REQUEST_BODY',
+  /** the worker took a part of the streamed request body, the server may send another one */
+  REQUEST_BODY_ACKNOWLEDGE = 'WORKER_REQUEST_BODY_ACK',
   RESPONSE = 'WORKER_RESPONSE',
   RESPONSE_EMIT = 'WORKER_RESPONSE_EMIT',
   RESPONSE_ACKNOWLEDGE = 'WORKER_RESPONSE_ACK',
@@ -19,6 +23,9 @@ export enum WORKER_EVENT {
 
 /** the static worker sends files up to this size in one part, bigger ones are streamed so they do not have to fit into the memory */
 export const StaticStreamThreshold = 1024 * 1024;
+
+/** how many parts of a streamed request body may be on their way to the worker before it takes one */
+export const RequestBodyWindow = 4;
 
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
@@ -33,6 +40,8 @@ export const DefaultOptions: MiddlewareOptions = {
   limitPerPath: os.availableParallelism(),
   warmStaticWorker: true,
   limitRequestBody: 1000000,
+  streamRequestBody: false,
+  limitStreamedRequestBody: 0,
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
   idleCheckTimeout: 5,

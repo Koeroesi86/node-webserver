@@ -1,9 +1,11 @@
 import express from 'express';
 import fs from 'fs/promises';
 import http from 'http';
+import net from 'net';
 import os from 'os';
 import path from 'path';
-import { WORKER_EVENT } from '../constants';
+import crypto from 'crypto';
+import { RequestBodyWindow, WORKER_EVENT } from '../constants';
 import workerMiddleware from './index';
 
 type Handlers = { onMessage: (message: unknown) => void; onExit: (code: number | null) => void };
@@ -319,6 +321,233 @@ describe('workerMiddleware', () => {
       const response = await fetch(`${baseUrl}/`);
 
       expect((await response.arrayBuffer()).byteLength).toBe(bytes.length * 5);
+    });
+  });
+
+  describe('streamed request bodies', () => {
+    type Message = { type: string; requestId: string; event?: { body?: string | null; bodyStreamed?: boolean } };
+
+    const until = async (condition: () => boolean) => {
+      for (let waited = 0; !condition() && waited < 3000; waited += 5) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(condition()).toBe(true);
+    };
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+
+    /** a lease whose worker is told every message that was sent to it, `answer` decides how it reacts */
+    const mockUploadLease = (answer: (message: Message, handlers: Handlers) => void) => {
+      let handlers: Handlers;
+      const stream = { on: jest.fn(), off: jest.fn() };
+      const lease = {
+        worker: {
+          instance: { stdout: stream, stderr: stream },
+          postMessage: jest.fn((message: Message) => setImmediate(() => answer(message, handlers))),
+        },
+        subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
+          handlers = { onMessage, onExit };
+        }),
+        release: jest.fn(),
+      };
+      FakePool.last.acquire.mockResolvedValue(lease);
+
+      return lease;
+    };
+
+    const messagesOf = (lease: ReturnType<typeof mockUploadLease>, type: string) =>
+      lease.worker.postMessage.mock.calls.map(([message]) => message).filter((message) => message.type === type);
+    const bytesOf = (lease: ReturnType<typeof mockUploadLease>) =>
+      Buffer.concat(
+        messagesOf(lease, WORKER_EVENT.REQUEST_BODY)
+          .filter(({ event }) => event.body !== null)
+          .map(({ event }) => Buffer.from(event.body, 'base64'))
+      );
+    const acknowledge = (handlers: Handlers, requestId: string) => handlers.onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
+    const respond = (handlers: Handlers, requestId: string, statusCode = 200, body = 'done') =>
+      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode, headers: {}, body: Buffer.from(body) } });
+
+    /** acknowledges every part of the body and answers when it ended */
+    const answerWhenEnded = (message: Message, handlers: Handlers) => {
+      if (message.type !== WORKER_EVENT.REQUEST_BODY) return;
+      if (message.event.body === null) respond(handlers, message.requestId);
+      else acknowledge(handlers, message.requestId);
+    };
+
+    const send = (chunks: Buffer[], { method = 'POST', requestPath = '/' } = {}) =>
+      new Promise<{ status: number; text: string }>((resolve, reject) => {
+        const request = http.request(`${baseUrl}${requestPath}`, { method }, (response) => {
+          const parts: Buffer[] = [];
+          response.on('data', (part) => parts.push(part));
+          response.on('end', () => resolve({ status: response.statusCode, text: Buffer.concat(parts).toString() }));
+        });
+        request.on('error', reject);
+        chunks.forEach((chunk) => request.write(chunk));
+        request.end();
+      });
+
+    it('hands the body to the worker in parts that make up the body, and ends them', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease(answerWhenEnded);
+      const body = crypto.randomBytes(300000);
+
+      const response = await send([body]);
+
+      expect(response).toEqual({ status: 200, text: 'done' });
+      const parts = messagesOf(lease, WORKER_EVENT.REQUEST_BODY);
+      expect(parts.length).toBeGreaterThan(2);
+      expect(parts[parts.length - 1].event.body).toBeNull();
+      expect(bytesOf(lease).equals(body)).toBe(true);
+    });
+
+    it('sends the request without a body and says that the body follows', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease(answerWhenEnded);
+
+      await send([Buffer.from('hello')]);
+
+      const [request] = messagesOf(lease, WORKER_EVENT.REQUEST);
+      expect(request.event).toMatchObject({ body: '', bodyStreamed: true });
+    });
+
+    it('calls the worker before the body has arrived, and passes on what comes later', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease(answerWhenEnded);
+      const request = http.request(`${baseUrl}/`, { method: 'POST' });
+      request.on('error', () => {});
+      const answered = new Promise((resolve) => request.on('response', resolve));
+
+      request.write('first ');
+      await until(() => bytesOf(lease).toString() === 'first ');
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST)).toHaveLength(1);
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST_BODY).every(({ event }) => event.body !== null)).toBe(true);
+
+      request.end('second');
+      await answered;
+      expect(bytesOf(lease).toString()).toBe('first second');
+    });
+
+    it('holds the body back while the worker has not taken the parts it was sent', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease(() => {});
+      const request = http.request(`${baseUrl}/`, { method: 'POST' });
+      request.on('error', () => {});
+
+      // many times the window
+      Array.from({ length: 40 }).forEach(() => request.write(Buffer.alloc(65536)));
+      await settle();
+      const sentWithoutAcknowledgement = messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length;
+      expect(sentWithoutAcknowledgement).toBe(RequestBodyWindow);
+
+      const [requestId, onMessage] = lease.subscribe.mock.calls[0];
+      onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
+      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length === sentWithoutAcknowledgement + 1);
+      await settle();
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST_BODY)).toHaveLength(sentWithoutAcknowledgement + 1);
+      request.destroy();
+    });
+
+    it('does not stream by default', async () => {
+      await start();
+      const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
+
+      await send([Buffer.from('hello')]);
+
+      const [request] = messagesOf(lease, WORKER_EVENT.REQUEST);
+      expect(request.event).toMatchObject({ body: 'hello' });
+      expect(request.event).not.toHaveProperty('bodyStreamed');
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
+    });
+
+    it('lets a function decide per worker file', async () => {
+      await start({ streamRequestBody: (workerPath: string) => workerPath.endsWith('other.js') });
+      const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
+
+      await send([Buffer.from('hello')]);
+
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('bodyStreamed');
+    });
+
+    it('does not stream requests that have no body', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
+
+      await send([], { method: 'GET' });
+
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('bodyStreamed');
+    });
+
+    it('does not take the worker away when the body has been read, while it works on the answer', async () => {
+      await start({ streamRequestBody: true, limitResponseTimeout: 2000 });
+      const lease = mockUploadLease((message, handlers) => {
+        if (message.type !== WORKER_EVENT.REQUEST_BODY) return;
+        if (message.event.body === null) setTimeout(() => respond(handlers, message.requestId, 200, 'late answer'), 200);
+        else acknowledge(handlers, message.requestId);
+      });
+
+      const response = await send([Buffer.from('hello')]);
+
+      expect(response).toEqual({ status: 200, text: 'late answer' });
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST_ABORT)).toHaveLength(0);
+    });
+
+    it('tells the worker when the client goes away during the upload', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease(answerWhenEnded);
+      const request = http.request(`${baseUrl}/`, { method: 'POST' });
+      request.on('error', () => {});
+
+      request.write('part of it');
+      await until(() => bytesOf(lease).length > 0);
+      request.destroy();
+
+      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_ABORT).length > 0);
+      expect(lease.release).toHaveBeenCalled();
+    });
+
+    it('answers 413 and tells the worker when the body exceeds the limit for streamed bodies', async () => {
+      await start({ streamRequestBody: true, limitStreamedRequestBody: 100000 });
+      const lease = mockUploadLease(answerWhenEnded);
+
+      const response = await send([Buffer.alloc(500000)]).catch(() => ({ status: 413, text: '' }));
+
+      expect(response.status).toBe(413);
+      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_ABORT).length > 0);
+    });
+
+    it('lets a body that is within the limit for streamed bodies through', async () => {
+      await start({ streamRequestBody: true, limitStreamedRequestBody: 100000 });
+      mockUploadLease(answerWhenEnded);
+
+      expect((await send([Buffer.alloc(99999)])).status).toBe(200);
+    });
+
+    it('reads and drops the rest of a body that the worker did not wait for', async () => {
+      await start({ streamRequestBody: true });
+      // answers while the upload is held back, as the worker has not taken the parts it was sent
+      let parts = 0;
+      mockUploadLease((message, handlers) => {
+        if (message.type === WORKER_EVENT.REQUEST_BODY && (parts += 1) === RequestBodyWindow) respond(handlers, message.requestId, 413, 'too large');
+      });
+
+      const connections: net.Socket[] = [];
+      server.on('connection', (socket) => connections.push(socket));
+
+      const response = await send([Buffer.alloc(20 * 1024 * 1024)]);
+
+      expect(response).toEqual({ status: 413, text: 'too large' });
+      // the whole upload is taken from the connection, which otherwise could not be used for the next request
+      await until(() => connections[0].bytesRead >= 20 * 1024 * 1024);
+      await settle();
+    });
+
+    it('does not stream the body of a request that the static worker answers', async () => {
+      await start({ streamRequestBody: true });
+      const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
+
+      await send([Buffer.from('hello')], { requestPath: '/plain/missing' });
+
+      expect(FakePool.last.acquire).toHaveBeenCalledWith(expect.stringMatching(/staticWorker\.js$/), expect.anything(), expect.anything());
+      expect(messagesOf(lease, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('bodyStreamed');
     });
   });
 });

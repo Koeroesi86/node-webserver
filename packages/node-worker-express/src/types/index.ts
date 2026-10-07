@@ -1,5 +1,6 @@
 import { WORKER_EVENT } from '../constants';
 import { Request, Response } from 'express';
+import type { Readable } from 'stream';
 
 export type RequestEvent = {
   httpMethod: string;
@@ -13,13 +14,27 @@ export type RequestEvent = {
   rootPath: string;
   closed?: boolean;
   frame?: string;
+  /** the body is not in `body`, it is read from the `bodyStream` the worker is called with */
+  bodyStreamed?: boolean;
 };
 
-export type WorkerInputEvent = {
-  type: string;
-  requestId: string;
-  event?: RequestEvent;
-};
+/** what a worker is called with: the request, and the stream to read the body from when it is streamed */
+export type WorkerRequestEvent = RequestEvent & { bodyStream?: Readable };
+
+/** a part of a streamed request body, `null` ends it */
+export type RequestBodyEvent = { body: string | null; isBase64Encoded: boolean };
+
+export type WorkerInputEvent =
+  | {
+      type: WORKER_EVENT.REQUEST_BODY;
+      requestId: string;
+      event: RequestBodyEvent;
+    }
+  | {
+      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY>;
+      requestId: string;
+      event?: RequestEvent;
+    };
 
 export type WorkerOutputEvent =
   | {
@@ -52,7 +67,11 @@ export type WSFrameEvent = {
  */
 export type ResponseCallback = (e: ResponseEvent) => unknown;
 
-export type InvokableWorker = (event: RequestEvent, callback: ResponseCallback) => unknown;
+/**
+ * The function a worker file exports. With `streamRequestBody` on, `event.bodyStream` is a Readable of the request body and `event.body` is empty.
+ * Read the body before answering: once the response is complete the rest of the body is dropped and the stream is destroyed.
+ */
+export type InvokableWorker = (event: WorkerRequestEvent, callback: ResponseCallback) => unknown;
 
 export interface MiddlewareOptions {
   root: string;
@@ -61,7 +80,15 @@ export interface MiddlewareOptions {
   limitPerPath?: number | ((path: string) => number);
   /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
   warmStaticWorker?: boolean;
+  /** the largest request body that is read into memory before the worker is called, in bytes */
   limitRequestBody?: number;
+  /**
+   * pass the body of requests to workers as a stream (`event.bodyStream`) instead of reading it into memory first, `true` for all workers or a function that decides per worker file.
+   * The body is sent in parts the worker has to take before the next one is sent, so memory stays flat for uploads of any size. Defaults to false.
+   */
+  streamRequestBody?: boolean | ((workerPath: string) => boolean);
+  /** the largest streamed request body in bytes, a bigger one is answered with 413. 0 for no limit, which is the default. */
+  limitStreamedRequestBody?: number;
   limitRequestTimeout?: number;
   /** how long the worker may stay silent while answering an HTTP request before it is answered with 504, 0 disables it */
   limitResponseTimeout?: number;

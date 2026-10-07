@@ -44,3 +44,24 @@ stopped (an async generator runs its `finally`, a `Readable` is destroyed) and `
 you set a `Content-Length`. Static files above 1 MiB are streamed the same way.
 
 Producing very small chunks is wasteful, as every part takes a message to the main process: collect them into parts of some KiB.
+
+## Streaming a request body
+
+The body of a request is read into memory first (up to `limitRequestBody`) and passed to the worker as the string `event.body`. With `streamRequestBody: true` (or a function of the worker file that decides) the worker is called at once instead,
+and reads the body from `event.bodyStream`, a `Readable`:
+
+```javascript
+app.use(middleware({ root: path.resolve('./public'), streamRequestBody: true, limitStreamedRequestBody: 0 }));
+```
+
+```javascript
+module.exports = async (event, callback) => {
+  let size = 0;
+  for await (const chunk of event.bodyStream) size += chunk.length;
+  callback({ statusCode: 200, headers: {}, body: String(size), isBase64Encoded: false });
+};
+```
+
+Only a few parts are on their way to the worker before it has read the earlier ones, so uploads of any size take a flat amount of memory. Read the body before you answer, as the rest of it is dropped once the response is complete.
+A client that goes away during the upload destroys the stream with an error. Requests without a body, websockets and static files are never streamed. `limitStreamedRequestBody` (bytes, 0 for none) answers a bigger body with 413.
+

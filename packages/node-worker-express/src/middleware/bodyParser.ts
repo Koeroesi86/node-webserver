@@ -2,12 +2,15 @@ import { Request, Response, NextFunction } from 'express';
 
 const ignoredMethods = ['get', 'delete', 'options', 'head'];
 
+/** requests of these methods have no body to read */
+export const hasBody = (request: Request) => !ignoredMethods.includes(request.method.toLowerCase());
+
 const createBodyParser =
   (config = { limitRequestBody: 1000000, shouldError: true }) =>
   (request: Request, response: Response, next: NextFunction) => {
     let body = '';
 
-    if (ignoredMethods.includes(request.method.toLowerCase())) {
+    if (!hasBody(request)) {
       request.body = body;
       next();
       return;
