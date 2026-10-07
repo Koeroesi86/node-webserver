@@ -168,8 +168,11 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
           const { event } = responseEvent;
           const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
 
-          response.writeHead(event.statusCode, event.headers);
-          response.write(Buffer.from(event.body, bufferEncoding));
+          const body = Buffer.from(event.body, bufferEncoding);
+          // the size is known, which spares the client a chunked answer and lets a compression middleware see how big it is
+          const hasLength = Object.keys(event.headers ?? {}).some((name) => ['content-length', 'transfer-encoding'].includes(name.toLowerCase()));
+          response.writeHead(event.statusCode, hasLength ? event.headers : { ...event.headers, 'Content-Length': body.length });
+          response.write(body);
           response.end();
         }
 

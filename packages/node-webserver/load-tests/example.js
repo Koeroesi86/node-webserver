@@ -6,6 +6,7 @@ import { Rate } from 'k6/metrics';
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
 const lambdaHostname = 'lambda.localhost';
+const compressedHostname = 'compressed.localhost';
 // the https and secure websocket routes are only tested when the server runs with a certificate, see README.md
 const httpsPort = __ENV.HTTPS_PORT;
 const secureHostname = 'secure.localhost';
@@ -44,6 +45,17 @@ const routes = {
   // the example lambda serves the files of the static folder, in a lambda process. A lambda answers one request at a time and there are as many as cores,
   // so only a share of the iterations goes there: the route is meant to measure the lambda, not the queue in front of them
   lambda: { method: 'GET', url: `${baseUrl}/index.html`, host: lambdaHostname, status: 200, every: 4, validate: (r) => r.body.includes('It works!'), maxP95: 50 },
+  // a server with compression on: k6 only asks for it when told to, then it decompresses the body and leaves the headers
+  compressed: {
+    method: 'GET',
+    url: `${baseUrl}/`,
+    host: compressedHostname,
+    headers: { 'Accept-Encoding': 'gzip, br' },
+    status: 200,
+    every: 2,
+    validate: (r) => ['gzip', 'br', 'deflate'].includes(r.headers['Content-Encoding']) && r.headers.Vary === 'Accept-Encoding' && r.body.includes('It works!'),
+    maxP95: 30,
+  },
   // generated while it is sent, in 8 parts of 4 KiB, so it takes a share of the traffic only
   stream: {
     method: 'GET',
@@ -96,9 +108,9 @@ export const options = {
 export default function () {
   Object.entries(routes)
     .filter(([, { every = 1 }]) => __ITER % every === 0)
-    .forEach(([route, { method, url, host, body, binary, status, validate }]) => {
+    .forEach(([route, { method, url, host, headers, body, binary, status, validate }]) => {
       const response = http.request(method, url, body, {
-        headers: { Host: host || (url.startsWith('https') ? secureHostname : hostname), ...(body && { 'Content-Type': 'application/json' }) },
+        headers: { Host: host || (url.startsWith('https') ? secureHostname : hostname), ...(body && { 'Content-Type': 'application/json' }), ...headers },
         tags: { route },
         timeout: '5s',
         responseCallback: http.expectedStatuses(status),

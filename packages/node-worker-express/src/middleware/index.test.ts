@@ -57,7 +57,8 @@ describe('workerMiddleware', () => {
       worker: {
         instance: { stdout: stream, stderr: stream },
         postMessage: jest.fn(
-          (message: { type: string; requestId: string }) => message.type === WORKER_EVENT.REQUEST && setImmediate(() => react(handlers, message.requestId))
+          (message: { type: string; requestId: string; event?: { headers: Record<string, string> } }) =>
+            message.type === WORKER_EVENT.REQUEST && setImmediate(() => react(handlers, message.requestId))
         ),
       },
       subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
@@ -139,6 +140,40 @@ describe('workerMiddleware', () => {
     await fetch(`${baseUrl}/`);
 
     expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7);
+  });
+
+  describe('response headers', () => {
+    const respondWith = (headers: Record<string, string | number>) =>
+      mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers, body: 'hello', isBase64Encoded: false } })
+      );
+
+    it('adds the size of the body when the worker does not say it', async () => {
+      await start();
+      respondWith({ 'Content-Type': 'text/plain' });
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.headers.get('content-length')).toBe('5');
+      expect(response.headers.get('transfer-encoding')).toBeNull();
+    });
+
+    it.each(['Content-Length', 'content-length'])('keeps a %s of the worker', async (name) => {
+      await start();
+      respondWith({ [name]: 5 });
+
+      expect((await fetch(`${baseUrl}/`)).headers.get('content-length')).toBe('5');
+    });
+
+    it('leaves a chunked answer of the worker alone', async () => {
+      await start();
+      respondWith({ 'Transfer-Encoding': 'chunked' });
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.headers.get('content-length')).toBeNull();
+      expect(await response.text()).toBe('hello');
+    });
   });
 
   describe('spawn options of the workers', () => {

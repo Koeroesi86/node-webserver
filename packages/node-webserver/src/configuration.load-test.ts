@@ -16,6 +16,16 @@ const lambdaServer: ServerInstance = {
     handler: 'handler',
   },
 };
+const compressedServer: ServerInstance = {
+  hostname: 'compressed.localhost',
+  protocol: 'http',
+  type: 'worker',
+  compression: true,
+  options: {
+    root: resolve(PACKAGE_ROOT, 'examples'),
+    index: ['exampleWorker.js'],
+  },
+};
 const secureServers: ServerInstance[] =
   existsSync(key) && existsSync(cert)
     ? [
@@ -41,6 +51,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * so load tests measure the server instead of log file I/O.
  * The logger reads its levels from NODE_WEBSERVER_CONFIG, so this module has to be selected through it, load-test-env does that.
  *
+ * `compressed.localhost` serves the example worker with compression on.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see load-tests/README.md.
  * WORKERS_PER_PATH overrides the number of workers started per path.
  */
@@ -53,7 +64,7 @@ const configuration = {
     error: true,
     warning: true,
   },
-  servers: [...exampleConfiguration.servers, lambdaServer, ...secureServers].map(withWorkerLimit),
+  servers: [...exampleConfiguration.servers, lambdaServer, compressedServer, ...secureServers].map(withWorkerLimit),
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

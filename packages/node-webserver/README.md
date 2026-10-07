@@ -25,6 +25,24 @@ Please enter in a console/terminal:
 `pnpm start` compiles the TypeScript sources in `src/` to `dist/` and restarts on changes. `pnpm build` creates the published `dist/` output once, `pnpm test` runs the Jest suite and `pnpm lint` checks formatting.
 
 
+### Compression
+
+Compression is off. Switch it on for a server with `compression` in its definition:
+
+```javascript
+{
+  hostname: 'web.localhost',
+  protocol: 'http',
+  type: 'worker',
+  compression: true, // or { threshold: 512, level: 6, brotliQuality: 4, encodings: ['br', 'gzip'] }
+  options: { root: '/path/to/files' },
+}
+```
+
+Responses of text like types (text, JSON, JavaScript, XML, SVG, some fonts) are compressed with brotli, gzip or deflate, whichever the client accepts and likes most,
+when they are at least `threshold` bytes (1024 by default) or of unknown size. Streamed responses stay streamed, as every part is flushed. The compression runs on the
+threads of node, not on the one that serves the requests, but it still takes CPU: leave it to a reverse proxy or CDN if there is one in front of the server.
+
 ### Build
 
 TODO: Set up tests for build

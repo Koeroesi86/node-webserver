@@ -2,6 +2,7 @@ import vHost from 'vhost';
 import type { Express, RequestHandler } from 'express';
 import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
 import getURL from './getURL';
+import compressionMiddleware from '../middlewares/compression';
 import proxyMiddleware from '../middlewares/proxy';
 import lambdaMiddleware from '../middlewares/lambda';
 import getDate from './getDate';
@@ -47,18 +48,31 @@ function getMiddleware(instance: ServerInstance): RequestHandler {
   };
 }
 
+/** the handlers one after the other, like `use` on an app does */
+const compose =
+  (first: RequestHandler, second: RequestHandler): RequestHandler =>
+  (request, response, next) =>
+    first(request, response, (error?: unknown) => (error ? next(error) : second(request, response, next)));
+
+function getHandler(instance: ServerInstance): RequestHandler {
+  const { compression } = instance;
+  const middleware = getMiddleware(instance);
+
+  return compression ? compose(compressionMiddleware(compression === true ? {} : compression), middleware) : middleware;
+}
+
 function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
   const { portHttp, portHttps } = Configuration;
   const { hostname, protocol } = instance;
 
   switch (protocol) {
     case 'http':
-      httpApp.use(vHost(hostname, getMiddleware(instance)));
+      httpApp.use(vHost(hostname, getHandler(instance)));
       instance.url = getURL(protocol, hostname, portHttp);
       logger.system(`[${getDate()}] Server started for ${instance.url}`);
       break;
     case 'https':
-      httpsApp.use(vHost(hostname, getMiddleware(instance)));
+      httpsApp.use(vHost(hostname, getHandler(instance)));
       instance.url = getURL(protocol, hostname, portHttps);
       logger.system(`[${getDate()}] Server started for ${instance.url}`);
       break;

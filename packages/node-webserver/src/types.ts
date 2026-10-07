@@ -48,6 +48,19 @@ export interface LambdaOptions {
   acquireTimeout?: number;
 }
 
+export type CompressionEncoding = 'br' | 'gzip' | 'deflate';
+
+export interface CompressionOptions {
+  /** responses of a known size below this many bytes are sent as they are. Defaults to 1024. */
+  threshold?: number;
+  /** level of gzip and deflate, 1 (fast) to 9 (small). Defaults to 6. */
+  level?: number;
+  /** quality of brotli, 0 (fast) to 11 (small). Defaults to 4, as higher qualities are slow. */
+  brotliQuality?: number;
+  /** what may be used, in the order of preference when the client likes them the same. Defaults to all of them: br, gzip, deflate. */
+  encodings?: CompressionEncoding[];
+}
+
 export interface ServerInstance {
   hostname: string;
   protocol: string;
@@ -56,6 +69,8 @@ export interface ServerInstance {
   cert?: string;
   ca?: string;
   options?: WorkerOptions;
+  /** compress the responses of this server for the clients that accept it. Off by default. `true` uses the defaults, an object tunes them. */
+  compression?: boolean | CompressionOptions;
   childOptions?: ChildOptions;
   proxyOptions?: ProxyOptions;
   serverOptions?: InstanceServerOptions;
