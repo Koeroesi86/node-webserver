@@ -41,6 +41,17 @@ k6 run packages/node-webserver/load-tests/cpu.js
 | k6 | `MIN_REQUEST_RATE` | 1000 | requests per second the whole run has to reach |
 | k6 (`cpu.js`) | `CPU_RATE`, `MAX_P95_MS` | 150, 50 | requests per second for the CPU bound worker, and the p95 allowed |
 
+## Cores
+
+The workflow gives the server and k6 cores of their own (`taskset`), so that they do not take cores from each other and the results depend less on how the runner schedules them: k6 gets one core in four (at least one),
+the server the rest, which is 3 and 1 on the 4 core runners of public repositories. The pools of the server size themselves after the cores it may use, and the throughput floor is 250 requests per second for each of its cores.
+Two cores for the server were not enough for the lambda route (a p95 of 140-160 ms), k6 uses about 70% of its core. To try the same locally, on a machine with 4 cores:
+
+```sh
+taskset -c 0-2 pnpm --filter @koeroesi86/node-webserver start:load-test &
+taskset -c 3 k6 run -e HTTPS_PORT=8443 packages/node-webserver/load-tests/example.js
+```
+
 ## Thresholds
 
 They were calibrated on the 4 core GitHub runners of public repositories (see the notes in `example.js`) and are about twice the worst

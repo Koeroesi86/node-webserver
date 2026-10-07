@@ -47,9 +47,25 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Package bundle
         run: pnpm build
-      - name: Runner resources
+      - name: Runner resources and cores for the server and k6
         run: |
-          echo "cores: $(nproc), memory: $(free -h | awk '/Mem:/ {print $2}')"
+          cores=$(nproc)
+          echo "cores: ${cores}, memory: $(free -h | awk '/Mem:/ {print $2}')"
+          # The server and k6 get cores of their own, so that they do not take them from each other and the results depend less on how the runner schedules them.
+          # k6 needs about 70% of a core for what the server does with 3, so it gets one core in four (at least one) and the server the rest.
+          if [ "${cores}" -ge 2 ]; then
+            k6_count=$(( cores / 4 > 1 ? cores / 4 : 1 ))
+            server_last=$(( cores - k6_count - 1 ))
+            {
+              echo "SERVER_PREFIX=taskset -c 0-${server_last}"
+              echo "K6_PREFIX=taskset -c $(( server_last + 1 ))-$(( cores - 1 ))"
+              echo "SERVER_CORE_COUNT=$(( server_last + 1 ))"
+            } >> "$GITHUB_ENV"
+            echo "the server runs on cores 0-${server_last}, k6 on cores $(( server_last + 1 ))-$(( cores - 1 ))"
+          else
+            echo "SERVER_CORE_COUNT=${cores}" >> "$GITHUB_ENV"
+            echo 'one core: the server and k6 share it'
+          fi
       - name: Certificate for the HTTPS routes
         run: |
           mkdir -p packages/node-webserver/.certificates/localhost
@@ -57,7 +73,9 @@ jobs:
             -keyout packages/node-webserver/.certificates/localhost/privkey.pem -out packages/node-webserver/.certificates/localhost/cert.pem
       - name: Start example server
         run: |
-          node packages/node-webserver/dist/scripts/load-test-server.js > server.log 2>&1 &
+          # the prefix is empty on a runner with one core, and is meant to be split into words
+          # shellcheck disable=SC2086
+          $SERVER_PREFIX node packages/node-webserver/dist/scripts/load-test-server.js > server.log 2>&1 &
           echo $! > server.pid
       - name: Wait for server
         run: |
@@ -79,18 +97,20 @@ jobs:
           VUS: ${{ inputs.vus || '20' }}
           DURATION: ${{ inputs.duration || '30s' }}
         run: |
-          # the throughput floor was calibrated at 250 requests per second and core
-          k6 run \
+          # the throughput floor was calibrated at 250 requests per second and core of the server
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
             --summary-export=k6-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             -e HTTPS_PORT="${PORT_HTTPS}" \
-            -e MIN_REQUEST_RATE="$(( $(nproc) * 250 ))" \
+            -e MIN_REQUEST_RATE="$(( SERVER_CORE_COUNT * 250 ))" \
             packages/node-webserver/load-tests/example.js
       # on its own, as other traffic would take the cores that its workers need
       - name: Run CPU bound load test
         if: always()
         run: |
-          k6 run \
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
             --summary-export=k6-cpu-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             packages/node-webserver/load-tests/cpu.js

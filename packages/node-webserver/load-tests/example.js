@@ -18,7 +18,7 @@ const wsUrl = baseUrl.replace(/^http/, 'ws');
 const wsHoldSeconds = Number(__ENV.WS_HOLD_SECONDS || 3.5);
 const wsMinMessages = Math.floor(wsHoldSeconds) - 1;
 const wsSessionOk = new Rate('ws_session_ok');
-// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs, over several runs of the same code:
+// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs, over several runs of the same code (the numbers below are from before the server and k6 got cores of their own, see README.md):
 // 2190-3900 req/s overall (runners differ by up to 1.8 times), p95 of 6-10 ms for the worker, secure, static and compressed routes, 12-18 ms for the 404, 10-16 ms streamed,
 // 20-23 ms for the lambda, 100-200 ms to connect a websocket
 const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 1000);
