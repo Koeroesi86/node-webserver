@@ -1,0 +1,2 @@
+# the linter checks the line endings, and Windows checks out CRLF unless told otherwise
+* text=auto eol=lf

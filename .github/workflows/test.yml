@@ -1,31 +1,25 @@
-name: Branch build
+name: Test
 
+# lint, unit and integration tests, used by the workflows that build and publish
 on:
-  pull_request:
-    branches:
-      - master
+  workflow_call:
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
-    uses: ./.github/workflows/test.yml
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Lint and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          # the version script compares the packages with the commit of their latest release
-          fetch-depth: 0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -43,9 +37,13 @@ jobs:
       - name: Package bundle
         timeout-minutes: 10
         run: pnpm build
-      - name: Package version
+      - name: Lint
         timeout-minutes: 5
-        run: pnpm generate-version
-      - name: Package information
+        run: pnpm lint
+      - name: Unit tests
+        timeout-minutes: 10
+        run: pnpm test
+      # one server of every type, started from the bundle
+      - name: Integration tests
         timeout-minutes: 5
-        run: pnpm -r publish --dry-run --no-git-checks
+        run: pnpm test:integration
