@@ -1,10 +1,10 @@
-const { execFileSync } = require('child_process');
-const { mkdtempSync, rmSync, writeFileSync } = require('fs');
-const { tmpdir } = require('os');
-const { join, resolve } = require('path');
-const { getCpuModel, getCpuTimes, stealPercent, report } = require('./runner');
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { getCpuModel, getCpuTimes, report, stealPercent, type Snapshot } from './runner';
 
-const stat = (user, system, idle, steal) => `cpu  ${user} 0 ${system} ${idle} 0 0 0 ${steal} 0 0\ncpu0 1 1 1 1 0 0 0 1 0 0\n`;
+const stat = (user: number, system: number, idle: number, steal: number) => `cpu  ${user} 0 ${system} ${idle} 0 0 0 ${steal} 0 0\ncpu0 1 1 1 1 0 0 0 1 0 0\n`;
 
 describe('runner', () => {
   describe('getCpuModel', () => {
@@ -38,7 +38,7 @@ describe('runner', () => {
   });
 
   describe('stealPercent', () => {
-    const at = (user, system, idle, steal) => ({
+    const at = (user: number, system: number, idle: number, steal: number) => ({
       times: getCpuTimes(stat(user, system, idle, steal)),
     });
 
@@ -51,18 +51,18 @@ describe('runner', () => {
     });
 
     it('is not known when a snapshot has no times, or when no time passed', () => {
-      expect(stealPercent({}, at(1, 1, 1, 1))).toBeUndefined();
+      expect(stealPercent({ times: undefined }, at(1, 1, 1, 1))).toBeUndefined();
       expect(stealPercent(at(1, 1, 1, 1), at(1, 1, 1, 1))).toBeUndefined();
     });
   });
 
   describe('report', () => {
-    const snapshot = (steal) => ({
+    const snapshot = (steal: number): Snapshot => ({
       cpuModel: 'Test CPU 9000',
       cores: 4,
       times: getCpuTimes(stat(0, 0, 0, steal)),
     });
-    const later = (steal, total) => ({
+    const later = (steal: number, total: number): Snapshot => ({
       ...snapshot(steal),
       times: { total, steal },
     });
@@ -86,7 +86,7 @@ describe('runner', () => {
   });
 
   describe('command line', () => {
-    let folder;
+    let folder = '';
 
     beforeAll(() => {
       folder = mkdtempSync(join(tmpdir(), 'runner-'));
@@ -94,8 +94,8 @@ describe('runner', () => {
 
     afterAll(() => rmSync(folder, { recursive: true, force: true }));
 
-    const run = (...args) =>
-      execFileSync('node', [resolve(__dirname, 'runner.js'), ...args], {
+    const run = (...args: string[]) =>
+      execFileSync('node', [resolve(__dirname, '../../dist/load-tests/runner.js'), ...args], {
         encoding: 'utf8',
       });
 

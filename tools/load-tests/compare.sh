@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the load test against the base of a pull request and against the pull request itself, one after the other on this machine, and compares them.
 #   compare.sh <checkout of the base> <checkout of the pull request> [runs of each side, 3] [duration of a run, 15s] [duration of the CPU bound run, 10s]
-# Both sides get the load test (the k6 scripts, example.js and then cpu.js on its own, as it needs the cores) of the pull request, and their own server, which is started for every run and stopped after it:
+# Both sides get the load test (the k6 scripts, example.ts and then cpu.ts on its own, as it needs the cores) of the pull request, and their own server, which is started for every run and stopped after it:
 # two servers at the same time would take the cores from each other. Which side goes first changes with every round, so that a slow stretch of the
 # machine does not always hit the same side. SERVER_PREFIX and K6_PREFIX (for example `taskset -c 0-2`) are put in front of the commands, words are split on purpose.
 # The results are written to compare-results/ of the current folder, the markdown of the comparison goes to stdout, the exit code is 1 on a regression.
@@ -15,9 +15,9 @@ cpu_duration="${5:-10s}"
 port_http="${PORT_HTTP:-8080}"
 port_https="${PORT_HTTPS:-8443}"
 results="$(pwd)/compare-results"
-k6_script="${head}/tools/load-tests/example.js"
-cpu_script="${head}/tools/load-tests/cpu.js"
-compare_script="${head}/tools/load-tests/compare.js"
+k6_script="${head}/tools/src/load-tests/k6/example.ts"
+cpu_script="${head}/tools/src/load-tests/k6/cpu.ts"
+compare_script="${head}/tools/dist/load-tests/compare.js"
 pid=""
 
 mkdir -p "${results}"

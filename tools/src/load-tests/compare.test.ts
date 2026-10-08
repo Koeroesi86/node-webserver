@@ -1,11 +1,26 @@
-const { spawnSync } = require('child_process');
-const { mkdtempSync, rmSync, writeFileSync } = require('fs');
-const { tmpdir } = require('os');
-const { join, resolve } = require('path');
-const { compare, median } = require('./compare');
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { compare, median } from './compare';
+import type { K6Summary } from './k6-summary';
+
+interface SummaryOptions {
+  rate?: number;
+  routes?: Record<string, number>;
+  checks?: Record<string, number>;
+  connecting?: number;
+  overall?: number;
+}
+
+interface CpuSummaryOptions {
+  p95?: number;
+  dropped?: number;
+  checks?: number;
+}
 
 /** a summary with the throughput, the p95 per route and whether the checks of the routes passed */
-const summary = ({ rate = 4000, routes = { worker: 6, static: 7 }, checks = {}, connecting = 100, overall = 8 } = {}) => ({
+const summary = ({ rate = 4000, routes = { worker: 6, static: 7 }, checks = {}, connecting = 100, overall = 8 }: SummaryOptions = {}): K6Summary => ({
   metrics: {
     http_reqs: { rate },
     http_req_duration: { 'p(95)': overall },
@@ -16,17 +31,17 @@ const summary = ({ rate = 4000, routes = { worker: 6, static: 7 }, checks = {}, 
 });
 
 /** a summary of cpu.js: the p95 of the route, the requests that were dropped and whether the checks passed */
-const cpuSummary = ({ p95 = 12, dropped, checks = 1 } = {}) => ({
+const cpuSummary = ({ p95 = 12, dropped, checks = 1 }: CpuSummaryOptions = {}): K6Summary => ({
   metrics: {
     'http_req_duration{route:cpu}': { 'p(95)': p95 },
     'checks{route:cpu}': { value: checks },
     ...(dropped === undefined ? {} : { dropped_iterations: { count: dropped } }),
   },
 });
-const cpuRuns = (count, options) => Array.from({ length: count }, () => cpuSummary(options));
+const cpuRuns = (count: number, options?: CpuSummaryOptions) => Array.from({ length: count }, () => cpuSummary(options));
 
-const runs = (...options) => options.map((option) => summary(option));
-const same = (count = 3, options = {}) => Array.from({ length: count }, () => summary(options));
+const runs = (...options: SummaryOptions[]) => options.map((option) => summary(option));
+const same = (count = 3, options: SummaryOptions = {}) => Array.from({ length: count }, () => summary(options));
 
 describe('compare', () => {
   describe('median', () => {
@@ -83,7 +98,7 @@ describe('compare', () => {
   });
 
   describe('latency of a route', () => {
-    const withWorker = (p95) => same(3, { routes: { worker: p95, static: 7 } });
+    const withWorker = (p95: number) => same(3, { routes: { worker: p95, static: 7 } });
 
     it('is a regression when the p95 is more than 50% and 5 ms higher', () => {
       const { regressions, markdown } = compare(withWorker(10), withWorker(20));
@@ -111,7 +126,7 @@ describe('compare', () => {
     it('names every route that got slower', () => {
       const { regressions } = compare(same(3, { routes: { worker: 10, static: 10 } }), same(3, { routes: { worker: 20, static: 30 } }));
 
-      expect(regressions.map((regression) => regression.match(/p95 of (\w+)/)[1])).toEqual(['worker', 'static']);
+      expect(regressions.map((regression) => regression.match(/p95 of (\w+)/)?.[1])).toEqual(['worker', 'static']);
     });
   });
 
@@ -142,7 +157,7 @@ describe('compare', () => {
   });
 
   describe('CPU bound run', () => {
-    const compareCpu = (base, head) => compare(same(), same(), {}, { baseCpu: base, headCpu: head });
+    const compareCpu = (base: K6Summary[], head: K6Summary[]) => compare(same(), same(), {}, { baseCpu: base, headCpu: head });
 
     it('is not shown when there are no summaries of it', () => {
       expect(compare(same(), same()).markdown).not.toContain('CPU bound');
@@ -213,7 +228,7 @@ describe('compare', () => {
   });
 
   describe('command line', () => {
-    let folder;
+    let folder = '';
 
     beforeAll(() => {
       folder = mkdtempSync(join(tmpdir(), 'compare-'));
@@ -221,13 +236,14 @@ describe('compare', () => {
 
     afterAll(() => rmSync(folder, { recursive: true, force: true }));
 
-    const write = (name, content) => {
+    const write = (name: string, content: K6Summary) => {
       const path = join(folder, name);
       writeFileSync(path, JSON.stringify(content));
 
       return path;
     };
-    const run = (args, env = {}) => spawnSync('node', [resolve(__dirname, 'compare.js'), ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+    const run = (args: string[], env: Record<string, string> = {}) =>
+      spawnSync('node', [resolve(__dirname, '../../dist/load-tests/compare.js'), ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
 
     it('prints the table and exits with 0 when there is no regression', () => {
       const result = run([

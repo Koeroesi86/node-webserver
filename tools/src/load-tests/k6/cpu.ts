@@ -38,7 +38,7 @@ export default function () {
     response,
     {
       'cpu status is 200': (r) => r.status === 200,
-      'cpu response is as expected': (r) => r.status === 200 && JSON.parse(r.body).rounds === rounds && JSON.parse(r.body).digest.length === 64,
+      'cpu response is as expected': (r) => r.status === 200 && r.json('rounds') === rounds && String(r.json('digest')).length === 64,
     },
     { route: 'cpu' }
   );

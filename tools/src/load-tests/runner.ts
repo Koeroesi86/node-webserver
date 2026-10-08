@@ -1,11 +1,22 @@
-const { readFileSync } = require('fs');
-const os = require('os');
+import { readFileSync } from 'node:fs';
+import { availableParallelism, cpus } from 'node:os';
 
 // Describes the machine a load test ran on, as the numbers of shared runners differ a lot between machines.
 //   node runner.js snapshot [/proc/stat] [/proc/cpuinfo]    prints what is known now as JSON, to be called before and after the test
 //   node runner.js report before.json [after.json]          prints a markdown table for the job summary
 
-const read = (path) => {
+export interface CpuTimes {
+  total: number;
+  steal: number;
+}
+
+export interface Snapshot {
+  cpuModel: string;
+  cores: number;
+  times?: CpuTimes;
+}
+
+const read = (path: string) => {
   try {
     return readFileSync(path, 'utf8');
   } catch {
@@ -14,13 +25,14 @@ const read = (path) => {
 };
 
 /** the model of the processor, `/proc/cpuinfo` knows it on Linux */
-const getCpuModel = (cpuInfo) => cpuInfo?.match(/^(?:model name|Model|Hardware)\s*:\s*(.+)$/m)?.[1].trim() ?? os.cpus()[0]?.model ?? 'unknown';
+export const getCpuModel = (cpuInfo: string | undefined) =>
+  cpuInfo?.match(/^(?:model name|Model|Hardware)\s*:\s*(.+)$/m)?.[1].trim() ?? cpus()[0]?.model ?? 'unknown';
 
 /**
  * The time of all cores since boot, and how much of it was steal: time that the hypervisor gave to other virtual machines
  * while this one wanted to run. The line is `cpu user nice system idle iowait irq softirq steal ...`
  */
-const getCpuTimes = (stat) => {
+export const getCpuTimes = (stat: string | undefined): CpuTimes | undefined => {
   const fields = stat
     ?.match(/^cpu\s+(.+)$/m)?.[1]
     .trim()
@@ -35,21 +47,21 @@ const getCpuTimes = (stat) => {
       };
 };
 
-const snapshot = (statPath = '/proc/stat', cpuInfoPath = '/proc/cpuinfo') => ({
+export const snapshot = (statPath = '/proc/stat', cpuInfoPath = '/proc/cpuinfo'): Snapshot => ({
   cpuModel: getCpuModel(read(cpuInfoPath)),
-  cores: os.availableParallelism(),
+  cores: availableParallelism(),
   times: getCpuTimes(read(statPath)),
 });
 
 /** the share of the time between two snapshots that was steal, in percent, undefined when it is not known or no time passed */
-const stealPercent = (before, after) => {
+export const stealPercent = (before: Pick<Snapshot, 'times'>, after: Pick<Snapshot, 'times'> | undefined) => {
   if (before?.times === undefined || after?.times === undefined) return undefined;
   const total = after.times.total - before.times.total;
 
   return total > 0 ? ((after.times.steal - before.times.steal) / total) * 100 : undefined;
 };
 
-const report = (before, after) => {
+export const report = (before: Snapshot, after: Snapshot | undefined) => {
   const steal = stealPercent(before, after);
 
   return [
@@ -67,13 +79,12 @@ const report = (before, after) => {
   ].join('\n');
 };
 
-module.exports = { getCpuModel, getCpuTimes, stealPercent, snapshot, report };
-
 if (require.main === module) {
   const [command, ...args] = process.argv.slice(2);
 
   if (command === 'snapshot') {
-    console.log(JSON.stringify(snapshot(...args)));
+    const [statPath, cpuInfoPath] = args;
+    console.log(JSON.stringify(snapshot(statPath, cpuInfoPath)));
   } else if (command === 'report') {
     const [beforePath, afterPath] = args;
     console.log(report(JSON.parse(readFileSync(beforePath, 'utf8')), afterPath === undefined ? undefined : JSON.parse(readFileSync(afterPath, 'utf8'))));

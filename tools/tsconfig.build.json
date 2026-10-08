@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["src/load-tests/k6", "src/**/*.test.ts"]
+}

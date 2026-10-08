@@ -1,35 +1,60 @@
-# Load tests
+# Tools
 
-[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow.
+Internal tooling of the workspace (`@koeroesi86/tools`, never published). The scripts are TypeScript in `src/`, compiled to `dist/` by `pnpm build`, and their tests (jest, `*.test.ts`) run with `pnpm test` in this folder or `pnpm test` in the root.
 
-## Run locally
+| Tool | What it does | Run |
+| --- | --- | --- |
+| [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
+| [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `k6 run tools/src/load-tests/k6/example.ts`, `node tools/dist/load-tests/*.js`, `tools/load-tests/compare.sh` |
+
+Folders: `src/version.ts`, `src/load-tests/` (the Node scripts and their tests), `src/load-tests/k6/` (the scenarios, which k6 runs itself and which have a `tsconfig.json` of their own for the k6 types),
+`load-tests/compare.sh` (the only shell script, it starts the servers and k6 for both sides). `pnpm build` type checks the k6 scenarios too.
+
+## Versions
+
+`src/version.ts` (`pnpm generate-version` in the root, run by the publish workflow) prepares the versions of the workspace packages for publishing.
+A package is published when it has no published release yet, or when its own folder or the folder of any workspace package it depends on changed since the commit that its latest published release was created from (`gitHead`).
+Such packages get a new version and their commit written to `gitHead`. All the others get the version that is already on the registry, so the `workspace:` dependencies pointing at them are rewritten to an existing release and `pnpm publish` leaves them out.
+
+| Environment | |
+| --- | --- |
+| `GITHUB_RUN_ID`, `GITHUB_REF_NAME` | required, used for the new version |
+| `NPM_REGISTRY_URL` | the registry to compare with, defaults to https://registry.npmjs.org |
+| `VERSION_DRY_RUN` | only print the plan without changing any file |
+| `PUBLISH_ALL` | publish every package regardless of the changes |
+
+## Load tests
+
+[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
+
+### Run locally
 
 ```sh
 pnpm install && pnpm build
-# optional, serves https://secure.localhost too, so the HTTPS and secure websocket routes can be tested
+## optional, serves https://secure.localhost too, so the HTTPS and secure websocket routes can be tested
 mkdir -p packages/node-webserver/.certificates/localhost
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=secure.localhost" -addext "subjectAltName=DNS:secure.localhost" \
   -keyout packages/node-webserver/.certificates/localhost/privkey.pem -out packages/node-webserver/.certificates/localhost/cert.pem
 
 pnpm --filter @koeroesi86/node-webserver start:load-test &   # http on 8080, https on 8443, no access logs
-k6 run -e HTTPS_PORT=8443 tools/load-tests/example.js
+k6 run -e HTTPS_PORT=8443 tools/src/load-tests/k6/example.ts
 ```
 
 The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses,
 and `upload.localhost`, where `examples/upload/exampleWorker.js` reads the request body as a stream and answers with its size and sha256, which the `upload` route checks,
 and `health.localhost`, whose worker answers `/health` and `/metrics` from the metrics the server gives to workers, which the `metrics` route checks.
 
-## CPU bound worker
+### CPU bound worker
 
-`cpu.js` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow
+`cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow
 (about 110 requests per second), so the run only passes when the requests are spread over several workers. Run it on its own, as other traffic takes the cores that the workers need:
 `WORKERS_PER_PATH=1` on the server fails it, with latencies of seconds and dropped requests.
 
 ```sh
-k6 run tools/load-tests/cpu.js
+k6 run tools/src/load-tests/k6/cpu.ts
 ```
 
-## Options
+### Options
 
 | Where | Name | Default | |
 | --- | --- | --- | --- |
@@ -40,9 +65,9 @@ k6 run tools/load-tests/cpu.js
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
 | k6 | `MIN_REQUEST_RATE` | 1000 | requests per second the whole run has to reach |
 | compare | `MAX_THROUGHPUT_DROP`, `MAX_P95_INCREASE`, `MAX_CPU_P95_INCREASE`, `MIN_P95_DIFFERENCE_MS` | 0.15, 0.5, 0.3, 5 | limits of the comparison with the base |
-| k6 (`cpu.js`) | `CPU_RATE`, `MAX_P95_MS` | 150, 50 | requests per second for the CPU bound worker, and the p95 allowed |
+| k6 (`cpu.ts`) | `CPU_RATE`, `MAX_P95_MS` | 150, 50 | requests per second for the CPU bound worker, and the p95 allowed |
 
-## Cores
+### Cores
 
 The workflow gives the server and k6 cores of their own (`taskset`), so that they do not take cores from each other and the results depend less on how the runner schedules them: k6 gets one core in four (at least one),
 the server the rest, which is 3 and 1 on the 4 core runners of public repositories. The pools of the server size themselves after the cores it may use, and the throughput floor is 250 requests per second for each of its cores.
@@ -50,21 +75,21 @@ Two cores for the server were not enough for the lambda route (a p95 of 140-160 
 
 ```sh
 taskset -c 0-2 pnpm --filter @koeroesi86/node-webserver start:load-test &
-taskset -c 3 k6 run -e HTTPS_PORT=8443 tools/load-tests/example.js
+taskset -c 3 k6 run -e HTTPS_PORT=8443 tools/src/load-tests/k6/example.ts
 ```
 
-## Comparison with the base
+### Comparison with the base
 
 The absolute thresholds catch a collapse, not a slowdown, and the machines of shared runners differ too much from run to run to compare numbers of different runs: the same code has run at 3,300 and 4,600 requests per second.
 So on a pull request the workflow also builds the base (the commit it is merged into) next to the pull request, and measures both **in the same job**, one at a time, alternating, three runs of 15 seconds each (`compare.sh`).
-Both sides run the load test of the pull request against their own server, so that the load is the same. Then `compare.js` takes the median of the runs of each side and shows the change in the job summary:
+Both sides run the load test of the pull request against their own server, so that the load is the same. Then `compare.ts` takes the median of the runs of each side and shows the change in the job summary:
 
 - **throughput** is judged: a pull request with more than 15% less requests per second than the base fails (`MAX_THROUGHPUT_DROP`, 0.15),
 - **the p95 of a route** is judged with wide limits, 50% and 5 milliseconds higher (`MAX_P95_INCREASE` 0.5, `MIN_P95_DIFFERENCE_MS` 5). The load is a fixed number of users, so a build that is faster gets more requests through
   every route, which makes the routes compete for the cores: the p95 of one route can rise while the build is better. The limits only catch a route that got much slower,
 - a route that the base cannot serve (the pull request added it, which the checks per route show) is listed with n/a and not judged,
 - the p95 of all requests and the connect time of the websocket are shown, not judged,
-- **the CPU bound run** (`cpu.js`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
+- **the CPU bound run** (`cpu.ts`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
   and tighter limits hold: a p95 more than 30% and 5 milliseconds higher fails (`MAX_CPU_P95_INCREASE`, 0.3), and so does a build that drops requests where the base does not. A base without the CPU bound worker is listed with n/a and not judged.
   The duration is the fifth argument of `compare.sh`.
 
@@ -77,10 +102,10 @@ SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' tools/load-tests/compare
 
 The results are in `compare-results/`, the exit code is 1 on a regression. Each run also shows the processor of the runner and how much of the time it was held back by its host (steal time) in the job summary, which explains runs that are slow for no reason of the code.
 
-## Thresholds
+### Thresholds
 
-They were calibrated on the 4 core GitHub runners of public repositories (see the notes in `example.js`) and are about twice the worst
+They were calibrated on the 4 core GitHub runners of public repositories (see the notes in `example.ts`) and are about twice the worst
 value seen there. Private repositories run on 2 cores, and a different core count or user count needs different values.
 The workflow scales the throughput floor with the core count of the runner.
 
-`summary.js` turns the k6 summary export into the job summary of the workflow.
+`summary.ts` turns the k6 summary export into the job summary of the workflow.

@@ -1,4 +1,4 @@
-import http from 'k6/http';
+import http, { type RefinedResponse, type ResponseType } from 'k6/http';
 import ws from 'k6/ws';
 import crypto from 'k6/crypto';
 import { check } from 'k6';
@@ -29,18 +29,37 @@ const uploadSha256 = crypto.sha256(uploadBody, 'hex');
 const streamChunks = 8;
 const streamChunkSize = 4096;
 
+type Response = RefinedResponse<ResponseType | undefined>;
+
+interface Route {
+  method: string;
+  url: string;
+  host?: string;
+  headers?: Record<string, string>;
+  body?: string | ArrayBuffer;
+  /** the body of the response is read as bytes */
+  binary?: boolean;
+  status: number;
+  /** only every n-th iteration requests the route */
+  every?: number;
+  validate: (response: Response) => boolean;
+  maxP95: number;
+}
+
+const bodyIncludes = (response: Response, text: string) => typeof response.body === 'string' && response.body.includes(text);
+
 // every iteration walks through all routes, so each of them gets the same share of the load, unless `every` says otherwise
-const routes = {
-  worker: { method: 'GET', url: `${baseUrl}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 20 },
+const routes: Record<string, Route> = {
+  worker: { method: 'GET', url: `${baseUrl}/`, status: 200, validate: (r) => bodyIncludes(r, 'It works!'), maxP95: 20 },
   workerPost: {
     method: 'POST',
     url: `${baseUrl}/`,
     body: postBody,
     status: 200,
-    validate: (r) => r.body.includes('It works!') && r.headers['X-Request-Body-Length'] === String(postBody.length),
+    validate: (r) => bodyIncludes(r, 'It works!') && r.headers['X-Request-Body-Length'] === String(postBody.length),
     maxP95: 20,
   },
-  static: { method: 'GET', url: `${baseUrl}/static/index.html`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 20 },
+  static: { method: 'GET', url: `${baseUrl}/static/index.html`, status: 200, validate: (r) => bodyIncludes(r, 'It works!'), maxP95: 20 },
   staticBinary: {
     method: 'GET',
     url: `${baseUrl}/static/favicon.ico`,
@@ -50,7 +69,15 @@ const routes = {
   },
   // the example lambda serves the files of the static folder, in a lambda process. A lambda answers one request at a time and there are as many as cores,
   // so only a share of the iterations goes there: the route is meant to measure the lambda, not the queue in front of them
-  lambda: { method: 'GET', url: `${baseUrl}/index.html`, host: lambdaHostname, status: 200, every: 4, validate: (r) => r.body.includes('It works!'), maxP95: 50 },
+  lambda: {
+    method: 'GET',
+    url: `${baseUrl}/index.html`,
+    host: lambdaHostname,
+    status: 200,
+    every: 4,
+    validate: (r) => bodyIncludes(r, 'It works!'),
+    maxP95: 50,
+  },
   // a server with compression on: k6 only asks for it when told to, then it decompresses the body and leaves the headers
   compressed: {
     method: 'GET',
@@ -59,7 +86,7 @@ const routes = {
     headers: { 'Accept-Encoding': 'gzip, br' },
     status: 200,
     every: 2,
-    validate: (r) => ['gzip', 'br', 'deflate'].includes(r.headers['Content-Encoding']) && r.headers.Vary === 'Accept-Encoding' && r.body.includes('It works!'),
+    validate: (r) => ['gzip', 'br', 'deflate'].includes(r.headers['Content-Encoding']) && r.headers.Vary === 'Accept-Encoding' && bodyIncludes(r, 'It works!'),
     maxP95: 30,
   },
   // generated while it is sent, in 8 parts of 4 KiB, so it takes a share of the traffic only
@@ -70,9 +97,15 @@ const routes = {
     every: 4,
     binary: true,
     validate: (r) => {
+      if (!(r.body instanceof ArrayBuffer)) return false;
       const bytes = new Uint8Array(r.body);
 
-      return bytes.length === streamChunks * streamChunkSize && Array.from({ length: streamChunks }, (_, index) => index).every((index) => bytes[index * streamChunkSize] === index && bytes[(index + 1) * streamChunkSize - 1] === index);
+      return (
+        bytes.length === streamChunks * streamChunkSize &&
+        Array.from({ length: streamChunks }, (_, index) => index).every(
+          (index) => bytes[index * streamChunkSize] === index && bytes[(index + 1) * streamChunkSize - 1] === index
+        )
+      );
     },
     maxP95: 35,
   },
@@ -95,13 +128,17 @@ const routes = {
     host: healthHostname,
     status: 200,
     every: 8,
-    validate: (r) => r.json('memory.rss') > 0 && r.json('requests.total') > 0 && r.json('uptimeSeconds') > 0 && r.json('sources.lambdas') !== undefined,
+    validate: (r) =>
+      Number(r.json('memory.rss')) > 0 &&
+      Number(r.json('requests.total')) > 0 &&
+      Number(r.json('uptimeSeconds')) > 0 &&
+      r.json('sources.lambdas') !== undefined,
     maxP95: 50,
   },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
-  notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => r.body.includes('does not exist'), maxP95: 40 },
+  notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => bodyIncludes(r, 'does not exist'), maxP95: 40 },
   ...(httpsPort && {
-    secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => r.body.includes('It works!'), maxP95: 20 },
+    secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => bodyIncludes(r, 'It works!'), maxP95: 20 },
   }),
 };
 

@@ -5,5 +5,9 @@ module.exports = {
   rootDir: resolve(__dirname),
   cacheDirectory: resolve(__dirname, '../.cache/jest/tools'),
   testEnvironment: 'node',
-  testMatch: ['<rootDir>/load-tests/**/?(*.)+(spec|test).js'],
+  transform: {
+    '^.+\\.ts$': 'ts-jest',
+  },
+  testMatch: ['<rootDir>/src/**/?(*.)+(spec|test).ts'],
+  moduleFileExtensions: ['ts', 'js', 'json'],
 };
