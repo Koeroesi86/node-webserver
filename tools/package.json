@@ -4,7 +4,7 @@
   "description": "Internal tooling of the workspace, never published",
   "private": true,
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc -p src/scripts/k6/tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.k6.json",
     "test": "tsc -p tsconfig.build.json && jest",
     "generate-version": "node dist/scripts/version.js"
   },

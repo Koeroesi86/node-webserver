@@ -63,8 +63,8 @@ describe('compareWithBase', () => {
     mkdirSync(join(directory, 'packages/node-webserver/dist/scripts'), { recursive: true });
     writeFileSync(join(directory, 'packages/node-webserver/dist/scripts/load-test-server.js'), fakeServer);
     writeFileSync(join(directory, 'side.txt'), `${side} ${rate}`);
-    mkdirSync(join(directory, 'tools/src/scripts/k6'), { recursive: true });
-    ['example.ts', 'cpu.ts'].forEach((name) => writeFileSync(join(directory, 'tools/src/scripts/k6', name), ''));
+    mkdirSync(join(directory, 'tools/src/k6'), { recursive: true });
+    ['example.ts', 'cpu.ts'].forEach((name) => writeFileSync(join(directory, 'tools/src/k6', name), ''));
 
     return directory;
   };

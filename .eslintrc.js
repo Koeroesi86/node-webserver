@@ -20,5 +20,6 @@ module.exports = {
       { usePrettierrc: false },
     ],
   },
+  overrides: [{ files: ['tools/src/k6/**/*.ts'], parserOptions: { project: './tools/tsconfig.k6.json' } }],
   ignorePatterns: ['**/dist/*', '.idea/*', '.cache/*', '**/node_modules/*', '*.js'],
 };

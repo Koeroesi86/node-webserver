@@ -16,7 +16,7 @@ import { waitForServer } from './wait-for-server';
  */
 export const compareWithBase = async (options: ComparisonOptions): Promise<ComparisonResult> => {
   const { base, head, rounds, duration, cpuDuration, resultsDirectory, portHttp, portHttps, serverPrefix, k6Prefix } = options;
-  const [k6Script, cpuScript] = ['example.ts', 'cpu.ts'].map((name) => join(head, 'tools/src/scripts/k6', name));
+  const [k6Script, cpuScript] = ['example.ts', 'cpu.ts'].map((name) => join(head, 'tools/src/k6', name));
   const certificates = 'packages/node-webserver/.certificates/localhost';
   let running: RunningProcess | undefined;
 

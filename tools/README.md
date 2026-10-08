@@ -5,7 +5,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | Tool | What it does | Run |
 | --- | --- | --- |
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
-| [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `k6 run tools/src/scripts/k6/example.ts`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
+| [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `k6 run tools/src/k6/example.ts`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
 ### Layout
 
@@ -14,7 +14,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 | Folder | What is in it |
 | --- | --- |
 | `scripts/` | the entries, one file for every command: `version.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`. They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
-| `scripts/k6/` | the k6 scenarios (`example.ts`, `cpu.ts`), which k6 runs itself and which have a `tsconfig.json` of their own for the k6 types. `pnpm build` type checks them |
+| `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
 | `constants/` | the limits and defaults of the load test |
@@ -47,7 +47,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=secure.localhost" -
   -keyout packages/node-webserver/.certificates/localhost/privkey.pem -out packages/node-webserver/.certificates/localhost/cert.pem
 
 pnpm --filter @koeroesi86/node-webserver start:load-test &   # http on 8080, https on 8443, no access logs
-k6 run -e HTTPS_PORT=8443 tools/src/scripts/k6/example.ts
+k6 run -e HTTPS_PORT=8443 tools/src/k6/example.ts
 ```
 
 The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses,
@@ -61,7 +61,7 @@ and `health.localhost`, whose worker answers `/health` and `/metrics` from the m
 `WORKERS_PER_PATH=1` on the server fails it, with latencies of seconds and dropped requests.
 
 ```sh
-k6 run tools/src/scripts/k6/cpu.ts
+k6 run tools/src/k6/cpu.ts
 ```
 
 ### Options
@@ -85,7 +85,7 @@ Two cores for the server were not enough for the lambda route (a p95 of 140-160 
 
 ```sh
 taskset -c 0-2 pnpm --filter @koeroesi86/node-webserver start:load-test &
-taskset -c 3 k6 run -e HTTPS_PORT=8443 tools/src/scripts/k6/example.ts
+taskset -c 3 k6 run -e HTTPS_PORT=8443 tools/src/k6/example.ts
 ```
 
 ### Comparison with the base
