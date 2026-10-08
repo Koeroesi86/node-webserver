@@ -1,5 +1,6 @@
 import { resolve } from 'path';
-import { unlink, readFile, writeFile, existsSync, mkdirSync } from 'fs';
+import { readFile, writeFile, existsSync, mkdirSync } from 'fs';
+import { rm } from 'fs/promises';
 import rimraf from 'rimraf';
 import { PACKAGE_ROOT } from '../constants';
 import type RequestEvent from './RequestEvent';
@@ -13,7 +14,8 @@ const serializer = {
 const Driver = {
   save: (path: string, data: string) => new Promise<void>((res, rej) => writeFile(path, data, 'utf8', (err) => (err ? rej(err) : res()))),
   restore: (path: string) => new Promise<string>((res, rej) => readFile(path, 'utf8', (err, data) => (err ? rej(err) : res(data)))),
-  destroy: (path: string) => new Promise<void>((res, rej) => (existsSync(path) ? unlink(path, (err) => (err ? rej(err) : res())) : setTimeout(res, 0))),
+  // both the lambda and the middleware destroy the storage of a request, so the file may be gone already, which is not an error
+  destroy: (path: string) => rm(path, { force: true }),
 };
 
 /** loaded by file path, so it has to stay a CommonJS `module.exports` */

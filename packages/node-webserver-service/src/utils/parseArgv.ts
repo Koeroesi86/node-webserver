@@ -2,8 +2,9 @@ export interface ParsedArgv {
   [key: string]: string | boolean | undefined;
 }
 
-const ARGUMENT_PATTERN = /[-]{1,2}([a-zA-Z0-9-]+)[=]?["']?([a-zA-Z0-9/\\.\-:]+)*["']?/;
-const VALUE_PATTERN = /["']?([a-zA-Z0-9/\\.\-:]+)*["']?/;
+// a value can hold any character, quotes around it are dropped
+const ARGUMENT_PATTERN = /^[-]{1,2}([a-zA-Z0-9_-]+)(?:=["']?([^"']*)["']?)?/;
+const VALUE_PATTERN = /["']?([^"']*)["']?/;
 
 function parseArgv(argv: string[] = process.argv): ParsedArgv {
   let skipNext = false;
@@ -14,12 +15,12 @@ function parseArgv(argv: string[] = process.argv): ParsedArgv {
       return result;
     }
 
-    if (current.indexOf('-') !== 0) {
+    if (skipNext) {
+      skipNext = false;
       return result;
     }
 
-    if (skipNext) {
-      skipNext = false;
+    if (current.indexOf('-') !== 0) {
       return result;
     }
 
