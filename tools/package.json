@@ -5,11 +5,13 @@
   "private": true,
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.json",
-    "generate-version": "node dist/version.js"
+    "generate-version": "node dist/version.js",
+    "test": "jest"
   },
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "jest": "^29.5.0",
     "rimraf": "^3.0.2",
     "typescript": "^5.9.3"
   }

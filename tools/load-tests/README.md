@@ -12,7 +12,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=secure.localhost" -
   -keyout packages/node-webserver/.certificates/localhost/privkey.pem -out packages/node-webserver/.certificates/localhost/cert.pem
 
 pnpm --filter @koeroesi86/node-webserver start:load-test &   # http on 8080, https on 8443, no access logs
-k6 run -e HTTPS_PORT=8443 packages/node-webserver/load-tests/example.js
+k6 run -e HTTPS_PORT=8443 tools/load-tests/example.js
 ```
 
 The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses,
@@ -26,7 +26,7 @@ and `health.localhost`, whose worker answers `/health` and `/metrics` from the m
 `WORKERS_PER_PATH=1` on the server fails it, with latencies of seconds and dropped requests.
 
 ```sh
-k6 run packages/node-webserver/load-tests/cpu.js
+k6 run tools/load-tests/cpu.js
 ```
 
 ## Options
@@ -50,7 +50,7 @@ Two cores for the server were not enough for the lambda route (a p95 of 140-160 
 
 ```sh
 taskset -c 0-2 pnpm --filter @koeroesi86/node-webserver start:load-test &
-taskset -c 3 k6 run -e HTTPS_PORT=8443 packages/node-webserver/load-tests/example.js
+taskset -c 3 k6 run -e HTTPS_PORT=8443 tools/load-tests/example.js
 ```
 
 ## Comparison with the base
@@ -72,7 +72,7 @@ Same code on both sides measured within 2% of each other with runs that varied b
 for the pull request that adds the load test, and while the base cannot be built, the summary says there is nothing to compare with. Locally, with checkouts of both (`git worktree add ../base master`, install and build each), and the cores split as in the workflow:
 
 ```sh
-SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' packages/node-webserver/load-tests/compare.sh ../base . 3 15s 10s
+SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' tools/load-tests/compare.sh ../base . 3 15s 10s
 ```
 
 The results are in `compare-results/`, the exit code is 1 on a regression. Each run also shows the processor of the runner and how much of the time it was held back by its host (steal time) in the job summary, which explains runs that are slow for no reason of the code.
