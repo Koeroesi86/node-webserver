@@ -58,6 +58,7 @@ corepack enable
 pnpm install
 pnpm build   # compile every package, in dependency order
 pnpm lint
-pnpm test
+pnpm test               # unit tests of every package
+pnpm test:integration   # starts the built server with one server of every type (worker, lambda, child) and sends requests to them
 pnpm start   # run the web server with the example configuration
 ```

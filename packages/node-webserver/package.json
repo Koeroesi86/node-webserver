@@ -30,6 +30,7 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "test": "jest",
+    "test:integration": "jest -c integration/jest.config.js",
     "start:load-test": "node dist/scripts/load-test-server.js",
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/server.js\""
   },
