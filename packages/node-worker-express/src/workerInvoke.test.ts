@@ -152,6 +152,8 @@ describe('workerInvoke', () => {
   it('does not answer twice when the worker fails after it answered', async () => {
     send(WORKER_EVENT.REQUEST, 'a', '/answers-then-throws');
 
+    // the answer comes first, and a second one would follow the failure
+    await until(() => of('a', WORKER_EVENT.RESPONSE).length >= 1);
     await settle();
 
     expect(of('a', WORKER_EVENT.RESPONSE)).toHaveLength(1);

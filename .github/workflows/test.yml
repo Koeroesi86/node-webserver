@@ -1,0 +1,49 @@
+name: Test
+
+# lint, unit and integration tests, used by the workflows that build and publish
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - name: Persist cache
+        uses: actions/cache@v6
+        id: local-dot-cache
+        with:
+          path: .cache
+          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
+      - name: Setup
+        timeout-minutes: 10
+        run: pnpm install --frozen-lockfile
+      - name: Package bundle
+        timeout-minutes: 10
+        run: pnpm build
+      - name: Lint
+        timeout-minutes: 5
+        run: pnpm lint
+      - name: Unit tests
+        timeout-minutes: 10
+        run: pnpm test
+      # one server of every type, started from the bundle
+      - name: Integration tests
+        timeout-minutes: 5
+        run: pnpm test:integration

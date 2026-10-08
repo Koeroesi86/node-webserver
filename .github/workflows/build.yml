@@ -13,7 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,14 +38,14 @@ jobs:
           path: .cache
           key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Setup
+        timeout-minutes: 10
         run: pnpm install --frozen-lockfile
       - name: Package bundle
+        timeout-minutes: 10
         run: pnpm build
-      - name: Lint
-        run: pnpm lint
-      - name: Test
-        run: pnpm test
       - name: Package version
+        timeout-minutes: 5
         run: pnpm generate-version
       - name: Package information
+        timeout-minutes: 5
         run: pnpm -r publish --dry-run --no-git-checks

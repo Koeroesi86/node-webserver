@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import { startProcess } from './start-process';
 import { stopProcess } from './stop-process';
 
+// Windows has no signals, a process that ignores the first one cannot exist there, see the test of its own below
+const itPosix = process.platform === 'win32' ? it.skip : it;
+const itWindows = process.platform === 'win32' ? it : it.skip;
+
 describe('stopProcess', () => {
   const folder = mkdtempSync(join(tmpdir(), 'stop-process-'));
 
@@ -17,7 +21,7 @@ describe('stopProcess', () => {
     expect(running.process.exitCode !== null || running.process.signalCode !== null).toBe(true);
   });
 
-  it('kills a process that does not leave when it is asked to, after the time it was given', async () => {
+  itPosix('kills a process that does not leave when it is asked to, after the time it was given', async () => {
     const logPath = join(folder, 'stubborn.log');
     const running = startProcess(
       [process.execPath, '-e', "process.on('SIGTERM', () => undefined); console.log('ready'); setInterval(() => undefined, 1000)"],
@@ -29,6 +33,25 @@ describe('stopProcess', () => {
     await stopProcess(running, 200);
 
     expect(running.process.signalCode).toBe('SIGKILL');
+  });
+
+  itWindows('ends the processes that the process started as well', async () => {
+    const logPath = join(folder, 'tree.log');
+    const running = startProcess(
+      [
+        process.execPath,
+        '-e',
+        "const child = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => undefined, 1000)'], { stdio: 'ignore' }); console.log('child ' + child.pid); setInterval(() => undefined, 1000)",
+      ],
+      logPath
+    );
+    while (!/child \d+/.test(readFileSync(logPath, 'utf8'))) await new Promise((done) => setTimeout(done, 20));
+    const childPid = Number(/child (\d+)/.exec(readFileSync(logPath, 'utf8'))?.[1]);
+
+    await stopProcess(running);
+    await new Promise((done) => setTimeout(done, 500));
+
+    expect(() => process.kill(childPid, 0)).toThrow();
   });
 
   it('does nothing for a process that has exited', async () => {

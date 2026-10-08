@@ -9,6 +9,6 @@ module.exports = {
     // the build bundles ES modules, the tests run as CommonJS
     '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'commonjs', moduleResolution: 'node', target: 'es2022', esModuleInterop: true, noImplicitAny: false, skipLibCheck: true } }],
   },
-  testMatch: ['<rootDir>/src/**/?(*.)+(spec|test).ts'],
+  testMatch: ['**/src/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
 };

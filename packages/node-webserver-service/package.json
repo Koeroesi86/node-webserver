@@ -19,7 +19,8 @@
     "nws-service": "./dist/scripts/manageService.js"
   },
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "test": "jest",
     "service": "node dist/scripts/manageService.js",
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/start.js\""
   },
@@ -28,10 +29,13 @@
     "os-service": "^2.2.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/node": "^24.0.0",
     "@types/os-service": "^2.2.3",
+    "jest": "^29.7.0",
     "nodemon": "^2.0.15",
     "rimraf": "^3.0.2",
+    "ts-jest": "^29.4.14",
     "typescript": "^5.9.3"
   },
   "files": [

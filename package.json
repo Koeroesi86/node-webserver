@@ -7,6 +7,7 @@
   },
   "scripts": {
     "test": "pnpm -r test",
+    "test:integration": "pnpm -r --if-present test:integration",
     "start": "pnpm --filter @koeroesi86/node-webserver start",
     "build": "pnpm -r --if-present build",
     "generate-version": "pnpm --filter @koeroesi86/tools generate-version",

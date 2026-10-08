@@ -35,7 +35,7 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 
 ## Load tests
 
-[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
+[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow, on Linux, Windows and macOS. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
 
 ### Run locally
 
@@ -120,3 +120,14 @@ value seen there. Private repositories run on 2 cores, and a different core coun
 The workflow scales the throughput floor with the core count of the runner.
 
 `scripts/summary.ts` turns the k6 summary export into the job summary of the workflow, `scripts/runner.ts` describes the runner (`snapshot` before and after the test, then `report`), and `scripts/compare.ts` compares summary exports that exist already (`--base a.json b.json --head c.json d.json [--base-cpu ...] [--head-cpu ...]`). The default limits of the comparison are in `constants/comparison-limits.ts`.
+
+### Windows and macOS
+
+The workflow runs the same steps on the three systems (bash, also on Windows), with what differs set in its matrix, as the other systems are slower at starting processes and their runners have less to share:
+
+- there is no `taskset`, so the server and k6 share the cores instead of having cores of their own, and the throughput floor is lower for each core (`requests-per-core`),
+- the p95 of the routes is allowed to be higher (`P95_FACTOR` multiplies all of them, `P95_OVERRIDES` of `example.ts` sets some, for example the lambdas, which are processes, and the time to connect a websocket), and the CPU bound run has its own p95, rate and number of dropped requests it may have (`MAX_P95_MS`, `CPU_RATE`, `MAX_DROPPED`),
+- the limits of the comparison with the base are wider (`MAX_THROUGHPUT_DROP` and the others in the table above), as the same code measured up to 40% apart there. They still catch a collapse,
+- the comparison does not fail the job there (`comparison-informational`): a run of the same code was 4 times faster than the others, and a route moved by 170% between them. The table and the verdict are in the job summary, and Linux is the one that decides.
+
+On Windows a process that is killed leaves the processes it started behind, which keep the handles of the step open and the step from finishing, so `stopProcess` ends the whole tree there (`taskkill /T`).
