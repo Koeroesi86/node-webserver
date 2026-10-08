@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startProcess } from './start-process';
@@ -15,6 +15,20 @@ describe('stopProcess', () => {
     await stopProcess(running);
 
     expect(running.process.exitCode !== null || running.process.signalCode !== null).toBe(true);
+  });
+
+  it('kills a process that does not leave when it is asked to, after the time it was given', async () => {
+    const logPath = join(folder, 'stubborn.log');
+    const running = startProcess(
+      [process.execPath, '-e', "process.on('SIGTERM', () => undefined); console.log('ready'); setInterval(() => undefined, 1000)"],
+      logPath
+    );
+    // the process has to ignore the signal, so it is only asked once it said that it does
+    while (!readFileSync(logPath, 'utf8').includes('ready')) await new Promise((done) => setTimeout(done, 20));
+
+    await stopProcess(running, 200);
+
+    expect(running.process.signalCode).toBe('SIGKILL');
   });
 
   it('does nothing for a process that has exited', async () => {

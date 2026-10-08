@@ -1,13 +1,8 @@
-import { request } from 'node:http';
+import { requestEndpoint } from './request-endpoint';
 
 /** whether the server answers on the port without an error status */
-export const isServerUp = (port: string, host = 'web.localhost') =>
-  new Promise<boolean>((done) => {
-    const probe = request({ host: 'localhost', port, headers: { Host: host }, timeout: 2000 }, (response) => {
-      response.resume();
-      done(response.statusCode !== undefined && response.statusCode < 400);
-    });
-    probe.on('error', () => done(false));
-    probe.on('timeout', () => probe.destroy());
-    probe.end();
-  });
+export const isServerUp = async (port: string, host = 'web.localhost') => {
+  const status = await requestEndpoint(port, { host, path: '/' }, 2000);
+
+  return status !== undefined && status < 400;
+};
