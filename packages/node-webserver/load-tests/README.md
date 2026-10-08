@@ -39,6 +39,7 @@ k6 run packages/node-webserver/load-tests/cpu.js
 | k6 | `HTTPS_PORT` | not set | enables the HTTPS and secure websocket routes |
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
 | k6 | `MIN_REQUEST_RATE` | 1000 | requests per second the whole run has to reach |
+| compare | `MAX_THROUGHPUT_DROP`, `MAX_P95_INCREASE`, `MAX_CPU_P95_INCREASE`, `MIN_P95_DIFFERENCE_MS` | 0.15, 0.5, 0.3, 5 | limits of the comparison with the base |
 | k6 (`cpu.js`) | `CPU_RATE`, `MAX_P95_MS` | 150, 50 | requests per second for the CPU bound worker, and the p95 allowed |
 
 ## Cores
@@ -62,13 +63,16 @@ Both sides run the load test of the pull request against their own server, so th
 - **the p95 of a route** is judged with wide limits, 50% and 5 milliseconds higher (`MAX_P95_INCREASE` 0.5, `MIN_P95_DIFFERENCE_MS` 5). The load is a fixed number of users, so a build that is faster gets more requests through
   every route, which makes the routes compete for the cores: the p95 of one route can rise while the build is better. The limits only catch a route that got much slower,
 - a route that the base cannot serve (the pull request added it, which the checks per route show) is listed with n/a and not judged,
-- the p95 of all requests and the connect time of the websocket are shown, not judged.
+- the p95 of all requests and the connect time of the websocket are shown, not judged,
+- **the CPU bound run** (`cpu.js`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
+  and tighter limits hold: a p95 more than 30% and 5 milliseconds higher fails (`MAX_CPU_P95_INCREASE`, 0.3), and so does a build that drops requests where the base does not. A base without the CPU bound worker is listed with n/a and not judged.
+  The duration is the fifth argument of `compare.sh`.
 
 Same code on both sides measured within 2% of each other with runs that varied by 1-2%, while 0.2 milliseconds of extra work for every request (47% less throughput) failed it. The comparison needs a load test in the base:
 for the pull request that adds the load test, and while the base cannot be built, the summary says there is nothing to compare with. Locally, with checkouts of both (`git worktree add ../base master`, install and build each), and the cores split as in the workflow:
 
 ```sh
-SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' packages/node-webserver/load-tests/compare.sh ../base . 3 15s
+SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' packages/node-webserver/load-tests/compare.sh ../base . 3 15s 10s
 ```
 
 The results are in `compare-results/`, the exit code is 1 on a regression. Each run also shows the processor of the runner and how much of the time it was held back by its host (steal time) in the job summary, which explains runs that are slow for no reason of the code.

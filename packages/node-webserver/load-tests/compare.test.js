@@ -15,6 +15,16 @@ const summary = ({ rate = 4000, routes = { worker: 6, static: 7 }, checks = {}, 
   },
 });
 
+/** a summary of cpu.js: the p95 of the route, the requests that were dropped and whether the checks passed */
+const cpuSummary = ({ p95 = 12, dropped, checks = 1 } = {}) => ({
+  metrics: {
+    'http_req_duration{route:cpu}': { 'p(95)': p95 },
+    'checks{route:cpu}': { value: checks },
+    ...(dropped === undefined ? {} : { dropped_iterations: { count: dropped } }),
+  },
+});
+const cpuRuns = (count, options) => Array.from({ length: count }, () => cpuSummary(options));
+
 const runs = (...options) => options.map((option) => summary(option));
 const same = (count = 3, options = {}) => Array.from({ length: count }, () => summary(options));
 
@@ -131,6 +141,58 @@ describe('compare', () => {
     });
   });
 
+  describe('CPU bound run', () => {
+    const compareCpu = (base, head) => compare(same(), same(), {}, { baseCpu: base, headCpu: head });
+
+    it('is not shown when there are no summaries of it', () => {
+      expect(compare(same(), same()).markdown).not.toContain('CPU bound');
+    });
+
+    it('finds no regression with the same results', () => {
+      const { regressions, markdown } = compareCpu(cpuRuns(3), cpuRuns(3));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 CPU bound (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+      expect(markdown).toContain('| CPU bound dropped requests | 0 | 0 | n/a | ✅ |');
+    });
+
+    it('is a regression when the p95 is more than 30% and 5 ms higher', () => {
+      const { regressions, markdown } = compareCpu(cpuRuns(3, { p95: 12 }), cpuRuns(3, { p95: 18 }));
+
+      expect(regressions).toHaveLength(1);
+      expect(regressions[0]).toContain('CPU bound run');
+      expect(markdown).toContain('❌');
+    });
+
+    it('is not when it is 25% higher, or higher by less than 5 ms', () => {
+      expect(compareCpu(cpuRuns(3, { p95: 20 }), cpuRuns(3, { p95: 25 })).regressions).toEqual([]);
+      expect(compareCpu(cpuRuns(3, { p95: 3 }), cpuRuns(3, { p95: 7 })).regressions).toEqual([]);
+    });
+
+    it('is judged with the limit that is given', () => {
+      const { regressions } = compare(same(), same(), { maxCpuP95Increase: 1 }, { baseCpu: cpuRuns(3, { p95: 12 }), headCpu: cpuRuns(3, { p95: 18 }) });
+
+      expect(regressions).toEqual([]);
+    });
+
+    it('is a regression when it drops requests that the base took', () => {
+      const { regressions } = compareCpu(cpuRuns(3), cpuRuns(3, { dropped: 40 }));
+
+      expect(regressions).toEqual([expect.stringContaining('dropped 40 requests')]);
+    });
+
+    it('is not judged when the base cannot serve it', () => {
+      const { regressions, markdown } = compareCpu(cpuRuns(3, { p95: 2, checks: 0 }), cpuRuns(3, { p95: 40, dropped: 10 }));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 CPU bound (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
+    });
+
+    it('uses the medians, so one bad run does not decide', () => {
+      expect(compareCpu(cpuRuns(3), [cpuSummary(), cpuSummary(), cpuSummary({ p95: 300 })]).regressions).toEqual([]);
+    });
+  });
+
   describe('noise', () => {
     it('does not let one bad run decide, the medians of the runs are compared', () => {
       const base = runs({ rate: 4000 }, { rate: 4100 }, { rate: 3900 });
@@ -196,6 +258,16 @@ describe('compare', () => {
 
       expect(run(['--base', base, '--head', head]).status).toBe(1);
       expect(run(['--base', base, '--head', head], { MAX_THROUGHPUT_DROP: '0.5' }).status).toBe(0);
+    });
+
+    it('judges the CPU bound runs after --base-cpu and --head-cpu', () => {
+      const args = ['--base', write('c-b.json', summary()), '--head', write('c-h.json', summary())];
+      const [fast, slow] = [write('cpu-b.json', cpuSummary({ p95: 12 })), write('cpu-h.json', cpuSummary({ p95: 40 }))];
+
+      expect(run([...args, '--base-cpu', fast, '--head-cpu', fast]).status).toBe(0);
+      const result = run([...args, '--base-cpu', fast, '--head-cpu', slow]);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('CPU bound');
     });
 
     it('fails and says so when a side has no summary', () => {

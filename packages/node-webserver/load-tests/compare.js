@@ -1,13 +1,21 @@
 const { existsSync, readFileSync } = require('fs');
 
 // Compares the k6 summaries of the base of a pull request with the ones of the pull request itself, both measured in the same job.
-//   node compare.js --base base-1.json base-2.json ... --head head-1.json head-2.json ...
+//   node compare.js --base base-1.json base-2.json ... --head head-1.json head-2.json ... [--base-cpu ...] [--head-cpu ...]
 // Prints markdown for the job summary and exits with 1 when the pull request is clearly slower.
 // MAX_THROUGHPUT_DROP (0.15) and MAX_P95_INCREASE (0.5) are shares, MIN_P95_DIFFERENCE_MS (5) is how many milliseconds slower a route has to be as well, as a few milliseconds are noise.
 // The load is a fixed number of users, so a build that is faster gets more requests through every route, which makes the routes compete for the cores: the p95 of a route can rise while the build is better.
 // The throughput is the figure that holds, the limits for a route are wide on purpose and only catch a route that got much slower.
+// The CPU bound run (cpu.js) has a fixed arrival rate, so its latency does not depend on how fast the rest is: its p95 is judged with a tighter limit (MAX_CPU_P95_INCREASE, 0.3), and requests that the server dropped are a regression.
+// Its summaries come after --base-cpu and --head-cpu, and are optional.
 
-const defaults = { maxThroughputDrop: 0.15, maxP95Increase: 0.5, minP95DifferenceMs: 5, minCheckRate: 0.9 };
+const defaults = {
+  maxThroughputDrop: 0.15,
+  maxP95Increase: 0.5,
+  maxCpuP95Increase: 0.3,
+  minP95DifferenceMs: 5,
+  minCheckRate: 0.9,
+};
 
 const median = (values) => {
   const sorted = values.filter((value) => value !== undefined).sort((a, b) => a - b);
@@ -38,8 +46,9 @@ const change = (base, head) =>
  * Compares the repetitions of both sides by their medians.
  * A route is only judged when the base can serve it: the load test of a pull request may have routes that the base does not have.
  */
-const compare = (baseSummaries, headSummaries, limits = {}) => {
-  const { maxThroughputDrop, maxP95Increase, minP95DifferenceMs, minCheckRate } = { ...defaults, ...limits };
+const compare = (baseSummaries, headSummaries, limits = {}, { baseCpu = [], headCpu = [] } = {}) => {
+  const { maxThroughputDrop, maxP95Increase, maxCpuP95Increase, minP95DifferenceMs, minCheckRate } = { ...defaults, ...limits };
+  const hasCpu = baseCpu.length > 0 && headCpu.length > 0;
   const regressions = [];
   const rows = [];
 
@@ -79,6 +88,38 @@ const compare = (baseSummaries, headSummaries, limits = {}) => {
     );
   });
 
+  if (hasCpu) {
+    const cpuP95 = (summaries) => median(collect(summaries, (metrics) => metrics['http_req_duration{route:cpu}']?.['p(95)']));
+    const cpuDropped = (summaries) => median(collect(summaries, (metrics) => metrics.dropped_iterations?.count ?? 0));
+    const cpuCheckRate = median(collect(baseCpu, (metrics) => metrics['checks{route:cpu}']?.value));
+    const [base, head] = [cpuP95(baseCpu), cpuP95(headCpu)];
+    // a base without the CPU bound worker answers with fast errors
+    const comparable = base !== undefined && (cpuCheckRate === undefined || cpuCheckRate >= minCheckRate);
+    const slower = comparable && head !== undefined && head > base * (1 + maxCpuP95Increase) && head - base > minP95DifferenceMs;
+    if (slower)
+      regressions.push(
+        `The p95 of the CPU bound run is ${change(base, head).replace('+', '')} higher than the base (${number(base, 1)} ms to ${number(
+          head,
+          1
+        )} ms), the limit is ${maxCpuP95Increase * 100}%.`
+      );
+    rows.push(
+      `| p95 CPU bound (ms) | ${comparable ? number(base, 1) : 'n/a'} | ${number(head, 1)} | ${
+        comparable ? change(base, head) : 'the base cannot serve it'
+      } | ${slower ? '❌' : comparable ? '✅' : '➖'} |`
+    );
+
+    const [baseDropped, headDropped] = [cpuDropped(baseCpu), cpuDropped(headCpu)];
+    const dropsMore = comparable && headDropped > baseDropped;
+    if (dropsMore)
+      regressions.push(`The CPU bound run dropped ${number(headDropped)} requests the server could not take on time, the base ${number(baseDropped)}.`);
+    rows.push(
+      `| CPU bound dropped requests | ${comparable ? number(baseDropped) : 'n/a'} | ${number(headDropped)} | ${
+        comparable ? change(baseDropped, headDropped) : 'the base cannot serve it'
+      } | ${dropsMore ? '❌' : comparable ? '✅' : '➖'} |`
+    );
+  }
+
   const info = [
     ['p95 of all requests (ms)', (metrics) => metrics.http_req_duration?.['p(95)']],
     ['WebSocket connect p95 (ms)', (metrics) => metrics.ws_connecting?.['p(95)']],
@@ -93,7 +134,13 @@ const compare = (baseSummaries, headSummaries, limits = {}) => {
     `Medians of ${baseSummaries.length} runs of the base and ${headSummaries.length} of the pull request, alternating, on the same machine. In brackets: the range of the runs.`,
     `Judged: throughput (at most ${maxThroughputDrop * 100}% lower) and the p95 of every route (at most ${
       maxP95Increase * 100
-    }% and ${minP95DifferenceMs} ms higher).`,
+    }% and ${minP95DifferenceMs} ms higher).${
+      hasCpu
+        ? ` The CPU bound run (${baseCpu.length} runs of the base, ${headCpu.length} of the pull request, at a fixed rate) is judged on its p95 (at most ${
+            maxCpuP95Increase * 100
+          }% and ${minP95DifferenceMs} ms higher) and on dropped requests.`
+        : ''
+    }`,
     '',
     '| Metric | Base | Pull request | Change | |',
     '| --- | --- | --- | --- | --- |',
@@ -110,10 +157,19 @@ module.exports = { median, compare };
 
 if (require.main === module) {
   // the files after --base are the runs of the base, the ones after --head the runs of the pull request
-  const groups = { '--base': [], '--head': [] };
+  const groups = {
+    '--base': [],
+    '--head': [],
+    '--base-cpu': [],
+    '--head-cpu': [],
+  };
   process.argv.slice(2).reduce((group, argument) => (argument in groups ? argument : (groups[group]?.push(argument), group)), undefined);
   const load = (paths) => paths.filter(existsSync).map((path) => JSON.parse(readFileSync(path, 'utf8')));
   const [base, head] = [load(groups['--base']), load(groups['--head'])];
+  const cpu = {
+    baseCpu: load(groups['--base-cpu']),
+    headCpu: load(groups['--head-cpu']),
+  };
 
   if (base.length === 0 || head.length === 0) {
     console.log(
@@ -128,12 +184,13 @@ if (require.main === module) {
     Object.entries({
       maxThroughputDrop: process.env.MAX_THROUGHPUT_DROP,
       maxP95Increase: process.env.MAX_P95_INCREASE,
+      maxCpuP95Increase: process.env.MAX_CPU_P95_INCREASE,
       minP95DifferenceMs: process.env.MIN_P95_DIFFERENCE_MS,
     })
       .filter(([, value]) => value !== undefined && value !== '')
       .map(([name, value]) => [name, Number(value)])
   );
-  const { markdown, regressions } = compare(base, head, limits);
+  const { markdown, regressions } = compare(base, head, limits, cpu);
   console.log(markdown);
   process.exit(regressions.length === 0 ? 0 : 1);
 }
