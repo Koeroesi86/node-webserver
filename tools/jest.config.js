@@ -3,7 +3,7 @@ const { resolve } = require('path');
 module.exports = {
   verbose: true,
   rootDir: resolve(__dirname),
-  cacheDirectory: resolve(__dirname, '../../.cache/jest/node-webserver'),
+  cacheDirectory: resolve(__dirname, '../.cache/jest/tools'),
   testEnvironment: 'node',
   transform: {
     '^.+\\.ts$': 'ts-jest',

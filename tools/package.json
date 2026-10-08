@@ -4,13 +4,18 @@
   "description": "Internal tooling of the workspace, never published",
   "private": true,
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.json",
-    "generate-version": "node dist/version.js"
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.k6.json",
+    "test": "tsc -p tsconfig.build.json && jest",
+    "generate-version": "node dist/scripts/version.js"
   },
   "license": "MIT",
   "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/k6": "^2.3.0",
     "@types/node": "^24.0.0",
+    "jest": "^29.5.0",
     "rimraf": "^3.0.2",
+    "ts-jest": "^29.4.14",
     "typescript": "^5.9.3"
   }
 }

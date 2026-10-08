@@ -63,7 +63,8 @@ jobs:
         continue-on-error: true
         working-directory: base
         run: |
-          if [ ! -f packages/node-webserver/load-tests/example.js ]; then
+          # the load test used to live in the package of the server
+          if [ ! -f tools/src/k6/example.ts ] && [ ! -f packages/node-webserver/load-tests/example.js ]; then
             echo 'The base has no load test.'
             exit 0
           fi
@@ -115,7 +116,7 @@ jobs:
         with:
           k6-version: '1.2.2'
       - name: Look at the runner before the load test
-        run: node packages/node-webserver/load-tests/runner.js snapshot > runner-before.json
+        run: node tools/dist/scripts/runner.js snapshot > runner-before.json
       - name: Run load test
         env:
           # passed through the environment rather than interpolated into the script
@@ -129,10 +130,10 @@ jobs:
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             -e HTTPS_PORT="${PORT_HTTPS}" \
             -e MIN_REQUEST_RATE="$(( SERVER_CORE_COUNT * 250 ))" \
-            packages/node-webserver/load-tests/example.js
+            tools/src/k6/example.ts
       - name: Look at the runner after the load test
         if: always()
-        run: node packages/node-webserver/load-tests/runner.js snapshot > runner-after.json
+        run: node tools/dist/scripts/runner.js snapshot > runner-after.json
       # on its own, as other traffic would take the cores that its workers need
       - name: Run CPU bound load test
         if: always()
@@ -141,15 +142,15 @@ jobs:
           $K6_PREFIX k6 run \
             --summary-export=k6-cpu-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
-            packages/node-webserver/load-tests/cpu.js
+            tools/src/k6/cpu.ts
       - name: Summarize results
         if: always()
         run: |
-          node packages/node-webserver/load-tests/summary.js k6-summary.json server.log >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-summary.json server.log >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
-          node packages/node-webserver/load-tests/summary.js k6-cpu-summary.json '' 'Load test: CPU bound worker' >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-cpu-summary.json '' 'Load test: CPU bound worker' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
-          node packages/node-webserver/load-tests/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
         if: always()
         run: kill "$(cat server.pid)" || echo 'The server had already stopped.'
@@ -158,7 +159,7 @@ jobs:
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
         run: |
           set -o pipefail
-          packages/node-webserver/load-tests/compare.sh base . 3 15s | tee -a "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/compare-with-base.js base . 3 15s | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Note that there is nothing to compare with
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready != 'true'
         run: |

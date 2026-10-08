@@ -72,7 +72,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * `compressed.localhost` serves the example worker with compression on.
  * `upload.localhost` serves a worker that reads the request body as a stream.
  * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
- * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see load-tests/README.md.
+ * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests.
  * WORKERS_PER_PATH overrides the number of workers started per path.
  */
 const configuration = {
