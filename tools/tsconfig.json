@@ -14,5 +14,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/load-tests/k6"]
+  "exclude": ["src/scripts/k6"]
 }

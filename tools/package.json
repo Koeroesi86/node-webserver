@@ -4,9 +4,9 @@
   "description": "Internal tooling of the workspace, never published",
   "private": true,
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc -p src/load-tests/k6/tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc -p src/scripts/k6/tsconfig.json",
     "test": "tsc -p tsconfig.build.json && jest",
-    "generate-version": "node dist/version.js"
+    "generate-version": "node dist/scripts/version.js"
   },
   "license": "MIT",
   "devDependencies": {

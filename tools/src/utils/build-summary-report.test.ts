@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import type { Metric, Metrics } from './k6-summary';
+import { join } from 'node:path';
+import type { Metric, Metrics } from '../types/k6-summary';
+import { buildSummaryReport } from './build-summary-report';
 
 const trend = (median: number, p95: number, max: number, thresholds?: Record<string, boolean>): Metric => ({
   avg: median,
@@ -28,7 +28,7 @@ const metrics = (breached = false): Metrics => ({
   ws_session_duration: { avg: 3520 },
 });
 
-describe('summary', () => {
+describe('buildSummaryReport', () => {
   let folder = '';
 
   beforeAll(() => {
@@ -45,7 +45,7 @@ describe('summary', () => {
 
     const args = [summary ? summaryPath : join(folder, 'missing.json'), serverLog === undefined ? '' : logPath, ...(title ? [title] : [])];
 
-    return execFileSync('node', [resolve(__dirname, '../../dist/load-tests/summary.js'), ...args], { encoding: 'utf8' });
+    return `${buildSummaryReport(args[0], args[1] || undefined, args[2])}\n`;
   };
 
   it('reports the totals, the routes and the websocket sessions', () => {
