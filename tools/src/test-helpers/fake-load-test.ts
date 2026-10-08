@@ -55,6 +55,12 @@ export const installFakeK6 = (folder: string) => {
   return bin;
 };
 
+/**
+ * What to put in front of `k6` to run the fake. Windows does not start a script by its name, as it has no shebang and the file has no extension, so it is run by node there.
+ * The command that follows is `k6 run ...`, which the fake ignores along with the other arguments it does not know.
+ */
+export const fakeK6Prefix = (bin: string): string[] => (process.platform === 'win32' ? [process.execPath, join(bin, 'k6')] : []);
+
 /** a checkout with the server of the load test and the k6 scripts, that reports the rate of its side */
 export const createCheckout = (folder: string, side: string, rate: number) => {
   const directory = join(folder, `${side}-${rate}-${Math.random().toString(36).slice(2)}`);

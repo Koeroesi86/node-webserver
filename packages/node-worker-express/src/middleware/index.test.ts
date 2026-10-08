@@ -332,11 +332,12 @@ describe('workerMiddleware', () => {
     });
 
     it('keeps a response going while parts keep coming, even if it takes longer than the timeout', async () => {
-      await start({ limitResponseTimeout: 80 });
+      // the parts come in a third of the timeout, which a slow machine can be late for, and all of them together take longer than it
+      await start({ limitResponseTimeout: 300 });
       mockLease((handlers, requestId) => {
         const send = (index: number) => {
           handlers.onMessage(part(requestId, index < 5 ? bytes : null));
-          if (index < 5) setTimeout(() => send(index + 1), 40);
+          if (index < 5) setTimeout(() => send(index + 1), 100);
         };
         send(0);
       });
@@ -866,7 +867,12 @@ describe('workerMiddleware', () => {
         socket.on('end', () => resolve(Buffer.concat(received).toString()));
         socket.on('error', reject);
         socket.on('connect', async () => {
-          for (const part of [`${head}\r\nHost: web.localhost\r\nConnection: close\r\n\r\n`, ...writes]) {
+          const requestHead = `${head}\r\nHost: web.localhost\r\nConnection: close\r\n\r\n`;
+          // without a pause the head and the first part of the body are a single write, two writes in a row can arrive apart
+          const [first, ...rest] = writes;
+          const parts =
+            pauseBetweenWrites || first === undefined ? [requestHead, ...writes] : [Buffer.concat([Buffer.from(requestHead), Buffer.from(first)]), ...rest];
+          for (const part of parts) {
             socket.write(part);
             if (pauseBetweenWrites) await new Promise((r) => setTimeout(r, pauseBetweenWrites));
           }

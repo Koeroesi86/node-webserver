@@ -267,7 +267,10 @@ describe('httpMiddleware', () => {
       const { getLambdaStats } = require(path.join(build, 'index.js'));
 
       const responses = Promise.all([fetch(`${baseUrl}/hold`), fetch(`${baseUrl}/hold`)]);
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // both lambdas have to be started and holding their request, which takes longer on a slow machine
+      for (let waited = 0; getLambdaStats().busy < 2 && waited < 3000; waited += 10) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
       const during = getLambdaStats();
       await responses;
       const after = getLambdaStats();

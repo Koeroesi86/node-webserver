@@ -1,17 +1,19 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { createCheckout, installFakeK6 } from '../test-helpers/fake-load-test';
+import { createCheckout, fakeK6Prefix, installFakeK6 } from '../test-helpers/fake-load-test';
 import type { ComparisonOptions } from '../types/comparison';
 import { compareWithBase } from './compare-with-base';
 
 describe('compareWithBase', () => {
   let folder = '';
+  let bin = '';
   const savedPath = process.env.PATH;
 
   beforeAll(() => {
     folder = mkdtempSync(join(tmpdir(), 'compare-with-base-'));
-    process.env.PATH = `${installFakeK6(folder)}${delimiter}${savedPath}`;
+    bin = installFakeK6(folder);
+    process.env.PATH = `${bin}${delimiter}${savedPath}`;
   });
 
   afterAll(() => {
@@ -37,14 +39,14 @@ describe('compareWithBase', () => {
     portHttp: '18481',
     portHttps: '18444',
     serverPrefix: [],
-    k6Prefix: [],
+    k6Prefix: fakeK6Prefix(bin),
     ...more,
   });
 
   const k6Calls = () => readFileSync(join(folder, 'k6.log'), 'utf8').trim().split('\n');
 
   it('runs every side with its own server, alternating, and passes when both are as fast', async () => {
-    const result = await compareWithBase(options(checkout('base', 4000), checkout('head', 4000), { k6Prefix: ['env', 'PREFIXED=yes'] }));
+    const result = await compareWithBase(options(checkout('base', 4000), checkout('head', 4000), { k6Prefix: ['env', 'PREFIXED=yes', ...fakeK6Prefix(bin)] }));
 
     expect(result.passed).toBe(true);
     expect(result.markdown).toContain('✅ no regression');
