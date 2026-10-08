@@ -56,7 +56,7 @@ if (!GITHUB_RUN_ID) {
 }
 
 // compiled to tools/dist, the workspace root is two levels up
-const rootPath = resolve(__dirname, '../..');
+const rootPath = resolve(__dirname, '../../..');
 const packagesPath = resolve(rootPath, 'packages');
 const now = new Date();
 const newVersion = `${`${now.getFullYear()}`.substring(2)}.${`${now.getMonth() + 1}`.padStart(2, '0')}.${GITHUB_RUN_ID}-${GITHUB_REF_NAME.replace(/\//g, '-')}`;
