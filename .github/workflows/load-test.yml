@@ -29,11 +29,62 @@ concurrency:
 
 jobs:
   load-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: load-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # requests per second and core of the server that the throughput floor asks for. Linux is calibrated with the cores split between the server and k6,
+          # the other systems cannot do that, so the server shares its cores with k6 there.
+          # cpu-max-p95-ms is the p95 allowed for the CPU bound worker, which shares its cores with k6 there too
+          # p95-overrides: the p95 allowed for routes (and `ws_connecting`, the time to connect a websocket) instead of their own, in the form of `route=ms,route=ms`. Lambdas are processes, which Windows is slow to start.
+          # cpu-rate: requests per second for the CPU bound worker, cpu-max-dropped: how many of its requests k6 may fail to start (of 3000 in a run)
+          # comparison-limits: the limits of the comparison with the base (see tools/README.md) that differ from the defaults. The identical code measured up to 40% apart on these systems.
+          # p95-factor: multiplies the p95 allowed for every route, where everything is slower and shared runners are noisier.
+          # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
+          - os: ubuntu-latest
+            requests-per-core: 250
+            cpu-max-p95-ms: 50
+            cpu-rate: 150
+            cpu-max-dropped: 0
+            p95-overrides: ''
+            comparison-limits: ''
+            comparison-informational: false
+            p95-factor: 1
+          - os: windows-latest
+            requests-per-core: 100
+            cpu-max-p95-ms: 300
+            cpu-rate: 80
+            cpu-max-dropped: 60
+            p95-overrides: 'lambda=1500,ws_connecting=1000'
+            comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
+            comparison-informational: true
+            p95-factor: 2
+          - os: macos-latest
+            requests-per-core: 100
+            cpu-max-p95-ms: 170
+            cpu-rate: 100
+            cpu-max-dropped: 60
+            p95-overrides: ''
+            comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
+            comparison-informational: true
+            p95-factor: 2
+    defaults:
+      run:
+        # also on Windows, where the steps are scripts for bash
+        shell: bash
     env:
       PORT_HTTP: '8080'
       PORT_HTTPS: '8443'
+      REQUESTS_PER_CORE: ${{ matrix.requests-per-core }}
+      CPU_MAX_P95_MS: ${{ matrix.cpu-max-p95-ms }}
+      CPU_RATE: ${{ matrix.cpu-rate }}
+      MAX_DROPPED: ${{ matrix.cpu-max-dropped }}
+      COMPARISON_LIMITS: ${{ matrix.comparison-limits }}
+      P95_OVERRIDES: ${{ matrix.p95-overrides }}
+      P95_FACTOR: ${{ matrix.p95-factor }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,8 +95,10 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
       - name: Setup
+        timeout-minutes: 10
         run: pnpm install --frozen-lockfile
       - name: Package bundle
+        timeout-minutes: 10
         run: pnpm build
       # The pull request is compared with its base on the same machine, as the machines differ too much between runs to compare numbers of different ones.
       # The base has to have a load test itself, which is not the case for the pull request that adds it.
@@ -58,6 +111,7 @@ jobs:
           path: base
           persist-credentials: false
       - name: Build the base
+        timeout-minutes: 10
         id: base
         if: github.event_name == 'pull_request'
         continue-on-error: true
@@ -73,11 +127,12 @@ jobs:
           echo 'ready=true' >> "$GITHUB_OUTPUT"
       - name: Runner resources and cores for the server and k6
         run: |
-          cores=$(nproc)
-          echo "cores: ${cores}, memory: $(free -h | awk '/Mem:/ {print $2}')"
-          # The server and k6 get cores of their own, so that they do not take them from each other and the results depend less on how the runner schedules them.
+          cores=$(node -p "require('os').availableParallelism()")
+          echo "system: ${RUNNER_OS}, cores: ${cores}, memory: $(node -p "Math.round(require('os').totalmem() / 2 ** 30)") GiB"
+          # On Linux the server and k6 get cores of their own, so that they do not take them from each other and the results depend less on how the runner schedules them.
           # k6 needs about 70% of a core for what the server does with 3, so it gets one core in four (at least one) and the server the rest.
-          if [ "${cores}" -ge 2 ]; then
+          # The other systems have no taskset, so the server and k6 share the cores there.
+          if [ "${RUNNER_OS}" = 'Linux' ] && [ "${cores}" -ge 2 ]; then
             k6_count=$(( cores / 4 > 1 ? cores / 4 : 1 ))
             server_last=$(( cores - k6_count - 1 ))
             {
@@ -88,9 +143,12 @@ jobs:
             echo "the server runs on cores 0-${server_last}, k6 on cores $(( server_last + 1 ))-$(( cores - 1 ))"
           else
             echo "SERVER_CORE_COUNT=${cores}" >> "$GITHUB_ENV"
-            echo 'one core: the server and k6 share it'
+            echo 'the server and k6 share the cores'
           fi
       - name: Certificate for the HTTPS routes
+        env:
+          # Git Bash on Windows would turn the subject into a path
+          MSYS_NO_PATHCONV: '1'
         run: |
           mkdir -p packages/node-webserver/.certificates/localhost
           openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=secure.localhost" -addext "subjectAltName=DNS:secure.localhost" \
@@ -102,6 +160,7 @@ jobs:
           $SERVER_PREFIX node packages/node-webserver/dist/scripts/load-test-server.js > server.log 2>&1 &
           echo $! > server.pid
       - name: Wait for server
+        timeout-minutes: 2
         run: |
           for i in $(seq 1 30); do
             if curl -fsS -o /dev/null -H 'Host: web.localhost' "http://localhost:${PORT_HTTP}"; then
@@ -118,30 +177,43 @@ jobs:
       - name: Look at the runner before the load test
         run: node tools/dist/scripts/runner.js snapshot > runner-before.json
       - name: Run load test
+        timeout-minutes: 5
         env:
           # passed through the environment rather than interpolated into the script
           VUS: ${{ inputs.vus || '20' }}
           DURATION: ${{ inputs.duration || '30s' }}
         run: |
-          # the throughput floor was calibrated at 250 requests per second and core of the server
+          # the throughput floor is a number of requests per second for every core of the server, see the matrix
           # shellcheck disable=SC2086
           $K6_PREFIX k6 run \
             --summary-export=k6-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             -e HTTPS_PORT="${PORT_HTTPS}" \
-            -e MIN_REQUEST_RATE="$(( SERVER_CORE_COUNT * 250 ))" \
+            -e MIN_REQUEST_RATE="$(( SERVER_CORE_COUNT * REQUESTS_PER_CORE ))" \
+            -e P95_OVERRIDES="${P95_OVERRIDES}" \
+            -e P95_FACTOR="${P95_FACTOR}" \
             tools/src/k6/example.ts
       - name: Look at the runner after the load test
         if: always()
         run: node tools/dist/scripts/runner.js snapshot > runner-after.json
+      # the workers of the CPU bound route start with the first requests, which the run would otherwise lose while they start (systems that start processes slowly dropped some)
+      - name: Warm up the CPU bound route
+        timeout-minutes: 2
+        if: always()
+        run: |
+          seq 1 16 | xargs -P 8 -I{} curl -sS -o /dev/null -H 'Host: web.localhost' "http://localhost:${PORT_HTTP}/cpu/?rounds=1000"
       # on its own, as other traffic would take the cores that its workers need
       - name: Run CPU bound load test
+        timeout-minutes: 5
         if: always()
         run: |
           # shellcheck disable=SC2086
           $K6_PREFIX k6 run \
             --summary-export=k6-cpu-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
+            -e MAX_P95_MS="${CPU_MAX_P95_MS}" \
+            -e CPU_RATE="${CPU_RATE}" \
+            -e MAX_DROPPED="${MAX_DROPPED}" \
             tools/src/k6/cpu.ts
       - name: Summarize results
         if: always()
@@ -157,9 +229,18 @@ jobs:
       # one server at a time, the one above is stopped, and the cores of the runner are the same for both sides
       - name: Compare with the base
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
+        # shorter than the job, so that a hang fails this step and leaves the results to be uploaded
+        timeout-minutes: 15
+        continue-on-error: ${{ matrix.comparison-informational }}
         run: |
-          set -o pipefail
-          node tools/dist/scripts/compare-with-base.js base . 3 15s | tee -a "$GITHUB_STEP_SUMMARY"
+          # not through a pipe: processes that outlive the script (on Windows) would keep the pipe open, and the step with it
+          status=0
+          # the limits are words of NAME=value, empty for the defaults
+          # shellcheck disable=SC2086
+          env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . 3 15s > compare-summary.md || status=$?
+          cat compare-summary.md
+          cat compare-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "${status}"
       - name: Note that there is nothing to compare with
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready != 'true'
         run: |
@@ -168,7 +249,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: load-test-results
+          name: load-test-results-${{ matrix.os }}
           path: |
             k6-summary.json
             k6-cpu-summary.json

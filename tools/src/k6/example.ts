@@ -22,6 +22,16 @@ const wsSessionOk = new Rate('ws_session_ok');
 // 2190-3900 req/s overall (runners differ by up to 1.8 times), p95 of 6-10 ms for the worker, secure, static and compressed routes, 12-18 ms for the 404, 10-16 ms streamed,
 // 20-23 ms for the lambda, 100-200 ms to connect a websocket
 const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 1000);
+// the p95 allowed for some routes (and for ws_connecting) instead of their own, for systems where starting processes takes long: `lambda=1500,upload=200` (milliseconds)
+// P95_FACTOR scales the p95 allowed for every route, and for ws_connecting, for systems where everything is slower
+const p95Factor = Number(__ENV.P95_FACTOR || 1);
+const p95Overrides: Record<string, number> = Object.fromEntries(
+  (__ENV.P95_OVERRIDES || '')
+    .split(',')
+    .filter(Boolean)
+    .map((entry) => entry.split('='))
+    .map(([route, milliseconds]) => [route, Number(milliseconds)])
+);
 const postBody = JSON.stringify({ hello: 'world' });
 // four parts of 64 KiB on their way to the worker, all byte values included
 const uploadBody = new Uint8Array(256 * 1024).map((_, index) => (index * 31) % 251).buffer;
@@ -165,8 +175,10 @@ export const options = {
     http_reqs: [`rate>${minRequestRate}`],
     // a session is ok when the upgrade succeeded, frames kept arriving and the connection closed cleanly
     ws_session_ok: ['rate>0.99'],
-    ws_connecting: ['p(95)<400'],
-    ...Object.fromEntries(Object.entries(routes).map(([route, { maxP95 }]) => [`http_req_duration{route:${route}}`, [`p(95)<${maxP95}`]])),
+    ws_connecting: [`p(95)<${p95Overrides.ws_connecting ?? 400 * p95Factor}`],
+    ...Object.fromEntries(
+      Object.entries(routes).map(([route, { maxP95 }]) => [`http_req_duration{route:${route}}`, [`p(95)<${p95Overrides[route] ?? maxP95 * p95Factor}`]])
+    ),
     // also makes k6 report the checks per route, which tells a comparison with another build whether that build can serve the route at all
     ...Object.fromEntries(Object.keys(routes).map((route) => [`checks{route:${route}}`, ['rate>0.999']])),
   },

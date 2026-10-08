@@ -9,6 +9,8 @@ const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
 const rounds = 8000;
 // 11-24 ms were seen on the 4 core GitHub runners, where a single worker needs seconds
 const maxP95 = Number(__ENV.MAX_P95_MS || 50);
+// systems where k6 shares starved cores with the workers drop a few iterations without the server being at fault
+const maxDropped = Number(__ENV.MAX_DROPPED || 0);
 
 export const options = {
   scenarios: {
@@ -26,7 +28,7 @@ export const options = {
     http_req_failed: ['rate<0.001'],
     checks: ['rate>0.999'],
     // requests the server could not take on time would be dropped
-    dropped_iterations: ['count<1'],
+    dropped_iterations: [`count<${maxDropped + 1}`],
     'http_req_duration{route:cpu}': [`p(95)<${maxP95}`],
   },
 };
