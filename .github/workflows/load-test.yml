@@ -1,16 +1,17 @@
 name: Load test
 
+# run by the branch build once lint, the tests and the build passed, and by hand
 on:
-  pull_request:
-    branches:
-      - master
-    paths:
-      - 'packages/**'
-      - 'tools/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/load-test.yml'
+  workflow_call:
+    inputs:
+      vus:
+        description: Concurrent virtual users
+        type: string
+        default: '20'
+      duration:
+        description: Test duration (k6 format, e.g. 30s, 2m)
+        type: string
+        default: '30s'
   workflow_dispatch:
     inputs:
       vus:
@@ -22,10 +23,6 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   load-test:

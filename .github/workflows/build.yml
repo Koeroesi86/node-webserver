@@ -43,3 +43,8 @@ jobs:
       - name: Package information
         timeout-minutes: 5
         run: pnpm -r publish --dry-run --no-git-checks
+
+  # the load test (and its comparison with the base) only runs when the tests and the build passed
+  load-test:
+    needs: [test, build]
+    uses: ./.github/workflows/load-test.yml
