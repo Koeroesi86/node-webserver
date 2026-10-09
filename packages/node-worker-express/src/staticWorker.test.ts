@@ -178,6 +178,29 @@ describe('staticWorker', () => {
       expect(sent).toBeGreaterThan(4);
     });
 
+    it('keeps the bytes waiting for the client within the window for the whole file', async () => {
+      let outstanding = 0;
+      let peak = 0;
+      let total = 0;
+
+      await staticWorker(event('/big.bin'), (part) => {
+        const size = Buffer.isBuffer(part.body) ? part.body.length : 0;
+        outstanding += size;
+        total += size;
+        peak = Math.max(peak, outstanding);
+        return new Promise((resolve) =>
+          setImmediate(() => {
+            outstanding -= size;
+            resolve(true);
+          })
+        );
+      });
+
+      expect(total).toBe(big.length);
+      // 4 MiB window, and the part that crosses it
+      expect(peak).toBeLessThanOrEqual(4 * 1024 * 1024 + 1024 * 1024);
+    });
+
     it('stops reading when the client is gone', async () => {
       const parts = await stream((part) => part < 1);
 
