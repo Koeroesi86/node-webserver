@@ -10,6 +10,7 @@ export const warmUpEndpoints: Endpoint[] = [
   { host: 'web.localhost', path: '/static/index.html' },
   { host: 'web.localhost', path: '/cpu/?rounds=1' },
   { host: 'web.localhost', path: '/stream/?chunks=1&size=1' },
+  { host: 'web.localhost', path: '/binary/?size=1' },
   { host: 'lambda.localhost', path: '/index.html' },
   { host: 'compressed.localhost', path: '/' },
   { host: 'upload.localhost', path: '/', method: 'POST', body: 'warm-up' },

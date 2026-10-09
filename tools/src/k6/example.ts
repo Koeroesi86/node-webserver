@@ -36,6 +36,9 @@ const postBody = JSON.stringify({ hello: 'world' });
 // four parts of 64 KiB on their way to the worker, all byte values included
 const uploadBody = new Uint8Array(256 * 1024).map((_, index) => (index * 31) % 251).buffer;
 const uploadSha256 = crypto.sha256(uploadBody, 'hex');
+// a binary response of 768 KiB from the worker in a single message, all byte values included, the size of the files that were not measured before
+const binarySize = 768 * 1024;
+const binarySha256 = crypto.sha256(new Uint8Array(binarySize).map((_, index) => (index * 31) % 251).buffer, 'hex');
 const streamChunks = 8;
 const streamChunkSize = 4096;
 
@@ -118,6 +121,16 @@ const routes: Record<string, Route> = {
       );
     },
     maxP95: 35,
+  },
+  // the bytes of the response travel from the worker to the server as they are, not as text, so this is where a big body costs the most
+  binary: {
+    method: 'GET',
+    url: `${baseUrl}/binary/?size=${binarySize}`,
+    status: 200,
+    every: 4,
+    binary: true,
+    validate: (r) => r.body instanceof ArrayBuffer && r.body.byteLength === binarySize && crypto.sha256(r.body, 'hex') === binarySha256,
+    maxP95: 60,
   },
   // the body is passed on to the worker as a stream while it arrives, the worker answers with the size and the hash of what it received
   upload: {
