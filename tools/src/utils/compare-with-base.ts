@@ -4,10 +4,12 @@ import type { ComparisonOptions, ComparisonResult } from '../types/comparison';
 import type { RunningProcess } from '../types/server';
 import type { WarmUpResult } from '../types/warm-up';
 import { compareFiles } from './compare-files';
+import { describeRun } from './describe-run';
 import { describeUnevenlyServed } from './describe-unevenly-served';
-import { readRequestRate } from './read-request-rate';
+import { getStealPercent } from './get-steal-percent';
 import { startProcess } from './start-process';
 import { stopProcess } from './stop-process';
+import { takeSnapshot } from './take-snapshot';
 import { waitForServer } from './wait-for-server';
 import { warmUpServer } from './warm-up-server';
 
@@ -70,6 +72,7 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
     // the first requests of a run would wait for the workers to start, which differs between versions on purpose
     const warmUp = await warmUpServer(portHttp);
     if (!warmedUp.has(side)) warmedUp.set(side, warmUp);
+    const before = takeSnapshot();
     // the thresholds are those of the pull request and mean nothing for the base, only the numbers are used, so the exit code of k6 does not matter
     await k6(
       [
@@ -112,7 +115,7 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
         join(resultsDirectory, `k6-binary-${name}.log`)
       );
     }
-    console.error(`${side} ${round}: ${readRequestRate(join(resultsDirectory, `${name}.json`))}`);
+    console.error(`${side} ${round}: ${describeRun(join(resultsDirectory, `${name}.json`), getStealPercent(before, takeSnapshot()))}`);
     await stopProcess(server);
   };
 
