@@ -24,8 +24,8 @@ const runVisible = ([command, ...args]: string[]) =>
   });
 
 /**
- * Starts the example server, warms it up and runs the scenarios of the workflow against it (the example load test, then the CPU bound one and the one with big binary responses, each on its own),
- * with the installed k6 or else the official Docker image. Resolves with the exit code: 0 when the thresholds of both held.
+ * Starts the example server, warms it up and runs the scenarios of the workflow against it (the example load test, then the CPU bound one, the one with big binary responses
+ * and, with a certificate, the one with new TLS connections, each on its own), with the installed k6 or else the official Docker image. Resolves with the exit code: 0 when the thresholds of all held.
  */
 export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner = chooseK6Runner() }: LoadTestOptions) => {
   if (runner === undefined) {
@@ -68,8 +68,9 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
     const cpu = await scenario('cpu.ts', []);
 
     const binary = await scenario('binary.ts', []);
+    const handshakes = secure ? await scenario('tls.ts', ['-e', `HTTPS_PORT=${portHttps}`]) : 0;
 
-    return example === 0 && cpu === 0 && binary === 0 ? 0 : 1;
+    return example === 0 && cpu === 0 && binary === 0 && handshakes === 0 ? 0 : 1;
   } finally {
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);
