@@ -1,6 +1,8 @@
+import net from 'net';
 import { Readable } from 'stream';
 import { WORKER_EVENT } from './constants';
 import { InvokableWorker, RequestBodyEvent, RequestEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WorkerRequestEvent, WSFrameEvent } from './types';
+import createChannel from './utils/createChannel';
 import type { ServerMetrics } from './utils/metrics';
 
 const worker = require(process.argv.pop()) as InvokableWorker;
@@ -20,6 +22,16 @@ interface Stream {
 
 const streams = new Map<string, Stream>();
 
+/** the socket pair to the server, which the pool opens as the fourth stdio of the worker */
+const channelSocket = new net.Socket({ fd: 3, readable: true, writable: true });
+const channel = createChannel<WorkerInputEvent, WorkerOutputEvent>(channelSocket, messageListener);
+
+/** the body goes over the channel as bytes, which spares the server decoding base64 */
+const toMessage = ({ isBase64Encoded, body, ...rest }: ResponseEvent) => ({
+  ...rest,
+  body: typeof body === 'string' ? Buffer.from(body, isBase64Encoded ? 'base64' : 'utf8') : body,
+});
+
 /** the streamed request bodies that are still coming in, per request */
 const uploads = new Map<string, { stream: Readable; receive: (part: RequestBodyEvent) => void }>();
 
@@ -29,7 +41,7 @@ const metricsWaiting = new Map<string, Array<(metrics: ServerMetrics) => void>>(
 const getMetrics = (requestId: string) =>
   new Promise<ServerMetrics>((resolve) => {
     metricsWaiting.set(requestId, [...(metricsWaiting.get(requestId) ?? []), resolve]);
-    process.send({ type: WORKER_EVENT.METRICS_REQUEST, requestId });
+    channel.send({ type: WORKER_EVENT.METRICS_REQUEST, requestId });
   });
 
 /** the body of a request that has none */
@@ -61,7 +73,7 @@ const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Reada
 function createUpload(requestId: string): Readable {
   /** parts that were put into the stream but not acknowledged yet, as the reader was behind */
   let owed = 0;
-  const acknowledge = () => process.send({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
+  const acknowledge = () => channel.send({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
 
   const stream = new Readable({
     // stated, as it is what decides how far the reader may fall behind before the acknowledgements stop, and the default differs between versions of node
@@ -79,11 +91,11 @@ function createUpload(requestId: string): Readable {
 
   uploads.set(requestId, {
     stream,
-    receive: ({ body, isBase64Encoded }) => {
+    receive: ({ body }) => {
       if (body === null) {
         uploads.delete(requestId);
         stream.push(null);
-      } else if (stream.push(Buffer.from(body, isBase64Encoded ? 'base64' : 'utf8'))) {
+      } else if (stream.push(body)) {
         acknowledge();
       } else {
         owed += 1;
@@ -145,13 +157,13 @@ function messageListener(message: WorkerInputEvent) {
         e = {
           type: WORKER_EVENT.RESPONSE_EMIT,
           requestId: message.requestId,
-          event: responseEvent,
+          event: toMessage(responseEvent),
         };
       } else {
         e = {
           type: WORKER_EVENT.RESPONSE,
           requestId: message.requestId,
-          event: responseEvent,
+          event: toMessage(responseEvent),
         };
         streams.delete(message.requestId);
       }
@@ -165,7 +177,7 @@ function messageListener(message: WorkerInputEvent) {
         streams.set(message.requestId, stream);
       }
 
-      process.send(e);
+      channel.send(e);
 
       // once the response is complete the server drops the rest of the request body, so the stream has nothing more to give
       if (e.type === WORKER_EVENT.RESPONSE || (e.type === WORKER_EVENT.RESPONSE_EMIT && e.event?.body === null)) {
@@ -214,7 +226,7 @@ function messageListener(message: WorkerInputEvent) {
         requestId: message.requestId,
         event: responseEvent,
       };
-      process.send(e);
+      channel.send(e);
     };
     invoke(toWorkerEvent(message.event, message.requestId, createEmptyBody()), callback, console.error);
   }
@@ -223,10 +235,10 @@ function messageListener(message: WorkerInputEvent) {
     invoke(
       toWorkerEvent({ ...message.event, closed: true }, message.requestId, createEmptyBody()),
       (responseEvent: ResponseEvent) => {
-        process.send({
+        channel.send({
           type: WORKER_EVENT.WS_CONNECTION_CLOSE_ACKNOWLEDGE,
           requestId: message.requestId,
-          event: responseEvent,
+          event: toMessage(responseEvent),
         });
       },
       console.error,
@@ -236,7 +248,5 @@ function messageListener(message: WorkerInputEvent) {
   }
 }
 
-process.on('message', messageListener);
-
-// the parent can disappear without running its exit handlers, for example when it is terminated by a signal
-process.on('disconnect', () => process.exit(0));
+// the parent can disappear without running its exit handlers, for example when it is terminated by a signal, which closes the channel
+channelSocket.on('close', () => process.exit(0));

@@ -23,6 +23,7 @@ module.exports = {
     'util',
     'stream',
     'perf_hooks',
+    'net',
     'url',
   ],
   plugins: [typescript({ tsconfig: './tsconfig.build.json' })],

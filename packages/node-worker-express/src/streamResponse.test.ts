@@ -2,7 +2,7 @@ import { Readable } from 'stream';
 import streamResponse from './streamResponse';
 import type { ResponseEvent } from './types';
 
-const bodyOf = (parts: ResponseEvent[]) => Buffer.concat(parts.filter(({ body }) => body !== null).map(({ body }) => Buffer.from(body, 'base64')));
+const bodyOf = (parts: ResponseEvent[]) => Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer));
 
 describe('streamResponse', () => {
   /** collects the parts, `acknowledge` decides what the promise of each part resolves to */
@@ -31,6 +31,8 @@ describe('streamResponse', () => {
 
     expect(completed).toBe(true);
     expect(bodyOf(parts).toString()).toBe('one two three');
+    // the bytes as they are, not a base64 string that the server would have to decode
+    expect(parts.slice(0, 3).every(({ body }) => Buffer.isBuffer(body))).toBe(true);
     expect(parts).toHaveLength(4);
     expect(parts[3]).toMatchObject({ emit: true, body: null });
     expect(parts.every((part) => part.emit && part.statusCode === 201 && part.headers['Content-Type'] === 'text/plain')).toBe(true);
@@ -51,6 +53,21 @@ describe('streamResponse', () => {
     await streamResponse(callback, {}, generate(bytes, new Uint8Array(bytes.buffer, bytes.byteOffset + 16, 32)));
 
     expect(bodyOf(parts)).toEqual(Buffer.concat([bytes, bytes.subarray(16, 48)]));
+  });
+
+  it('sends what a chunk held when it was produced, also when the source reuses its buffer', async () => {
+    const { parts, callback } = collect();
+    async function* reuse() {
+      const shared = Buffer.alloc(4);
+      for (const letter of ['a', 'b', 'c']) {
+        shared.fill(letter);
+        yield shared;
+      }
+    }
+
+    await streamResponse(callback, {}, reuse());
+
+    expect(bodyOf(parts).toString()).toBe('aaaabbbbcccc');
   });
 
   it('streams a Readable', async () => {

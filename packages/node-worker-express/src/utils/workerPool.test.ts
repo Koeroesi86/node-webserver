@@ -1,4 +1,5 @@
 import type { EventEmitter } from 'events';
+import { WORKER_EVENT } from '../constants';
 import WorkerPool from './workerPool';
 import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
@@ -6,10 +7,29 @@ import type { WorkerLease } from './workerPool';
 
 jest.mock('@koeroesi86/node-worker', () => {
   const { EventEmitter } = require('events');
+  const { Duplex } = require('stream');
+  const { encodeMessage, FrameDecoder } = require('./frames');
 
   class FakeWorker {
     static instances: FakeWorker[] = [];
-    readonly instance = Object.assign(new EventEmitter(), { exitCode: null as number | null, stdout: new EventEmitter(), stderr: new EventEmitter() });
+    static noChannel = false;
+    /** the messages the pool sent to the worker */
+    readonly sent: unknown[] = [];
+    private readonly decoder = new FrameDecoder((message: unknown) => this.sent.push(message));
+    private readonly socket = new Duplex({
+      read() {},
+      write: (chunk: Buffer, _encoding: string, callback: () => void) => {
+        this.decoder.push(chunk);
+        callback();
+      },
+    });
+    /** `stdio` as the child process has it, the fourth is the channel */
+    readonly instance = Object.assign(new EventEmitter(), {
+      exitCode: null as number | null,
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      stdio: [null, null, null, FakeWorker.noChannel ? null : this.socket] as unknown[],
+    });
     readonly terminate = jest.fn(() => this.exit(0));
 
     constructor(readonly command: string, readonly options: unknown) {
@@ -18,7 +38,8 @@ jest.mock('@koeroesi86/node-worker', () => {
 
     addEventListener = (event: string, listener: (...args: unknown[]) => unknown) => this.instance.on(event, listener);
     addEventListenerOnce = (event: string, listener: (...args: unknown[]) => unknown) => this.instance.once(event, listener);
-    receive = (message: unknown) => this.instance.emit('message', message);
+    /** a message of the worker arrives on the channel */
+    receive = (message: unknown) => this.socket.push(Buffer.concat(encodeMessage(message)));
     exit = (code: number) => {
       this.instance.exitCode = code;
       this.instance.emit('close', code);
@@ -128,6 +149,7 @@ describe('WorkerPool', () => {
 
     FakeWorker.instances[0].receive({ requestId: 'two', type: 'WORKER_RESPONSE' });
     FakeWorker.instances[0].receive({ requestId: 'unknown', type: 'WORKER_RESPONSE' });
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(onSecond).toHaveBeenCalledTimes(1);
     expect(onFirst).not.toHaveBeenCalled();
@@ -142,6 +164,7 @@ describe('WorkerPool', () => {
     lease.release();
     lease.release();
     FakeWorker.instances[0].receive({ requestId: 'one' });
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(onMessage).not.toHaveBeenCalled();
   });
@@ -189,7 +212,48 @@ describe('WorkerPool', () => {
 
       await pool.acquire(pathA, () => ({ env: { FROM: 'factory' } }), 1);
 
-      expect(FakeWorker.instances[0].options).toEqual({ env: { FROM: 'factory' } });
+      expect(FakeWorker.instances[0].options).toMatchObject({ env: { FROM: 'factory' } });
+    });
+
+    it('opens the channel as the fourth stdio, whatever the options say', async () => {
+      const pool = createPool();
+
+      await pool.acquire(pathA, { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] }, 1);
+
+      expect(FakeWorker.instances[0].options).toMatchObject({ stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
+    });
+  });
+
+  describe('sending', () => {
+    it('sends messages to the worker of the lease only', async () => {
+      const pool = createPool();
+      const first = await pool.acquire(pathA, {}, 2);
+      const second = await pool.acquire(pathA, {}, 2);
+
+      second.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'one' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(FakeWorker.instances[0].sent).toEqual([]);
+      expect(FakeWorker.instances[1].sent).toEqual([{ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'one' }]);
+      expect(first.worker).toBe(FakeWorker.instances[0]);
+    });
+
+    it('does not fail when the worker is gone', async () => {
+      const pool = createPool();
+      const lease = await pool.acquire(pathA, {}, 1);
+      FakeWorker.instances[0].exit(1);
+
+      expect(() => lease.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'one' })).not.toThrow();
+    });
+
+    it('does not start a worker that has no channel', async () => {
+      const pool = createPool();
+      FakeWorker.noChannel = true;
+
+      await expect(pool.acquire(pathA, {}, 1)).rejects.toThrow(/has no channel/);
+      FakeWorker.noChannel = false;
+
+      expect(FakeWorker.instances[0].terminate).toHaveBeenCalled();
     });
   });
 
