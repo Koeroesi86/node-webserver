@@ -26,10 +26,14 @@ describe('describeRun', () => {
     expect(describeRun(join(folder, 'summary.json'))).toBe('1235 req/s, 1.23% failed, checks 98.77%, slowest p95 lambda 567.0 ms');
   });
 
-  it('adds the steal time when it is known', () => {
+  it('adds the p95 of the CPU bound run and the steal time when they are known', () => {
     writeFileSync(join(folder, 'steal.json'), JSON.stringify({ metrics: { http_reqs: { rate: 10 }, http_req_failed: { value: 0 }, checks: { value: 1 } } }));
+    writeFileSync(join(folder, 'cpu.json'), JSON.stringify({ metrics: { 'http_req_duration{route:cpu}': { 'p(95)': 43.04 } } }));
 
-    expect(describeRun(join(folder, 'steal.json'), 7.25)).toBe('10 req/s, 0.00% failed, checks 100.00%, steal 7.3%');
+    expect(describeRun(join(folder, 'steal.json'), join(folder, 'cpu.json'), 7.25)).toBe(
+      '10 req/s, 0.00% failed, checks 100.00%, CPU bound p95 43.0 ms, steal 7.3%'
+    );
+    expect(describeRun(join(folder, 'steal.json'), join(folder, 'missing.json'))).toBe('10 req/s, 0.00% failed, checks 100.00%');
   });
 
   it('says there is no summary when it is missing or broken, and n/a for what the summary does not have', () => {

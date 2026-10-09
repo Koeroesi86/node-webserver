@@ -5,11 +5,12 @@ import { collectMetric } from './collect-metric';
 import { formatChange } from './format-change';
 import { formatNumber } from './format-number';
 import { getRoutes } from './get-routes';
+import { lowest } from './lowest';
 import { median } from './median';
 import { spread } from './spread';
 
 /**
- * Compares the repetitions of both sides by their medians.
+ * Compares the repetitions of both sides by their medians, the CPU bound run by the lowest p95 of each side.
  * A route is only judged when the base can serve it: the load test of a pull request may have routes that the base does not have.
  */
 export const compareSummaries = (
@@ -78,7 +79,9 @@ export const compareSummaries = (
   });
 
   if (hasCpu) {
-    const cpuP95 = (summaries: K6Summary[]) => median(collectMetric(summaries, (metrics) => metrics['http_req_duration{route:cpu}']?.['p(95)']));
+    // the arrival rate is fixed, so a run can only be slowed down by the machine (other work, steal) and not sped up: the fastest run of a side is the one
+    // that says the most about the build, and a slower build is slower in every run
+    const cpuP95 = (summaries: K6Summary[]) => lowest(collectMetric(summaries, (metrics) => metrics['http_req_duration{route:cpu}']?.['p(95)']));
     const cpuDropped = (summaries: K6Summary[]) => median(collectMetric(summaries, (metrics) => metrics.dropped_iterations?.count ?? 0));
     const cpuCheckRate = median(collectMetric(baseCpu, (metrics) => metrics['checks{route:cpu}']?.value));
     const [base, head] = [cpuP95(baseCpu), cpuP95(headCpu)];
@@ -87,13 +90,13 @@ export const compareSummaries = (
     const slower = comparable && head !== undefined && head > base * (1 + maxCpuP95Increase) && head - base > minP95DifferenceMs;
     if (slower)
       regressions.push(
-        `The p95 of the CPU bound run is ${formatChange(base, head).replace('+', '')} higher than the base (${formatNumber(base, 1)} ms to ${formatNumber(
-          head,
+        `The lowest p95 of the CPU bound runs is ${formatChange(base, head).replace('+', '')} higher than the base (${formatNumber(
+          base,
           1
-        )} ms), the limit is ${maxCpuP95Increase * 100}%.`
+        )} ms to ${formatNumber(head, 1)} ms), the limit is ${maxCpuP95Increase * 100}%.`
       );
     rows.push(
-      `| p95 CPU bound (ms) | ${comparable ? formatNumber(base, 1) : 'n/a'} | ${formatNumber(head, 1)} | ${
+      `| p95 CPU bound, lowest of the runs (ms) | ${comparable ? formatNumber(base, 1) : 'n/a'} | ${formatNumber(head, 1)} | ${
         comparable ? formatChange(base, head) : 'the base cannot serve it'
       } | ${slower ? '❌' : comparable ? '✅' : '➖'} |`
     );
@@ -150,7 +153,9 @@ export const compareSummaries = (
       maxP95Increase * 100
     }% and ${minP95DifferenceMs} ms higher).${
       hasCpu
-        ? ` The CPU bound run (${baseCpu.length} runs of the base, ${headCpu.length} of the pull request, at a fixed rate) is judged on its p95 (at most ${
+        ? ` The CPU bound run (${baseCpu.length} runs of the base, ${
+            headCpu.length
+          } of the pull request, at a fixed rate) is judged on the lowest p95 of its runs (at most ${
             maxCpuP95Increase * 100
           }% and ${minP95DifferenceMs} ms higher) and on dropped requests.`
         : ''

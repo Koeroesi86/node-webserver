@@ -115,7 +115,13 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
         join(resultsDirectory, `k6-binary-${name}.log`)
       );
     }
-    console.error(`${side} ${round}: ${describeRun(join(resultsDirectory, `${name}.json`), getStealPercent(before, takeSnapshot()))}`);
+    console.error(
+      `${side} ${round}: ${describeRun(
+        join(resultsDirectory, `${name}.json`),
+        join(resultsDirectory, `cpu-${name}.json`),
+        getStealPercent(before, takeSnapshot())
+      )}`
+    );
     await stopProcess(server);
   };
 
