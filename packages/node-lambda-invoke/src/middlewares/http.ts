@@ -4,16 +4,27 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
 import LambdaPool, { LambdaUnavailableError } from '../classes/LambdaPool';
 import RequestEvent from '../classes/RequestEvent';
+import { DEFAULT_TIMEOUT } from '../constants';
 import { isRegistered, getRegisteredPath } from '../registry';
+import invokeLambda from '../utils/invoke-lambda';
+import isValidResponse from '../utils/is-valid-response';
 import type ResponseEvent from '../classes/ResponseEvent';
-import type { Communication, HttpMiddlewareOptions, Storage, StorageDriverConstructor } from '../types';
+import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
 
 export type HttpMiddleware = (request: IncomingMessage, response: ServerResponse, next?: () => void) => void;
 
-const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
-  if (!responseEvent.statusCode) return;
+const writeError = (response: ServerResponse, statusCode: number, message: string) => {
+  response.writeHead(statusCode, { 'Content-Type': 'text/plain' });
+  response.end(message);
+};
 
-  response.writeHead(responseEvent.statusCode, responseEvent.headers);
+const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
+  if (!isValidResponse(responseEvent)) {
+    writeError(response, 502, 'The lambda answered with a malformed response.');
+    return;
+  }
+
+  response.writeHead(responseEvent.statusCode, responseEvent.headers ?? undefined);
 
   if (!responseEvent.body) {
     response.end();
@@ -25,7 +36,17 @@ const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) =
 };
 
 function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
-  const { lambdaPath, handlerKey = 'handler', logger = () => {}, limit = availableParallelism(), acquireTimeout, communication = {} } = options;
+  const {
+    lambdaPath,
+    handlerKey = 'handler',
+    logger = () => {},
+    limit = availableParallelism(),
+    acquireTimeout,
+    startTimeout,
+    timeout = DEFAULT_TIMEOUT,
+    env,
+    communication = {},
+  } = options;
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
   // TODO: tmp folders
@@ -37,7 +58,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
 
   const StorageDriver: StorageDriverConstructor = require(storagePath);
   if (StorageDriver.start) StorageDriver.start();
-  const lambdaPool = new LambdaPool({ overallLimit: limit, acquireTimeout, logger, communication: currentCommunication });
+  const lambdaPool = new LambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, env, logger, communication: currentCommunication });
   return (request, response) => {
     const { query: queryStringParameters, pathname: path } = url.parse(request.url ?? '', true);
 
@@ -48,29 +69,23 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     requestEvent.headers = request.headers;
 
     const requestId = randomUUID();
-    let storage: Storage | undefined;
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
 
-    const closeListener = () => {
-      // the lambda exited without answering
-      if (!response.headersSent) response.writeHead(502);
-      if (!response.writableEnded) response.end();
-      if (storage) storage.destroy();
-    };
-
     const handleRequest = async () => {
-      const lambdaInstance = await lambdaPool.getLambda(lambdaPath, handlerKey);
-      lambdaInstance.addEventListenerOnce('close', closeListener);
+      const lambdaInstance = await lambdaPool.getLambda();
+      const storage = new StorageDriver(requestId, lambdaInstance);
+      const outcome = await invokeLambda(lambdaInstance, requestId, requestEvent, timeout);
 
-      const currentStorage = new StorageDriver(requestId, lambdaInstance);
-      storage = currentStorage;
-      const responseEvent = await new Promise<ResponseEvent>((res) => lambdaInstance.invoke(requestId, requestEvent, res));
+      if (outcome.type === 'response') writeResponse(response, outcome.responseEvent);
+      if (outcome.type === 'closed') writeError(response, 502, 'The lambda exited without answering.');
+      if (outcome.type === 'timeout') {
+        writeError(response, 504, 'The lambda did not answer in time.');
+        // it is still busy with the request, and the pool lets go of it once it is gone
+        lambdaInstance.terminate('SIGKILL');
+      }
 
-      writeResponse(response, responseEvent);
-
-      lambdaInstance.removeEventListener('close', closeListener);
-      return currentStorage.destroy();
+      return storage.destroy();
     };
 
     handleRequest().catch((err) => {

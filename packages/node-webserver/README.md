@@ -78,7 +78,7 @@ Things to know:
 - The stream is destroyed with an error when the client goes away during the upload, `for await` throws it.
 - Requests that have no body (GET, HEAD, DELETE, OPTIONS), websockets and the static worker never get one.
 - The worker holds a request for as long as the upload takes. `limitResponseTimeout` counts from the last part that moved, a stalled upload is answered with 504 after it.
-- The `lambda` server type still reads the whole body first.
+- The `lambda` server type does not pass the body of a request to the lambda yet (#38).
 
 ### Websockets
 
@@ -121,6 +121,24 @@ workers (`limit`) is used up by other files. Those requests wait in line, the on
 nothing polls. A request that has waited for `limitRequestTimeout` (5 seconds by default), or that finds `limitQueue` requests waiting already (1000 by default, 0 for no limit), is answered with 503 and `Retry-After: 1` at once,
 instead of piling up. `refused` in the metrics of the worker pool counts both. A request whose client goes away while it waits leaves the line at once, without taking a worker
 or delaying the ones behind it, and is counted as `abandoned`.
+
+### Lambdas
+
+A `lambda` server runs an AWS Lambda style handler (`lambdaOptions.lambda` is the file, `handler` the export, `handler` by default), each lambda in a process of its own that answers one request at a time.
+The options of `lambdaOptions`:
+
+| | |
+| --- | --- |
+| `limit` | how many lambdas the server may run, the number of CPU cores by default, 0 for no limit. Every lambda server has a limit of its own, and the worker servers have theirs: a configuration with several of them can run up to the sum of their limits as processes. |
+| `acquireTimeout` | how long a request waits for a lambda when all of them are busy and the limit is reached, 10000 ms by default, then it is answered with 503 |
+| `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 500 |
+| `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504 |
+| `env` | variables for the lambdas. They do not get the environment of the server, only what node needs (`PATH`, `HOME`, `TZ`, `NODE_OPTIONS`, the proxies, ...) and what AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
+| `communication` | how the request and the response reach the lambda, `ipc` (default) or `file` |
+
+A handler that fails (an error to the callback, or a throw) is answered with 502 and a generic body, the error goes to the log. So is a response without a valid `statusCode`, or with a `body` that is not a string. A lambda that exits during a request
+answers it with 502. Known limits, tracked in #38: one request per lambda at a time, a waiting request polls for a free lambda, a lambda stops 15 minutes after it started, the body of a request is not passed, and `async` handlers are not supported
+(call the callback).
 
 ### Workers that crash
 

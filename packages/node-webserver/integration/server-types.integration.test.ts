@@ -152,12 +152,12 @@ describe('the server', () => {
       expect([...reply.body]).toEqual([0, 1, 2, 255]);
     });
 
-    it('answers 500 with the error of a lambda that fails, and keeps serving', async () => {
+    it('answers 502 without the error of a lambda that fails, and keeps serving', async () => {
       const failed = await server.get(host, '/fail');
       const next = await server.get(host, '/after');
 
-      expect(failed.status).toBe(500);
-      expect(failed.text).toContain('boom');
+      expect(failed.status).toBe(502);
+      expect(failed.text).not.toContain('boom');
       expect(next.status).toBe(201);
     });
 

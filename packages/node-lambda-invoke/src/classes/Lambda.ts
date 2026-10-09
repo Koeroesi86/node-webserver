@@ -1,6 +1,7 @@
 import { resolve } from 'path';
 import Worker from './Worker';
 import { EVENT_REQUEST, EVENT_RESPONSE } from '../constants';
+import createLambdaEnvironment from '../utils/create-lambda-environment';
 import { getRegisteredPath } from '../registry';
 import type RequestEvent from './RequestEvent';
 import ResponseEvent from './ResponseEvent';
@@ -12,6 +13,7 @@ class Lambda {
   private readonly _logger: Logger;
   private readonly _storagePath: string;
   private readonly _communication: Communication;
+  private readonly _env?: Record<string, string>;
   private _storage?: Storage;
   private _requestId?: string;
   private _callback: (response: ResponseEvent) => void = () => {};
@@ -20,12 +22,13 @@ class Lambda {
   busy: boolean;
   createdAt?: number;
 
-  constructor(path: string, handler: string, logger: Logger = () => {}, communication: Communication) {
+  constructor(path: string, handler: string, logger: Logger = () => {}, communication: Communication, env?: Record<string, string>) {
     this._path = path;
     this._handler = handler;
     this._logger = logger;
     this._storagePath = getRegisteredPath(communication.type);
     this._communication = communication;
+    this._env = env;
     this.StorageDriver = require(this._storagePath);
     const instance = this.createInstance();
     this.instance = instance;
@@ -58,12 +61,7 @@ class Lambda {
   createInstance(): Worker {
     return new Worker(resolve(__dirname, '../middlewares/invoke.js'), {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-      env: {
-        ...process.env,
-        LAMBDA: this._path,
-        HANDLER: this._handler,
-        COMMUNICATION: JSON.stringify(this._communication),
-      },
+      env: createLambdaEnvironment(this._path, this._handler, this._communication, this._env),
     });
   }
 
@@ -104,6 +102,10 @@ class Lambda {
           this.busy = false;
         });
     }
+  }
+
+  terminate(signal?: NodeJS.Signals) {
+    this.instance?.terminate(signal);
   }
 
   addEventListener(event: string, listener: Listener) {

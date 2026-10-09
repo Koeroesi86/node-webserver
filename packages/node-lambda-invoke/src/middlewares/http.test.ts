@@ -14,6 +14,12 @@ require('fs').appendFileSync(process.env.PID_FILE, process.pid + '\\n');
 exports.handler = (event, context, callback) => {
   const respond = () => callback(null, { statusCode: 200, headers: { 'x-pid': String(process.pid) }, body: 'echo ' + event.path });
   if (event.path === '/exit') process.exit(1);
+  if (event.path === '/throw') throw new Error('the secret of the handler');
+  if (event.path === '/error') return callback(new Error('the secret of the handler'));
+  if (event.path === '/never') return;
+  if (event.path === '/no-status') return callback(null, {});
+  if (event.path === '/object-body') return callback(null, { statusCode: 200, body: { an: 'object' } });
+  if (event.path === '/env') return callback(null, { statusCode: 200, body: JSON.stringify(process.env) });
   if (event.path.startsWith('/slow')) return setTimeout(respond, 100);
   if (event.path === '/hold') return setTimeout(respond, 400);
   // answers once the number of lambdas in the path (/gather/8) has got a request, so that no lambda is free for another request before that (3 seconds at most)
@@ -26,13 +32,21 @@ exports.handler = (event, context, callback) => {
   }
   respond();
 };
+
+exports.other = (event, context, callback) => callback(null, { statusCode: 200, headers: { 'x-pid': String(process.pid) }, body: 'other ' + event.path });
+`;
+
+/** a lambda whose module never finishes loading */
+const hangingSource = `
+require('fs').appendFileSync(process.env.PID_FILE, process.pid + '\\n');
+for (;;) {}
 `;
 
 /** starts a server with the middleware in a process of its own, to see what happens to the lambdas when it is killed */
 const parentSource = `
 const http = require('http');
 const { httpMiddleware } = require('./index');
-const server = http.createServer(httpMiddleware({ lambdaPath: process.argv[2], communication: { type: 'ipc' } }));
+const server = http.createServer(httpMiddleware({ lambdaPath: process.argv[2], communication: { type: 'ipc' }, env: { PID_FILE: process.env.PID_FILE } }));
 server.listen(0, () => {
   http.get('http://localhost:' + server.address().port + '/', (response) => {
     response.resume().on('end', () => process.send({ pid: response.headers['x-pid'] }));
@@ -87,6 +101,7 @@ describe('httpMiddleware', () => {
     pidFile = path.join(build, 'pids');
     process.env.PID_FILE = pidFile;
     await fs.writeFile(lambdaPath, lambdaSource);
+    await fs.writeFile(path.join(build, 'hanging.js'), hangingSource);
     await fs.writeFile(path.join(build, 'parent.js'), parentSource);
   });
 
@@ -113,7 +128,8 @@ describe('httpMiddleware', () => {
 
   const start = async (options: Partial<HttpMiddlewareOptions> = {}) => {
     const { httpMiddleware } = load();
-    server = http.createServer(httpMiddleware({ lambdaPath, communication: { type: 'ipc' }, ...options }));
+    // the lambdas get only the environment they are given
+    server = http.createServer(httpMiddleware({ lambdaPath, communication: { type: 'ipc' }, env: { PID_FILE: pidFile }, ...options }));
     await new Promise<void>((resolve) => server.listen(0, resolve));
     baseUrl = `http://localhost:${(server.address() as { port: number }).port}`;
   };
@@ -201,6 +217,80 @@ describe('httpMiddleware', () => {
     expect(response.status).toBe(500);
   });
 
+  it('answers 500 and stops a lambda that does not start in time', async () => {
+    await start({ lambdaPath: path.join(build, 'hanging.js'), startTimeout: 300 });
+
+    const response = await fetch(`${baseUrl}/`);
+
+    expect(response.status).toBe(500);
+    const pids = (await fs.readFile(pidFile, 'utf8')).trim().split('\n').map(Number);
+    const hanging = pids[pids.length - 1];
+    for (let waited = 0; processExists(hanging) && waited < 3000; waited += 50) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(processExists(hanging)).toBe(false);
+  });
+
+  it('answers 504 and replaces a lambda that does not answer in time', async () => {
+    await start({ limit: 1, timeout: 300 });
+
+    const timedOut = await fetch(`${baseUrl}/never`);
+    // the only lambda there may be was stopped, so a new one has to answer
+    const next = await fetch(`${baseUrl}/after`);
+
+    expect(timedOut.status).toBe(504);
+    expect(await next.text()).toBe('echo /after');
+  });
+
+  it.each([['/error'], ['/throw']])('answers 502 without the details of the error when the handler fails (%s), and keeps serving', async (requestPath) => {
+    await start({ limit: 1 });
+
+    const failed = await fetch(`${baseUrl}${requestPath}`);
+    const next = await fetch(`${baseUrl}/after`);
+
+    expect(failed.status).toBe(502);
+    expect(await failed.text()).not.toContain('secret');
+    expect(await next.text()).toBe('echo /after');
+  });
+
+  it.each([['/no-status'], ['/object-body']])('answers 502 to a malformed response (%s)', async (requestPath) => {
+    await start();
+
+    const response = await fetch(`${baseUrl}${requestPath}`);
+
+    expect(response.status).toBe(502);
+  });
+
+  it('runs the handler that it was given, also when another one of the same file runs already', async () => {
+    await start();
+    const { httpMiddleware } = require(path.join(build, 'index.js'));
+    const other = http.createServer(httpMiddleware({ lambdaPath, handlerKey: 'other', communication: { type: 'ipc' }, env: { PID_FILE: pidFile } }));
+    await new Promise<void>((resolve) => other.listen(0, resolve));
+
+    try {
+      expect(await (await fetch(`${baseUrl}/`)).text()).toBe('echo /');
+      expect(await (await fetch(`http://localhost:${(other.address() as { port: number }).port}/`)).text()).toBe('other /');
+    } finally {
+      other.closeAllConnections();
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
+
+  it('gives the lambda its own environment, not the one of the server', async () => {
+    process.env.SECRET_OF_THE_SERVER = 'secret';
+    try {
+      await start({ env: { PID_FILE: pidFile, TABLE: 'users' } });
+
+      const env = await (await fetch(`${baseUrl}/env`)).json();
+
+      expect(env).toMatchObject({ TABLE: 'users', AWS_LAMBDA_FUNCTION_NAME: 'lambda', _HANDLER: 'lambda.handler' });
+      expect(env).not.toHaveProperty('SECRET_OF_THE_SERVER');
+      expect(env).not.toHaveProperty('LAMBDA');
+    } finally {
+      delete process.env.SECRET_OF_THE_SERVER;
+    }
+  });
+
   describe('limit', () => {
     const pidsOf = async (count: number, requestPath = '/slow') => {
       const responses = await Promise.all(Array.from({ length: count }, () => fetch(`${baseUrl}${requestPath}`)));
@@ -226,30 +316,21 @@ describe('httpMiddleware', () => {
       expect(responses.map(({ status }) => status).sort()).toEqual([200, 503]);
     });
 
-    it('keeps one busy file from using up the limit of the others', async () => {
+    it('gives every middleware a limit of its own', async () => {
       const { httpMiddleware } = load();
-      const otherLambdaPath = path.join(build, 'other-lambda.js');
-      await fs.copyFile(lambdaPath, otherLambdaPath);
-      const create = (file: string) => http.createServer(httpMiddleware({ lambdaPath: file, limit: 2, communication: { type: 'ipc' } }));
-      const [busy, other] = [create(lambdaPath), create(otherLambdaPath)];
-      await Promise.all([busy, other].map((instance) => new Promise<void>((resolve) => instance.listen(0, resolve))));
-      const urlOf = (instance: http.Server) => `http://localhost:${(instance.address() as { port: number }).port}`;
+      const create = () =>
+        http.createServer(httpMiddleware({ lambdaPath, limit: 1, acquireTimeout: 50, communication: { type: 'ipc' }, env: { PID_FILE: pidFile } }));
+      const servers = [create(), create()];
+      await Promise.all(servers.map((instance) => new Promise<void>((resolve) => instance.listen(0, resolve))));
 
       try {
-        const first = await Promise.all([fetch(`${urlOf(busy)}/slow`), fetch(`${urlOf(busy)}/slow`)]);
-        const busyPids = first.map((response) => Number(response.headers.get('x-pid')));
-        expect(new Set(busyPids).size).toBe(2);
+        // both hold their lambda for longer than the wait, so they only both get one when the limits are apart
+        const responses = await Promise.all(servers.map((instance) => fetch(`http://localhost:${(instance.address() as { port: number }).port}/hold`)));
 
-        const response = await fetch(`${urlOf(other)}/`);
-
-        expect(response.status).toBe(200);
-        for (let waited = 0; busyPids.every(processExists) && waited < 3000; waited += 50) {
-          await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-        expect(busyPids.filter(processExists)).toHaveLength(1);
+        expect(responses.map(({ status }) => status)).toEqual([200, 200]);
       } finally {
-        [busy, other].forEach((instance) => instance.closeAllConnections());
-        await Promise.all([busy, other].map((instance) => new Promise((resolve) => instance.close(resolve))));
+        servers.forEach((instance) => instance.closeAllConnections());
+        await Promise.all(servers.map((instance) => new Promise((resolve) => instance.close(resolve))));
       }
     });
 

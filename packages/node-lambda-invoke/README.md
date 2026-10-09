@@ -58,4 +58,19 @@ pnpm start
 
 ## Configuration
 
-Coming soon, currently a basic `.env` way is available...
+The options of `httpMiddleware`:
+
+| | |
+| --- | --- |
+| `lambdaPath` | the file of the handler |
+| `handlerKey` | the export of the handler, `handler` by default |
+| `logger` | gets the output of the lambdas and what happens to them |
+| `limit` | how many lambdas the middleware may run, the number of CPU cores by default, 0 for no limit. Every middleware has a limit of its own. |
+| `acquireTimeout` | how long a request waits for a lambda when all of them are busy and the limit is reached, 10000 ms by default, then it is answered with 503 |
+| `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 500 |
+| `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504 |
+| `env` | variables for the lambdas, which get only a few of the process that runs the middleware (`PATH`, `HOME`, `TZ`, ...) and the ones AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
+| `communication` | `{ type: 'ipc' }` (default), `{ type: 'file' }`, or `{ type: 'custom', path }` for a storage of your own |
+
+A lambda answers one request at a time. A handler that fails (an error to the callback, or a throw) is answered with 502 and a generic body, the error is written to the stderr of the lambda, which goes to the `logger`.
+A response without a valid `statusCode`, or with a `body` that is not a string, is answered with 502 as well.

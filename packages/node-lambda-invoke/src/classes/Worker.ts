@@ -17,13 +17,6 @@ class Worker {
     this.instance = instance;
     // an unhandled error event would take the whole process down, for example when the process could not be spawned
     instance.on('error', (error) => console.error(error));
-
-    if (instance.stdout) {
-      const messageListener = (data: Buffer | string) => {
-        console.info(data.toString().trim());
-      };
-      instance.stdout.on('data', messageListener);
-    }
     instance.once('close', () => {
       delete this.instance;
     });
@@ -80,8 +73,9 @@ class Worker {
   //
   // }
 
-  terminate() {
-    if (this.instance) this.instance.kill('SIGINT');
+  /** a lambda can ignore SIGINT, SIGKILL is for one that has to stop */
+  terminate(signal: NodeJS.Signals = 'SIGINT') {
+    if (this.instance) this.instance.kill(signal);
   }
 
   postMessage(message: Serializable, cb: (error: Error | null) => void = () => {}) {
