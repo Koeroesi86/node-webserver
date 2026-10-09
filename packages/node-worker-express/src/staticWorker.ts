@@ -37,7 +37,7 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   const stats = ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, fileName) ? await fs.stat(fileName).catch(() => undefined) : undefined;
 
   if (!stats?.isFile()) {
-    callback(notFoundResponse(event.path));
+    callback(notFoundResponse());
     return;
   }
 

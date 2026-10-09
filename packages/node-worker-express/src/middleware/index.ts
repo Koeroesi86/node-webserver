@@ -87,7 +87,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       // A path that is not there and that no worker answers is the 404 of the static worker, which is known here without the round trip to it.
       // It is not remembered as a route: the probe remembers the missing file for a shorter time, so that a file that is added is found soon.
       if (!isWorker && !targetExists && answersMissingPaths) {
-        const { statusCode, headers, body } = notFoundResponse(pathname);
+        const { statusCode, headers, body } = notFoundResponse();
         response.writeHead(statusCode, { ...headers, 'Content-Length': Buffer.byteLength(body) });
         response.end(body);
         return;

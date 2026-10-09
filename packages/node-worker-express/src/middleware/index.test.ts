@@ -673,8 +673,8 @@ describe('workerMiddleware', () => {
 
       expect(response.status).toBe(404);
       expect(response.headers.get('content-type')).toBe('text/plain');
-      expect(response.headers.get('content-length')).toBe(String('/plain/missing.html does not exist'.length));
-      expect(await response.text()).toBe('/plain/missing.html does not exist');
+      expect(response.headers.get('content-length')).toBe(String('The requested path does not exist.'.length));
+      expect(await response.text()).toBe('The requested path does not exist.');
       expect(FakePool.last.acquire).not.toHaveBeenCalled();
     });
 
