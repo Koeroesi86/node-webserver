@@ -39,19 +39,20 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
   const run = (duration = '2s') => runLoadTest({ root: createCheckout(folder, 'head', 1), duration, portHttp: '18491', portHttps: '18454', runner: 'native' });
   const calls = () => readFileSync(join(folder, 'k6.log'), 'utf8').trim().split('\n');
 
-  it('runs the example scenario and then the CPU bound one against the server, and passes when both do', async () => {
+  it('runs the example scenario, the CPU bound one and the binary one against the server, and passes when all do', async () => {
     expect(await run()).toBe(0);
 
-    const [example, cpu] = calls();
+    const [example, cpu, binary] = calls();
     expect(example).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 -e DURATION=2s( -e HTTPS_PORT=18454)? .*example\.ts$/);
     expect(cpu).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*cpu\.ts$/);
+    expect(binary).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*binary\.ts$/);
   });
 
-  it('fails when a scenario does, and still runs the other', async () => {
+  it('fails when a scenario does, and still runs the others', async () => {
     process.env.FAKE_K6_FAIL = 'example.ts';
 
     expect(await run()).toBe(1);
-    expect(calls()).toHaveLength(2);
+    expect(calls()).toHaveLength(3);
   });
 
   it('is 2 when neither k6 nor Docker can be used', async () => {

@@ -96,11 +96,15 @@ pnpm --filter @koeroesi86/node-webserver start:load-test &   # http on 8080, htt
 k6 run -e HTTPS_PORT=8443 tools/src/k6/example.ts
 ```
 
-`web.localhost/binary/` answers with a binary body of the size given (768 KiB in the `binary` route, in a single message from the worker), which the route checks byte by byte through its sha256.
-
 The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses,
 and `upload.localhost`, where `examples/upload/exampleWorker.js` reads the request body as a stream and answers with its size and sha256, which the `upload` route checks,
 and `health.localhost`, whose worker answers `/health` and `/metrics` from the metrics the server gives to workers, which the `metrics` route checks.
+
+### Big binary responses
+
+`binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms.
+It runs on its own after the CPU bound one, and is left out of the comparison with the base: a base without the route would answer it with fast errors, and look better for it.
+To see the difference to another build, give that build the route (a worker with the same name) and run the script against both servers.
 
 ### CPU bound worker
 
