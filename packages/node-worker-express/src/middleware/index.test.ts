@@ -7,6 +7,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { RequestBodyWindow, WORKER_EVENT } from '../constants';
 import { getServerMetrics } from '../utils/metrics';
+import WorkerAbandonedError from '../utils/workerAbandonedError';
 import WorkerBusyError from '../utils/workerBusyError';
 import WorkerUnavailableError from '../utils/workerUnavailableError';
 import workerMiddleware from './index';
@@ -45,6 +46,14 @@ describe('workerMiddleware', () => {
   afterAll(() => fs.rm(root, { recursive: true, force: true }));
 
   afterEach(() => new Promise((resolve) => server.close(resolve)));
+
+  const until = async (condition: () => boolean) => {
+    for (let waited = 0; !condition() && waited < 3000; waited += 5) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(condition()).toBe(true);
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
 
   const start = async (options = {}) => {
     const app = express();
@@ -373,14 +382,6 @@ describe('workerMiddleware', () => {
 
   describe('streamed request bodies', () => {
     type Message = { type: string; requestId: string; event?: { body?: Buffer | null; hasBody?: boolean } };
-
-    const until = async (condition: () => boolean) => {
-      for (let waited = 0; !condition() && waited < 3000; waited += 5) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      expect(condition()).toBe(true);
-    };
-    const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
 
     /** a lease whose worker is told every message that was sent to it, `answer` decides how it reacts */
     const mockUploadLease = (answer: (message: Message, handlers: Handlers) => void) => {
@@ -791,6 +792,47 @@ describe('workerMiddleware', () => {
       await start({ limitQueue: 0 });
 
       expect(FakePool.last.params.maxQueue).toBe(0);
+    });
+
+    it('aborts the wait when the client goes away, and answers nothing', async () => {
+      await start();
+      let signal: AbortSignal | undefined;
+      FakePool.last.acquire.mockImplementation(
+        (_path: string, _options: object, _limit: number, abortSignal: AbortSignal) =>
+          new Promise((_resolve, reject) => {
+            signal = abortSignal;
+            abortSignal.addEventListener('abort', () => reject(new WorkerAbandonedError('/srv/worker.js')));
+          })
+      );
+      const writeHead = jest.spyOn(http.ServerResponse.prototype, 'writeHead');
+      const request = http.get(`${baseUrl}/`);
+      request.on('error', () => undefined);
+      await until(() => signal !== undefined);
+
+      expect(signal.aborted).toBe(false);
+      request.destroy();
+      await until(() => signal.aborted);
+      await settle();
+
+      expect(writeHead).not.toHaveBeenCalled();
+      writeHead.mockRestore();
+    });
+
+    it('does not abort the wait of a request that got its worker', async () => {
+      await start();
+      let signal: AbortSignal | undefined;
+      FakePool.last.acquire.mockImplementation(async (_path: string, _options: object, _limit: number, abortSignal: AbortSignal) => {
+        signal = abortSignal;
+
+        return createLease((handlers, requestId) =>
+          handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
+        );
+      });
+
+      await (await fetch(`${baseUrl}/`)).text();
+      await settle();
+
+      expect(signal.aborted).toBe(false);
     });
 
     it('lets a request wait for as long as the request timeout says', async () => {
