@@ -106,6 +106,19 @@ and `health.localhost`, whose worker answers `/health` and `/metrics` from the m
 It runs on its own after the CPU bound one, and is left out of the comparison with the base: a base without the route would answer it with fast errors, and look better for it.
 To see the difference to another build, give that build the route (a worker with the same name) and run the script against both servers.
 
+### Websocket flow control
+
+`websocket.ts` works the flow control of websockets (`examples/websocket-flow/exampleWorker.js`, `web.localhost/websocket-flow/exampleWorker.js`) with 5 + 5 users and one that samples the memory of the server through `health.localhost/metrics`:
+a **fast producer** sends 400 messages of 32 KiB (text and binary) in a burst to a worker that takes 2 ms for each, and has to get every one back, whole and in order; a **slow consumer** reads 200 messages of 64 KiB, one every 5 ms,
+from a worker that sends them as fast as the client takes them, and has to get all of them in order and the close of the worker. The memory the server holds outside of the heap (where the messages wait) may not exceed 100 MiB at any time
+(`ws_flow_server_external_mib`, `MAX_EXTERNAL_MIB`): it peaked at 50-70 MiB with the flow control, and at 175-195 MiB with the window towards the worker taken out. Like `binary.ts` it runs on its own and is left out of the comparison with the base.
+
+```sh
+k6 run tools/src/k6/websocket.ts
+```
+
+Options: `PRODUCED_MESSAGES`, `WORKER_DELAY_MS`, `FLOOD_MESSAGES`, `CONSUMER_DELAY_MS`, `VUS`, `DURATION`, `MAX_EXTERNAL_MIB`.
+
 ### CPU bound worker
 
 `cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow
