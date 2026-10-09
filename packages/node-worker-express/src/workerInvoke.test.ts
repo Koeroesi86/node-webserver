@@ -456,7 +456,12 @@ describe('workerInvoke', () => {
       uptimeSeconds,
       memory: { rss: 0, heapTotal: 0, heapUsed: 0, external: 0 },
       eventLoopDelayMs: { mean: 0, p99: 0, max: 0 },
-      requests: { total: 0, active: 0, status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 } },
+      requests: {
+        total: 0,
+        active: 0,
+        status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 },
+        latencyMs: { count: 0, sumMs: 0, maxMs: 0, p50: 0, p90: 0, p99: 0, buckets: {} },
+      },
       sources: {},
     });
 
