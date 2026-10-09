@@ -35,7 +35,7 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 
 ## Load tests
 
-[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow, on Linux, Windows and macOS. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
+[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow (a job of the branch build, after the lint, tests and build passed), on Linux, Windows and macOS. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
 
 ### Run locally
 
