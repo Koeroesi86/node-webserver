@@ -14,20 +14,36 @@ import type { HttpsApps } from './create-https-server';
 const hostname = 'secure.localhost';
 
 /** a self signed certificate of the host, made with openssl as node cannot make one */
-const makeContext = () => {
+const makeCertificate = () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'create-https-server-'));
   const [key, cert] = ['privkey.pem', 'cert.pem'].map((name) => path.join(folder, name));
   const made = spawnSync(
     'openssl',
-    ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', `/CN=${hostname}`, '-keyout', key, '-out', cert],
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      '1',
+      '-subj',
+      `/CN=${hostname}`,
+      '-addext',
+      `subjectAltName=DNS:${hostname}`,
+      '-keyout',
+      key,
+      '-out',
+      cert,
+    ],
     // Git Bash on Windows would turn the subject into a path
     { env: { ...process.env, MSYS_NO_PATHCONV: '1' } }
   );
   if (made.status !== 0) throw new Error(`openssl could not make a certificate: ${made.stderr}`);
-  const context = tls.createSecureContext({ key: fs.readFileSync(key), cert: fs.readFileSync(cert) });
+  const pair = { key: fs.readFileSync(key, 'utf8'), cert: fs.readFileSync(cert, 'utf8') };
   fs.rmSync(folder, { recursive: true, force: true });
 
-  return context;
+  return pair;
 };
 
 /** both apps answer with the version of HTTP they were given, and which of them it was */
@@ -41,7 +57,8 @@ const createApps = (): HttpsApps => {
 };
 
 describe('createHttpsServer', () => {
-  const contexts = { [hostname]: makeContext() };
+  const pair = makeCertificate();
+  const contexts = { [hostname]: tls.createSecureContext(pair) };
   const servers: Array<https.Server | http2.Http2SecureServer> = [];
   const sessions: http2.ClientHttp2Session[] = [];
 
@@ -66,7 +83,7 @@ describe('createHttpsServer', () => {
   const getHttp1 = (port: number, servername = hostname) =>
     new Promise<{ app: string; version: string; host: string }>((resolve, reject) => {
       https
-        .get({ host: '127.0.0.1', port, servername, headers: { host: servername }, rejectUnauthorized: false, agent: false }, (response) => {
+        .get({ host: '127.0.0.1', port, servername, headers: { host: servername }, ca: pair.cert, agent: false }, (response) => {
           const parts: Buffer[] = [];
           response.on('data', (part: Buffer) => parts.push(part));
           response.on('end', () => resolve(JSON.parse(Buffer.concat(parts).toString())));
@@ -75,7 +92,7 @@ describe('createHttpsServer', () => {
     });
 
   const connectHttp2 = (port: number) => {
-    const session = http2.connect(`https://${hostname}:${port}`, { host: '127.0.0.1', servername: hostname, rejectUnauthorized: false });
+    const session = http2.connect(`https://${hostname}:${port}`, { host: '127.0.0.1', servername: hostname, ca: pair.cert });
     sessions.push(session);
     return session;
   };
@@ -93,7 +110,7 @@ describe('createHttpsServer', () => {
   /** the protocol the server picks for a client that offers both */
   const negotiate = (port: number) =>
     new Promise<string | false>((resolve, reject) => {
-      const socket = tls.connect({ host: '127.0.0.1', port, servername: hostname, rejectUnauthorized: false, ALPNProtocols: ['h2', 'http/1.1'] }, () => {
+      const socket = tls.connect({ host: '127.0.0.1', port, servername: hostname, ca: pair.cert, ALPNProtocols: ['h2', 'http/1.1'] }, () => {
         resolve(socket.alpnProtocol ?? false);
         socket.destroy();
       });

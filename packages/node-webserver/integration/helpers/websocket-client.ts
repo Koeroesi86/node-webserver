@@ -47,17 +47,17 @@ const readFrames = (buffer: Buffer): { frames: Array<{ opcode: number; payload: 
   return { frames, rest: buffer.subarray(offset) };
 };
 
-/** opens a websocket to a virtual host of the server on the loopback address, over TLS with `secure` */
-export const connectWebSocket = ({ port, host, path = '/', secure = false }: { port: number; host: string; path?: string; secure?: boolean }) =>
+/** opens a websocket to a virtual host of the server on the loopback address, over TLS, trusting the self signed `certificate`, when it is given */
+export const connectWebSocket = ({ port, host, path = '/', certificate }: { port: number; host: string; path?: string; certificate?: string }) =>
   new Promise<WebSocketClient>((resolve, reject) => {
     const key = crypto.randomBytes(16).toString('base64');
-    const outgoing = (secure ? https : http).request({
+    const outgoing = (certificate ? https : http).request({
       host: '127.0.0.1',
       port,
       path,
       agent: false,
-      // the certificate is self signed, the name below localhost is the one to ask the server for
-      ...(secure && { servername: host, rejectUnauthorized: false }),
+      // the certificate is self signed, so it is the one to trust, and the name below localhost is the one to ask the server for
+      ...(certificate && { servername: host, ca: certificate }),
       headers: { Host: host, Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13' },
     });
     outgoing.on('error', reject);

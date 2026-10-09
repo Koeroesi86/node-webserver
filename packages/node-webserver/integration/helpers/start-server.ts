@@ -10,6 +10,8 @@ export interface RunningServer {
   port: number;
   /** the https port, which serves HTTP/2 and HTTP/1.1, for `secure.localhost` and `secure-websocket.localhost` */
   httpsPort: number;
+  /** the self signed certificate of the https hosts, to trust it instead of skipping the validation */
+  certificate: string;
   /** a request to a virtual host of the server */
   get: (host: string, path?: string, options?: Omit<RequestOptions, 'port' | 'host' | 'path'>) => Promise<Reply>;
   stop: () => Promise<void>;
@@ -34,12 +36,28 @@ const isListening = (port: number) =>
     socket.once('error', () => done(false));
   });
 
-/** a self signed certificate for the hosts below localhost, in a folder of its own */
+/** a self signed certificate for the https hosts of the fixtures, in a folder of its own */
 const makeCertificate = (folder: string) => {
   const [key, cert] = ['privkey.pem', 'cert.pem'].map((name) => join(folder, name));
   const made = spawnSync(
     'openssl',
-    ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=localhost', '-keyout', key, '-out', cert],
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      '1',
+      '-subj',
+      '/CN=secure.localhost',
+      '-addext',
+      'subjectAltName=DNS:secure.localhost,DNS:secure-websocket.localhost',
+      '-keyout',
+      key,
+      '-out',
+      cert,
+    ],
     // Git Bash on Windows would turn the subject into a path
     { env: { ...process.env, MSYS_NO_PATHCONV: '1' } }
   );
@@ -87,5 +105,5 @@ export const startServer = async (): Promise<RunningServer> => {
     await new Promise((done) => setTimeout(done, 100));
   }
 
-  return { port, httpsPort, stop, get: (host, path, options) => request({ ...options, port, host, path }) };
+  return { port, httpsPort, certificate: fs.readFileSync(cert, 'utf8'), stop, get: (host, path, options) => request({ ...options, port, host, path }) };
 };

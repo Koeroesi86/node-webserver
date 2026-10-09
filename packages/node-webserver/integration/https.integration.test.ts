@@ -17,8 +17,8 @@ describe('the https port with http2 on', () => {
 
   beforeAll(async () => {
     server = await startServer();
-    // the certificate is self signed, and the name of the host is asked for through the authority
-    session = http2.connect(`https://secure.localhost:${server.httpsPort}`, { host: '127.0.0.1', servername: 'secure.localhost', rejectUnauthorized: false });
+    // the certificate is self signed, so it is the one to trust, and the name of the host is asked for through the authority
+    session = http2.connect(`https://secure.localhost:${server.httpsPort}`, { host: '127.0.0.1', servername: 'secure.localhost', ca: server.certificate });
   });
 
   afterAll(async () => {
@@ -45,7 +45,7 @@ describe('the https port with http2 on', () => {
     new Promise<Reply>((resolve, reject) => {
       https
         .get(
-          { host: '127.0.0.1', port: server.httpsPort, path, servername: host, headers: { Host: host }, rejectUnauthorized: false, agent: false },
+          { host: '127.0.0.1', port: server.httpsPort, path, servername: host, headers: { Host: host }, ca: server.certificate, agent: false },
           (response) => {
             const parts: Buffer[] = [];
             response.on('data', (part: Buffer) => parts.push(part));
@@ -102,7 +102,7 @@ describe('the https port with http2 on', () => {
   });
 
   it('keeps websockets working over HTTP/1.1 on the same port', async () => {
-    const client = await connectWebSocket({ port: server.httpsPort, host: 'secure-websocket.localhost', secure: true });
+    const client = await connectWebSocket({ port: server.httpsPort, host: 'secure-websocket.localhost', certificate: server.certificate });
 
     client.send('hello');
 
