@@ -1,4 +1,4 @@
-import uuid from 'uuid';
+import { randomUUID } from 'node:crypto';
 import Lambda from './Lambda';
 import stdoutListener from '../middlewares/stdoutListener';
 import { EVENT_STARTED } from '../constants';
@@ -95,7 +95,7 @@ class LambdaPool {
 
   createLambda(lambdaToInvoke: string, handlerKey: string) {
     return new Promise<{ id: string; instance: Lambda }>((resolve, reject) => {
-      const currentId = uuid.v4();
+      const currentId = randomUUID();
       const currentLambdaInstance = new Lambda(lambdaToInvoke, handlerKey, this.logger, this.communication);
       // a lambda that cannot start answers nobody, so the request waiting for it has to fail instead of waiting forever
       const failedToStart = (reason: unknown) => reject(new Error(`Lambda ${lambdaToInvoke} did not start: ${reason}`));
