@@ -878,7 +878,7 @@ describe('workerMiddleware', () => {
       leases.flatMap(({ send }) => send.mock.calls.map(([message]) => message)).filter((message) => message.type === type);
 
     /** sends a request over a socket of its own, in the writes that are given: whatever is in one write arrives together, which fetch does not let one decide */
-    const rawRequest = (head: string, writes: Array<Buffer | string>, pauseBetweenWrites = 0) =>
+    const rawRequest = (head: string, writes: Array<Buffer | string>, beforeNextWrite?: () => Promise<unknown>) =>
       new Promise<string>((resolve, reject) => {
         const socket = net.connect(Number(new URL(baseUrl).port), '127.0.0.1');
         const received: Buffer[] = [];
@@ -890,10 +890,10 @@ describe('workerMiddleware', () => {
           // without a pause the head and the first part of the body are a single write, two writes in a row can arrive apart
           const [first, ...rest] = writes;
           const parts =
-            pauseBetweenWrites || first === undefined ? [requestHead, ...writes] : [Buffer.concat([Buffer.from(requestHead), Buffer.from(first)]), ...rest];
+            beforeNextWrite || first === undefined ? [requestHead, ...writes] : [Buffer.concat([Buffer.from(requestHead), Buffer.from(first)]), ...rest];
           for (const part of parts) {
             socket.write(part);
-            if (pauseBetweenWrites) await new Promise((r) => setTimeout(r, pauseBetweenWrites));
+            await beforeNextWrite?.();
           }
         });
       });
@@ -905,8 +905,11 @@ describe('workerMiddleware', () => {
       return rawRequest(`POST ${path} HTTP/1.1\r\nContent-Length: ${bytes.length}`, [bytes]);
     };
 
-    /** the head in a write of its own, the body in the next one, when the request has been handed on */
-    const postApart = (body: string) => rawRequest(`POST / HTTP/1.1\r\nContent-Length: ${Buffer.byteLength(body)}`, [body], 60);
+    /** the head in a write of its own, the body in the next one, which is only written once the request has been handed on to a worker: no pause can guarantee that */
+    const postApart = (body: string, leases: Lease[]) =>
+      rawRequest(`POST / HTTP/1.1\r\nContent-Length: ${Buffer.byteLength(body)}`, [body], async () => {
+        while (messagesOf(leases, WORKER_EVENT.REQUEST).length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+      });
 
     it('goes along with the request when it is small, with no parts after it', async () => {
       await start();
@@ -973,7 +976,7 @@ describe('workerMiddleware', () => {
         if (message.type === WORKER_EVENT.REQUEST_BODY && message.event.body !== null) acknowledge(handlers, message.requestId);
       });
 
-      await postApart('a body that was sent later');
+      await postApart('a body that was sent later', leases);
 
       const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
       expect(request.event).toMatchObject({ hasBody: true });
