@@ -39,12 +39,6 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
-      - name: Persist cache
-        uses: actions/cache@v6
-        id: local-dot-cache
-        with:
-          path: .cache
-          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
       - name: Setup
         timeout-minutes: 10
         run: pnpm install --frozen-lockfile

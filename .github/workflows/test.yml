@@ -27,10 +27,13 @@ jobs:
           cache: 'pnpm'
       - name: Persist cache
         uses: actions/cache@v6
-        id: local-dot-cache
         with:
           path: .cache
-          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
+          # a cache is never updated once saved, so every run saves one of its own and starts from the latest one of the same lockfile
+          key: ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-local-dot-cache-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-local-dot-cache-
       - name: Setup
         timeout-minutes: 10
         run: pnpm install --frozen-lockfile
