@@ -1,5 +1,5 @@
 import vHost from 'vhost';
-import type { Express, RequestHandler } from 'express';
+import type { Express, IRouter, RequestHandler } from 'express';
 import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
 import getURL from './getURL';
 import compressionMiddleware from '../middlewares/compression';
@@ -62,7 +62,7 @@ function getHandler(instance: ServerInstance): RequestHandler {
   return compression ? compose(compressionMiddleware(compression === true ? {} : compression), middleware) : middleware;
 }
 
-function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
+function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: IRouter, Configuration: Partial<Configuration>) {
   const { portHttp, portHttps } = Configuration;
   const { hostname, protocol } = instance;
 
@@ -84,7 +84,7 @@ function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: 
   return instance;
 }
 
-function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
+function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsApp: IRouter, Configuration: Partial<Configuration>) {
   instances.forEach((instance) => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
 }
 

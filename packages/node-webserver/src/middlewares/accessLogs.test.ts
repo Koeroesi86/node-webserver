@@ -70,6 +70,15 @@ describe('accessLogsMiddleware', () => {
       expect(mockedLogger.error).toHaveBeenCalledWith('[2026-01-01 00:00:00] [http] RESPONSE GET http://web.localhost/page?x=1 404 Not Found 12b sent');
     });
 
+    it('leaves out the status message of a response of HTTP/2, which has none', () => {
+      const response = createResponse(200);
+      accessLogsMiddleware({ alias: 'https' })({ ...createRequest(), httpVersionMajor: 2 } as unknown as Request, response, jest.fn() as NextFunction);
+      jest.runAllTimers();
+      response.emit('finish');
+
+      expect(mockedLogger.success).toHaveBeenLastCalledWith('[2026-01-01 00:00:00] [https] RESPONSE GET http://web.localhost/page?x=1 200 12b sent');
+    });
+
     it('goes on to the next middleware', () => {
       expect(run(200).next).toHaveBeenCalledTimes(1);
     });

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import http from 'http';
+import https from 'https';
 import type { Socket } from 'net';
 
 export interface WebSocketClient {
@@ -46,15 +47,17 @@ const readFrames = (buffer: Buffer): { frames: Array<{ opcode: number; payload: 
   return { frames, rest: buffer.subarray(offset) };
 };
 
-/** opens a websocket to a virtual host of the server on the loopback address */
-export const connectWebSocket = ({ port, host, path = '/' }: { port: number; host: string; path?: string }) =>
+/** opens a websocket to a virtual host of the server on the loopback address, over TLS with `secure` */
+export const connectWebSocket = ({ port, host, path = '/', secure = false }: { port: number; host: string; path?: string; secure?: boolean }) =>
   new Promise<WebSocketClient>((resolve, reject) => {
     const key = crypto.randomBytes(16).toString('base64');
-    const outgoing = http.request({
+    const outgoing = (secure ? https : http).request({
       host: '127.0.0.1',
       port,
       path,
       agent: false,
+      // the certificate is self signed, the name below localhost is the one to ask the server for
+      ...(secure && { servername: host, rejectUnauthorized: false }),
       headers: { Host: host, Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Key': key, 'Sec-WebSocket-Version': '13' },
     });
     outgoing.on('error', reject);
