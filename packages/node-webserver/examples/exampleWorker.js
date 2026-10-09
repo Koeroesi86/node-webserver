@@ -37,6 +37,8 @@ module.exports = async (event, callback) => {
                 }, 5000);
               });
             }
+            // the server sends its time every second, and the page reloads when the connection closes.
+            // Keep the page above 1 KiB: the load test needs it to be big enough for compressed.localhost to compress it.
             connect();
           })();
         </script>
