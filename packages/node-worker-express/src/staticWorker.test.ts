@@ -166,8 +166,8 @@ describe('staticWorker', () => {
       });
 
       await settle(150);
-      // 4 MiB in parts of 256 KiB
-      expect(sent).toBe(16);
+      // 4 MiB in parts of 1 MiB
+      expect(sent).toBe(4);
 
       while (pending.length > 0) {
         pending.shift()();
@@ -175,13 +175,13 @@ describe('staticWorker', () => {
       }
       await done;
 
-      expect(sent).toBeGreaterThan(16);
+      expect(sent).toBeGreaterThan(4);
     });
 
     it('stops reading when the client is gone', async () => {
-      const parts = await stream((part) => part < 6);
+      const parts = await stream((part) => part < 1);
 
-      // the answer to the 6th part is the first no, it is read once the window is full, so the rest of the file is not sent
+      // the answer to the 1st part is the first no, it is read once the window is full, so the rest of the file is not sent
       const all = await stream();
       expect(parts.length).toBeLessThan(all.length - 2);
       expect(parts[parts.length - 1].body).not.toBeNull();

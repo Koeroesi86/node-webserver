@@ -10,7 +10,7 @@ import isNotModified from './utils/isNotModified';
 
 let timer: NodeJS.Timeout | undefined;
 
-const chunkSize = 256 * 1024;
+const chunkSize = 1024 * 1024;
 
 function debounce(fn = () => {}, timeout = 0) {
   if (timer) clearTimeout(timer);
