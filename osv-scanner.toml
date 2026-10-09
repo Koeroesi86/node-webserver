@@ -15,8 +15,3 @@ reason = "sprintf-js has no fixed version. Only reached through js-yaml and argp
 id = "GHSA-c2qf-rxjj-qqgw"
 ignoreUntil = 2027-01-09
 reason = "semver 7.0.0 is pinned by simple-update-notifier of nodemon, a dev dependency that is not published"
-
-[[IgnoredVulns]]
-id = "GHSA-w5hq-g745-h8pq"
-ignoreUntil = 2027-01-09
-reason = "uuid is only used as v4() without a buffer, which this advisory (a missing bounds check of the buffer argument) does not reach. The major upgrade belongs to the dependency update pull request of the packages"
