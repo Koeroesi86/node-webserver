@@ -181,6 +181,8 @@ export const options = {
     ),
     // also makes k6 report the checks per route, which tells a comparison with another build whether that build can serve the route at all
     ...Object.fromEntries(Object.keys(routes).map((route) => [`checks{route:${route}}`, ['rate>0.999']])),
+    // and the requests per route, which tells the comparison how much of the throughput is work for a route that the base cannot serve (the threshold always holds)
+    ...Object.fromEntries(Object.keys(routes).map((route) => [`http_reqs{route:${route}}`, ['count>=0']])),
   },
 };
 

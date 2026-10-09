@@ -23,27 +23,44 @@ export const compareSummaries = (
   const regressions: string[] = [];
   const rows: string[] = [];
 
-  const baseRate = median(collectMetric(baseSummaries, (metrics) => metrics.http_reqs?.rate));
-  const headRate = median(collectMetric(headSummaries, (metrics) => metrics.http_reqs?.rate));
+  const routes = getRoutes(headSummaries);
+  const checkRateOf = (route: string) => median(collectMetric(baseSummaries, (metrics) => metrics[`checks{route:${route}}`]?.value));
+  const p95Of = (route: string, summaries: K6Summary[]) =>
+    median(collectMetric(summaries, (metrics) => metrics[`http_req_duration{route:${route}}`]?.['p(95)']));
+  // a base that cannot serve the route answers with errors, which are fast
+  const isComparable = (route: string) => {
+    const checkRate = checkRateOf(route);
+
+    return p95Of(route, baseSummaries) !== undefined && (checkRate === undefined || checkRate >= minCheckRate);
+  };
+  // the requests to a route that the base cannot serve are not work of the same kind: its fast errors would count as throughput, and the work of the pull request as a loss
+  const excluded = routes.filter((route) => !isComparable(route));
+  const rateOf = (metrics: Metrics) =>
+    metrics.http_reqs?.rate === undefined
+      ? undefined
+      : metrics.http_reqs.rate - excluded.reduce((sum, route) => sum + (metrics[`http_reqs{route:${route}}`]?.rate ?? 0), 0);
+
+  const baseRate = median(collectMetric(baseSummaries, rateOf));
+  const headRate = median(collectMetric(headSummaries, rateOf));
   const rateSpread = (summaries: K6Summary[]) => {
-    const range = spread(collectMetric(summaries, (metrics) => metrics.http_reqs?.rate));
+    const range = spread(collectMetric(summaries, rateOf));
     return range === undefined ? 'n/a' : `${formatNumber(range.min)}-${formatNumber(range.max)}`;
   };
   const droppedTooFar = baseRate !== undefined && headRate !== undefined && headRate < baseRate * (1 - maxThroughputDrop);
   if (droppedTooFar)
     regressions.push(`Throughput is ${formatChange(baseRate, headRate).replace('−', '')} lower than the base, the limit is ${maxThroughputDrop * 100}%.`);
+  const hasExcludedRates = excluded.some((route) =>
+    [...baseSummaries, ...headSummaries].some(({ metrics }) => metrics[`http_reqs{route:${route}}`] !== undefined)
+  );
   rows.push(
-    `| Throughput (req/s) | ${formatNumber(baseRate)} (${rateSpread(baseSummaries)}) | ${formatNumber(headRate)} (${rateSpread(
-      headSummaries
-    )}) | ${formatChange(baseRate, headRate)} | ${droppedTooFar ? '❌' : '✅'} |`
+    `| Throughput (req/s${hasExcludedRates ? ', without the routes the base cannot serve' : ''}) | ${formatNumber(baseRate)} (${rateSpread(
+      baseSummaries
+    )}) | ${formatNumber(headRate)} (${rateSpread(headSummaries)}) | ${formatChange(baseRate, headRate)} | ${droppedTooFar ? '❌' : '✅'} |`
   );
 
-  getRoutes(headSummaries).forEach((route) => {
-    const p95 = (summaries: K6Summary[]) => median(collectMetric(summaries, (metrics) => metrics[`http_req_duration{route:${route}}`]?.['p(95)']));
-    const checkRate = median(collectMetric(baseSummaries, (metrics) => metrics[`checks{route:${route}}`]?.value));
-    const [base, head] = [p95(baseSummaries), p95(headSummaries)];
-    // a base that cannot serve the route answers with errors, which are fast
-    const comparable = base !== undefined && (checkRate === undefined || checkRate >= minCheckRate);
+  routes.forEach((route) => {
+    const [base, head] = [p95Of(route, baseSummaries), p95Of(route, headSummaries)];
+    const comparable = base !== undefined && isComparable(route);
     const slower = comparable && head !== undefined && head > base * (1 + maxP95Increase) && head - base > minP95DifferenceMs;
     if (slower)
       regressions.push(

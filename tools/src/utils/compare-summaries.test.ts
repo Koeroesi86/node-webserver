@@ -88,6 +88,33 @@ describe('compareSummaries', () => {
       expect(markdown).toContain('| p95 upload (ms) | n/a | 12.0 | the base cannot serve it | ➖ |');
     });
 
+    it('are left out of the throughput, as the fast errors of the base and the work of the pull request are not alike', () => {
+      const base = same(3, { rate: 4000, routes: { worker: 6, upload: 1 }, checks: { worker: 1, upload: 0 }, routeRates: { upload: 1500 } });
+      const head = same(3, { rate: 3300, routes: { worker: 6, upload: 12 }, routeRates: { upload: 800 } });
+
+      const { regressions, markdown } = compareSummaries(base, head);
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| Throughput (req/s, without the routes the base cannot serve) | 2500 (2500-2500) | 2500 (2500-2500) | +0.0% | ✅ |');
+    });
+
+    it('still fail the throughput when the routes that both serve got slower', () => {
+      const base = same(3, { rate: 4000, routes: { worker: 6, upload: 1 }, checks: { worker: 1, upload: 0 }, routeRates: { upload: 1500 } });
+      const head = same(3, { rate: 2800, routes: { worker: 6, upload: 12 }, routeRates: { upload: 800 } });
+
+      expect(compareSummaries(base, head).regressions).toEqual([expect.stringContaining('Throughput is 20.0% lower')]);
+    });
+
+    it('leave the throughput as it is when k6 reported no requests per route', () => {
+      const base = same(3, { rate: 4000, routes: { worker: 6, upload: 1 }, checks: { worker: 1, upload: 0 } });
+      const head = same(3, { rate: 3300, routes: { worker: 6, upload: 12 } });
+
+      const { regressions, markdown } = compareSummaries(base, head);
+
+      expect(regressions).toEqual([expect.stringContaining('Throughput is 17.5% lower')]);
+      expect(markdown).toContain('| Throughput (req/s) | 4000 (4000-4000) | 3300 (3300-3300) | −17.5% | ❌ |');
+    });
+
     it('are shown with n/a when the base has no figures for them at all', () => {
       const { regressions, markdown } = compareSummaries(same(3, { routes: { worker: 6 } }), same(3, { routes: { worker: 6, upload: 12 } }));
 

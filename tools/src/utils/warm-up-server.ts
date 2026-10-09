@@ -5,10 +5,11 @@ import { requestEndpoint } from './request-endpoint';
 
 const isReady = (status: number | undefined) => status !== undefined && status < warmUpMaxStatus;
 
-/** polls the endpoint until it answers, true when it did before the attempts ran out */
-const waitForEndpoint = async (port: string, endpoint: Endpoint, attempts: number, intervalMs: number): Promise<boolean> => {
-  if (attempts === 0) return false;
-  if (isReady(await requestEndpoint(port, endpoint))) return true;
+/** polls the endpoint until it answers, the status of the answer, undefined when it did not answer before the attempts ran out */
+const waitForEndpoint = async (port: string, endpoint: Endpoint, attempts: number, intervalMs: number): Promise<number | undefined> => {
+  if (attempts === 0) return undefined;
+  const status = await requestEndpoint(port, endpoint);
+  if (isReady(status)) return status;
   await sleep(intervalMs);
 
   return waitForEndpoint(port, endpoint, attempts - 1, intervalMs);
@@ -26,10 +27,11 @@ export const warmUpServer = (
 ): Promise<WarmUpResult[]> =>
   Promise.all(
     endpoints.map(async (endpoint) => {
-      const ready = await waitForEndpoint(port, endpoint, attempts, intervalMs);
+      const status = await waitForEndpoint(port, endpoint, attempts, intervalMs);
+      const ready = status !== undefined;
       if (ready) await Promise.all(Array.from({ length: requests }, () => requestEndpoint(port, endpoint)));
       else console.error(`warm-up: ${endpoint.host}${endpoint.path} did not answer`);
 
-      return { endpoint, ready };
+      return { endpoint, ready, status };
     })
   );

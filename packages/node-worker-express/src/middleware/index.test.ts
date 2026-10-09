@@ -323,7 +323,10 @@ describe('workerMiddleware', () => {
         );
         clientRequest.on('error', reject);
       });
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // the server notices that the client left a moment later
+      for (let waited = 0; !lease.send.mock.calls.some(([message]) => message.type === WORKER_EVENT.REQUEST_ABORT) && waited < 3000; waited += 5) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
 
       expect(lease.send).toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
       expect(lease.release).toHaveBeenCalled();
@@ -352,19 +355,19 @@ describe('workerMiddleware', () => {
     });
 
     it('keeps a response going while parts keep coming, even if it takes longer than the timeout', async () => {
-      // the parts come in a third of the timeout, which a slow machine can be late for, and all of them together take longer than it
-      await start({ limitResponseTimeout: 300 });
+      // the parts come in a fifth of the timeout, which a slow machine can be late for, and all of them together take longer than it
+      await start({ limitResponseTimeout: 150 });
       mockLease((handlers, requestId) => {
         const send = (index: number) => {
-          handlers.onMessage(part(requestId, index < 5 ? bytes : null));
-          if (index < 5) setTimeout(() => send(index + 1), 100);
+          handlers.onMessage(part(requestId, index < 8 ? bytes : null));
+          if (index < 8) setTimeout(() => send(index + 1), 30);
         };
         send(0);
       });
 
       const response = await fetch(`${baseUrl}/`);
 
-      expect((await response.arrayBuffer()).byteLength).toBe(bytes.length * 5);
+      expect((await response.arrayBuffer()).byteLength).toBe(bytes.length * 8);
     });
   });
 
@@ -478,6 +481,8 @@ describe('workerMiddleware', () => {
 
       // many times the window
       Array.from({ length: 40 }).forEach(() => request.write(Buffer.alloc(65536)));
+      // the window is sent, and then it is held back: give what is not allowed to follow the time to arrive
+      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length >= RequestBodyWindow);
       await settle();
       const sentWithoutAcknowledgement = messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length;
       expect(sentWithoutAcknowledgement).toBe(RequestBodyWindow);
@@ -822,16 +827,17 @@ describe('workerMiddleware', () => {
     });
 
     it('goes on while parts keep coming, for longer than the limit', async () => {
+      // a part comes in a fifth of the limit, and all of them together take longer than it
       await start({ limitResponseTimeout: 150 });
       mockLease((handlers, requestId) => {
-        const parts = [1, 2, 3, 4, 5].map((number) => () => handlers.onMessage(part(requestId, Buffer.from(`part ${number} `))));
-        parts.forEach((send, index) => setTimeout(send, index * 80));
-        setTimeout(() => handlers.onMessage(part(requestId, null)), parts.length * 80);
+        const parts = [1, 2, 3, 4, 5, 6, 7, 8].map((number) => () => handlers.onMessage(part(requestId, Buffer.from(`part ${number} `))));
+        parts.forEach((send, index) => setTimeout(send, index * 30));
+        setTimeout(() => handlers.onMessage(part(requestId, null)), parts.length * 30);
       });
 
       const response = await fetch(`${baseUrl}/`);
 
-      expect(await response.text()).toBe('part 1 part 2 part 3 part 4 part 5 ');
+      expect(await response.text()).toBe('part 1 part 2 part 3 part 4 part 5 part 6 part 7 part 8 ');
     });
   });
 

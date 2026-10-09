@@ -13,8 +13,8 @@ describe('warmUpServer', () => {
     const results = await warmUpServer(port, [web, lambda], options);
 
     expect(results).toEqual([
-      { endpoint: web, ready: true },
-      { endpoint: lambda, ready: true },
+      { endpoint: web, ready: true, status: 200 },
+      { endpoint: lambda, ready: true, status: 200 },
     ]);
     expect(requests.filter(({ host }) => host === 'web.localhost')).toHaveLength(6);
     expect(requests.filter(({ host }) => host === 'lambda.localhost')).toHaveLength(6);
@@ -26,7 +26,7 @@ describe('warmUpServer', () => {
 
     const results = await warmUpServer(port, [lambda], options);
 
-    expect(results).toEqual([{ endpoint: lambda, ready: true }]);
+    expect(results).toEqual([{ endpoint: lambda, ready: true, status: 200 }]);
     // three that were not answered, the one that was, and the requests after it
     expect(requests).toHaveLength(3 + 1 + 5);
     await stop();
@@ -35,7 +35,7 @@ describe('warmUpServer', () => {
   it('takes any answer that is not a server error as ready, a 404 for a missing file is fine', async () => {
     const { port, stop } = await startHttpServer(404);
 
-    expect(await warmUpServer(port, [web], options)).toEqual([{ endpoint: web, ready: true }]);
+    expect(await warmUpServer(port, [web], options)).toEqual([{ endpoint: web, ready: true, status: 404 }]);
     await stop();
   });
 
@@ -46,7 +46,7 @@ describe('warmUpServer', () => {
     const results = await warmUpServer(port, [web, lambda], { ...options, attempts: 3 });
 
     expect(results).toEqual([
-      { endpoint: web, ready: true },
+      { endpoint: web, ready: true, status: 200 },
       { endpoint: lambda, ready: false },
     ]);
     expect(requests.filter(({ host }) => host === 'lambda.localhost')).toHaveLength(3);
