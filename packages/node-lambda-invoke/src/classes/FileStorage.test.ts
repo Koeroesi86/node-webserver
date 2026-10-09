@@ -1,6 +1,5 @@
-import { existsSync } from 'fs';
+import { existsSync, rmSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import rimraf from 'rimraf';
 import FileStorage from './FileStorage';
 import RequestEvent from './RequestEvent';
 
@@ -16,7 +15,7 @@ describe('FileStorage', () => {
   });
 
   afterEach(() => {
-    rimraf.sync(base);
+    rmSync(base, { recursive: true, force: true });
     Object.assign(FileStorage, originalBases);
   });
 
@@ -29,6 +28,13 @@ describe('FileStorage', () => {
     expect(existsSync(FileStorage.requestBase)).toBe(true);
     expect(existsSync(FileStorage.responseBase)).toBe(true);
     expect(existsSync(new FileStorage('old').requestPath)).toBe(false);
+  });
+
+  it('leaves dotfiles such as .gitkeep in the folders when it empties them', () => {
+    writeFileSync(resolve(FileStorage.requestBase, '.gitkeep'), '');
+    FileStorage.start();
+
+    expect(existsSync(resolve(FileStorage.requestBase, '.gitkeep'))).toBe(true);
   });
 
   it('keeps a request and a response in files named by the id', () => {
