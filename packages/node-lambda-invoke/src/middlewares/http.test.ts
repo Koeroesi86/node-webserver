@@ -16,6 +16,14 @@ exports.handler = (event, context, callback) => {
   if (event.path === '/exit') process.exit(1);
   if (event.path.startsWith('/slow')) return setTimeout(respond, 100);
   if (event.path === '/hold') return setTimeout(respond, 400);
+  // answers once the number of lambdas in the path (/gather/8) has got a request, so that no lambda is free for another request before that (3 seconds at most)
+  if (event.path.startsWith('/gather/')) {
+    const { appendFileSync, readFileSync } = require('fs');
+    const file = process.env.PID_FILE + '.gather';
+    appendFileSync(file, process.pid + '\\n');
+    const wait = (waited) => (readFileSync(file, 'utf8').trim().split('\\n').length >= Number(event.path.split('/')[2]) || waited >= 3000 ? respond() : setTimeout(() => wait(waited + 10), 10));
+    return wait(0);
+  }
   respond();
 };
 `;
@@ -257,7 +265,7 @@ describe('httpMiddleware', () => {
     it('has no limit when it is 0', async () => {
       await start({ limit: 0 });
 
-      const { pids } = await pidsOf(8);
+      const { pids } = await pidsOf(8, '/gather/8');
 
       expect(new Set(pids).size).toBe(8);
     });

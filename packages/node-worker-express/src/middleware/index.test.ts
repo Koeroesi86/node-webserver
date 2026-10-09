@@ -481,6 +481,8 @@ describe('workerMiddleware', () => {
 
       // many times the window
       Array.from({ length: 40 }).forEach(() => request.write(Buffer.alloc(65536)));
+      // the window is sent, and then it is held back: give what is not allowed to follow the time to arrive
+      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length >= RequestBodyWindow);
       await settle();
       const sentWithoutAcknowledgement = messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length;
       expect(sentWithoutAcknowledgement).toBe(RequestBodyWindow);
