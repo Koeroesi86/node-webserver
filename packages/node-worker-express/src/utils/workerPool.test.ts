@@ -1,3 +1,4 @@
+import net from 'net';
 import type { EventEmitter } from 'events';
 import { WORKER_EVENT } from '../constants';
 import WorkerPool from './workerPool';
@@ -30,6 +31,9 @@ jest.mock('@koeroesi86/node-worker', () => {
       stdout: new EventEmitter(),
       stderr: new EventEmitter(),
       stdio: [null, null, null, FakeWorker.noChannel ? null : this.socket] as unknown[],
+      /** the IPC channel of node, which carries the connections that are handed over */
+      connected: true,
+      send: jest.fn((message: unknown, handle: unknown, callback: (error: Error | null) => void) => callback(null)),
     });
     readonly terminate = jest.fn(() => this.exit(0));
 
@@ -216,12 +220,12 @@ describe('WorkerPool', () => {
       expect(FakeWorker.instances[0].options).toMatchObject({ env: { FROM: 'factory' } });
     });
 
-    it('opens the channel as the fourth stdio, whatever the options say', async () => {
+    it('opens the channel as the fourth stdio and the IPC channel as the fifth, whatever the options say', async () => {
       const pool = createPool();
 
       await pool.acquire(pathA, { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] }, 1);
 
-      expect(FakeWorker.instances[0].options).toMatchObject({ stdio: ['pipe', 'pipe', 'pipe', 'overlapped'] });
+      expect(FakeWorker.instances[0].options).toMatchObject({ stdio: ['pipe', 'pipe', 'pipe', 'overlapped', 'ipc'] });
     });
   });
 
@@ -237,6 +241,34 @@ describe('WorkerPool', () => {
       expect(FakeWorker.instances[0].sent).toEqual([]);
       expect(FakeWorker.instances[1].sent).toEqual([{ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'one' }]);
       expect(first.worker).toBe(FakeWorker.instances[0]);
+    });
+
+    it('hands a connection to the worker of the lease over the IPC channel', async () => {
+      const pool = createPool();
+      const lease = await pool.acquire(pathA, {}, 1);
+      const socket = new net.Socket();
+      const message = { type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 100 } as const;
+
+      await lease.handOff(message, socket);
+
+      expect(FakeWorker.instances[0].instance.send).toHaveBeenCalledWith(message, socket, expect.any(Function));
+    });
+
+    it('rejects a hand over that could not be sent', async () => {
+      const pool = createPool();
+      const lease = await pool.acquire(pathA, {}, 1);
+      FakeWorker.instances[0].instance.send.mockImplementationOnce((message, handle, callback) => callback(new Error('closed')));
+
+      await expect(lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 0 }, new net.Socket())).rejects.toThrow('closed');
+    });
+
+    it('rejects a hand over to a worker without an IPC channel', async () => {
+      const pool = createPool();
+      const lease = await pool.acquire(pathA, {}, 1);
+      FakeWorker.instances[0].instance.connected = false;
+
+      await expect(lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 0 }, new net.Socket())).rejects.toThrow('no IPC channel');
+      expect(FakeWorker.instances[0].instance.send).not.toHaveBeenCalled();
     });
 
     it('does not fail when the worker is gone', async () => {

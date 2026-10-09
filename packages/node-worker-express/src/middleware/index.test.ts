@@ -381,6 +381,153 @@ describe('workerMiddleware', () => {
     });
   });
 
+  describe('handing the connection to the worker', () => {
+    const body = Buffer.from('a body that the worker writes itself');
+    const head = (requestId: string, headers: Record<string, string> = { 'Content-Length': String(body.length) }) => ({
+      type: WORKER_EVENT.RESPONSE_HANDOFF,
+      requestId,
+      event: { statusCode: 200, headers: { 'Content-Type': 'application/octet-stream', ...headers } },
+    });
+    const end = (requestId: string) => ({ type: WORKER_EVENT.RESPONSE_EMIT, requestId, event: { statusCode: 200, emit: true, body: null } });
+    const sentTypes = (lease: { send: jest.Mock }) => lease.send.mock.calls.map(([message]) => message.type);
+
+    /** a worker that asks for the connection, writes the body to it once it has it, and then tells that it is done */
+    const handingOver = (headers?: Record<string, string>) => {
+      let handlers: Handlers;
+      const lease = mockLease((current, requestId) => {
+        handlers = current;
+        handlers.onMessage(head(requestId, headers));
+      });
+      const handOff = jest.fn(
+        (message: { requestId: string }, socket: net.Socket) =>
+          new Promise<void>((resolve) =>
+            socket.write(body, () => {
+              resolve();
+              setImmediate(() => handlers.onMessage(end(message.requestId)));
+            })
+          )
+      );
+
+      return Object.assign(lease, { handOff });
+    };
+
+    it('hands the connection over for a big response, which closes after the body, and frees the worker when it is done', async () => {
+      await start({ handOffResponses: body.length, limitResponseTimeout: 300 });
+      const lease = handingOver();
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('connection')).toBe('close');
+      expect(response.headers.get('content-length')).toBe(String(body.length));
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(body);
+      expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: expect.any(String), timeout: 300 }, expect.any(net.Socket));
+      await until(() => lease.release.mock.calls.length > 0);
+      expect(sentTypes(lease)).toEqual([WORKER_EVENT.REQUEST, WORKER_EVENT.RESPONSE_ACKNOWLEDGE]);
+    });
+
+    it('keeps a response below the size and lets the worker stream it', async () => {
+      await start({ handOffResponses: body.length + 1 });
+      const lease = handingOver();
+
+      const request = fetch(`${baseUrl}/`);
+      await until(() => sentTypes(lease).includes(WORKER_EVENT.RESPONSE_HANDOFF_REFUSE));
+
+      expect(lease.handOff).not.toHaveBeenCalled();
+      lease.subscribe.mock.calls[0][1](end(lease.subscribe.mock.calls[0][0]));
+      expect((await request).headers.get('connection')).not.toBe('close');
+    });
+
+    it('keeps a response without a length', async () => {
+      await start({ handOffResponses: 1 });
+      const lease = handingOver({});
+
+      fetch(`${baseUrl}/`).catch(() => undefined);
+      await until(() => sentTypes(lease).includes(WORKER_EVENT.RESPONSE_HANDOFF_REFUSE));
+
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('keeps a response to HEAD', async () => {
+      await start({ handOffResponses: 1 });
+      const lease = handingOver();
+
+      fetch(`${baseUrl}/`, { method: 'HEAD' }).catch(() => undefined);
+      await until(() => sentTypes(lease).includes(WORKER_EVENT.RESPONSE_HANDOFF_REFUSE));
+
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('keeps a response that a middleware in front encodes, which then passes through it with the head that was written', async () => {
+      const app = express();
+      app.use((request, response, next) => {
+        const { writeHead } = response;
+        // what the compression does when it takes a response
+        Object.assign(response, {
+          writeHead: (...args: unknown[]) => {
+            response.setHeader('Content-Encoding', 'identity');
+            response.removeHeader('Content-Length');
+            return Reflect.apply(writeHead, response, args);
+          },
+        });
+        next();
+      });
+      app.use(workerMiddleware({ root, index: ['exampleWorker.js'], handOffResponses: 1 }));
+      server = http.createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, resolve));
+      const lease = handingOver();
+      const { send } = lease;
+      // the refusal is answered with the body passing through the server
+      Object.assign(lease, {
+        send: jest.fn((message: { type: string; requestId: string }) => {
+          send(message as never);
+          if (message.type !== WORKER_EVENT.RESPONSE_HANDOFF_REFUSE) return;
+          const onMessage = lease.subscribe.mock.calls[0][1];
+          onMessage({ type: WORKER_EVENT.RESPONSE_EMIT, requestId: message.requestId, event: { statusCode: 200, emit: true, body } });
+          onMessage(end(message.requestId));
+        }),
+      });
+
+      const response = await fetch(`http://localhost:${(server.address() as net.AddressInfo).port}/`);
+
+      expect(response.headers.get('content-encoding')).toBe('identity');
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(body);
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('ends the response and frees the worker when the connection could not be handed over', async () => {
+      await start({ handOffResponses: 1 });
+      const lease = handingOver();
+      lease.handOff.mockRejectedValueOnce(new Error('closed'));
+
+      await expect(fetch(`${baseUrl}/`).then((response) => response.arrayBuffer())).rejects.toThrow();
+
+      await until(() => lease.release.mock.calls.length > 0);
+      expect(sentTypes(lease)).toContain(WORKER_EVENT.REQUEST_ABORT);
+    });
+
+    it('frees the worker when it exits while it writes the body', async () => {
+      await start({ handOffResponses: 1 });
+      let handlers: Handlers;
+      const lease = Object.assign(
+        mockLease((current, requestId) => {
+          handlers = current;
+          handlers.onMessage(head(requestId));
+        }),
+        { handOff: jest.fn(() => Promise.resolve()) }
+      );
+
+      fetch(`${baseUrl}/`).catch(() => undefined);
+      await until(() => lease.handOff.mock.calls.length > 0);
+      await settle();
+      expect(lease.release).not.toHaveBeenCalled();
+
+      handlers.onExit(1);
+
+      expect(lease.release).toHaveBeenCalled();
+    });
+  });
+
   describe('streamed request bodies', () => {
     type Message = { type: string; requestId: string; event?: { body?: Buffer | null; hasBody?: boolean } };
 

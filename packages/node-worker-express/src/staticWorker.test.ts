@@ -128,6 +128,8 @@ describe('staticWorker', () => {
     const stream = async (acknowledge: (part: number) => Promise<unknown> | unknown = () => true) => {
       const parts: ResponseEvent[] = [];
       await staticWorker(event('/big.bin'), (part) => {
+        // the server keeps the connection, the body passes through it
+        if ('handOff' in part) return Promise.resolve(undefined);
         parts.push(part);
         return Promise.resolve(acknowledge(parts.length));
       });
@@ -160,7 +162,8 @@ describe('staticWorker', () => {
           await new Promise((resolve) => setImmediate(resolve));
         }
       };
-      const done = staticWorker(event('/big.bin'), () => {
+      const done = staticWorker(event('/big.bin'), (part) => {
+        if ('handOff' in part) return Promise.resolve(undefined);
         sent += 1;
         return new Promise((resolve) => pending.push(() => resolve(true)));
       });
@@ -184,7 +187,7 @@ describe('staticWorker', () => {
       let total = 0;
 
       await staticWorker(event('/big.bin'), (part) => {
-        const size = Buffer.isBuffer(part.body) ? part.body.length : 0;
+        const size = 'body' in part && Buffer.isBuffer(part.body) ? part.body.length : 0;
         outstanding += size;
         total += size;
         peak = Math.max(peak, outstanding);

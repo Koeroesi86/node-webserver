@@ -2,6 +2,7 @@ import { ChildProcess, spawn } from 'child_process';
 import crypto from 'crypto';
 import fsSync from 'fs';
 import fs from 'fs/promises';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import { Duplex } from 'stream';
@@ -86,6 +87,17 @@ module.exports = async (event, callback) => {
   if (event.path === '/binary') return callback({ statusCode: 200, headers: {}, body: Buffer.from(Array.from({ length: 256 }, (_, value) => value)).toString('base64'), isBase64Encoded: true });
   if (event.path === '/buffer') return callback({ statusCode: 200, headers: {}, body: Buffer.from('árvíztűrő'), isBase64Encoded: true });
   if (event.path === '/big') return callback({ statusCode: 200, headers: {}, body: Buffer.alloc(3 * 1024 * 1024, 7) });
+  if (event.path === '/hands-off' || event.path === '/hands-off-waits') {
+    const socket = await callback({ statusCode: 200, headers: { 'Content-Length': '5' }, handOff: true });
+    if (!socket) {
+      fs.writeFileSync(path.join(event.rootPath, 'hand-off-refused'), '');
+      await callback(part('refused'));
+      return callback(part(null));
+    }
+    if (event.path === '/hands-off') socket.end('hello');
+    else await new Promise((resolve) => socket.once('close', resolve));
+    return callback(part(null));
+  }
   if (event.path === '/stops-when-aborted') {
     let index = 0;
     while (await callback(part('part ' + index++)));
@@ -119,8 +131,10 @@ describe('workerInvoke', () => {
 
   beforeEach(() => {
     received = [];
-    // the channel is the fourth stdio, as the pool starts workers
-    child = spawn(process.execPath, [path.join(folder, 'workerInvoke.js'), path.join(folder, 'worker.js')], { stdio: ['pipe', 'pipe', 'pipe', 'overlapped'] });
+    // the channel is the fourth stdio and the IPC channel the fifth, as the pool starts workers
+    child = spawn(process.execPath, [path.join(folder, 'workerInvoke.js'), path.join(folder, 'worker.js')], {
+      stdio: ['pipe', 'pipe', 'pipe', 'overlapped', 'ipc'],
+    });
     const socket = child.stdio[3];
     if (!(socket instanceof Duplex)) throw new Error('The worker has no channel.');
     channel = createChannel<Received, WorkerInputEvent>(socket, (message) => received.push(message));
@@ -621,6 +635,83 @@ describe('workerInvoke', () => {
       await settle();
 
       expect(of('a')).toHaveLength(0);
+    });
+  });
+
+  describe('handing the connection over', () => {
+    let server: net.Server;
+    /** a connection of a client: the end the client reads, and the one the server hands to the worker */
+    let client: net.Socket;
+    let connection: net.Socket;
+
+    beforeEach(async () => {
+      server = net.createServer();
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const accepted = new Promise<net.Socket>((resolve) => server.once('connection', resolve));
+      client = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+      connection = await accepted;
+    });
+
+    afterEach(() => {
+      client.destroy();
+      return new Promise((resolve) => server.close(resolve));
+    });
+
+    const read = (socket: net.Socket) =>
+      new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+        socket.once('close', () => resolve(Buffer.concat(chunks).toString()));
+      });
+    const handOver = (requestId: string, timeout = 0) => child.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, timeout }, connection);
+
+    it('asks for the connection with the head of the response, and writes the body to it once it has it', async () => {
+      const body = read(client);
+      send('a', '/hands-off');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_HANDOFF).length === 1);
+
+      expect(of('a', WORKER_EVENT.RESPONSE_HANDOFF)[0].event).toEqual({ statusCode: 200, headers: { 'Content-Length': '5' } });
+
+      handOver('a');
+
+      expect(await body).toBe('hello');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_EMIT).length === 1);
+      expect(of('a', WORKER_EVENT.RESPONSE_EMIT)[0].event.body).toBeNull();
+    });
+
+    it('streams the body through the server when it refuses', async () => {
+      send('a', '/hands-off');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_HANDOFF).length === 1);
+
+      channel.send({ type: WORKER_EVENT.RESPONSE_HANDOFF_REFUSE, requestId: 'a' });
+      await until(() => of('a', WORKER_EVENT.RESPONSE_EMIT).length === 1);
+
+      expect(of('a', WORKER_EVENT.RESPONSE_EMIT)[0].event.body).toEqual(Buffer.from('refused'));
+    });
+
+    it('closes a connection that arrives for a request that was aborted', async () => {
+      const body = read(client);
+      send('a', '/hands-off');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_HANDOFF).length === 1);
+
+      fsSync.rmSync(path.join(folder, 'hand-off-refused'), { force: true });
+      channel.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'a' });
+      // the abort and the connection travel on different channels, the server only hands over a connection that was not aborted before
+      await until(() => fsSync.existsSync(path.join(folder, 'hand-off-refused')));
+      handOver('a');
+
+      expect(await body).toBe('');
+    });
+
+    it('closes the connection when the client takes nothing for the timeout of the server', async () => {
+      const body = read(client);
+      send('a', '/hands-off-waits');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_HANDOFF).length === 1);
+
+      handOver('a', 100);
+
+      expect(await body).toBe('');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_EMIT).length === 1);
     });
   });
 });

@@ -1,5 +1,7 @@
 import { randomBytes } from 'crypto';
+import net from 'net';
 import path from 'path';
+import { TLSSocket } from 'tls';
 import url from 'url';
 import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WebSocketCloseCode, WORKER_EVENT } from '../constants';
 import WorkerPool from '../utils/workerPool';
@@ -12,7 +14,9 @@ import getClientIp from '../utils/getClientIp';
 import hasBody from '../utils/hasBody';
 import takeSmallBody from '../utils/takeSmallBody';
 import { RequestHandler } from 'express';
-import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
+import { MiddlewareOptions, RequestEvent, ResponseMessage, WorkerOutputEvent } from '../types';
+import getHeader from '../utils/get-header';
+import { handedOffResponses } from '../utils/is-handed-off';
 import resolvePath from '../utils/resolvePath';
 import createProbe from '../utils/createProbe';
 import TtlCache from '../utils/ttlCache';
@@ -21,6 +25,9 @@ import { getServerMetrics, registerMetricsSource, trackRequest } from '../utils/
 /** how long the way to a path is remembered, and how many paths are, so that a client asking for endless different ones cannot grow the cache */
 const routeCacheTtl = 5000;
 const routeCacheSize = 10000;
+
+/** the statuses whose response has no body, which leaves nothing to hand over */
+const bodylessStatuses = [204, 205, 304];
 
 // ids only have to differ inside this process, which is cheaper to make than a random uuid
 const requestIdPrefix = randomBytes(4).toString('hex');
@@ -148,6 +155,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         request.socket.on('data', webSocket.receive);
       }
 
+      /** the worker writes the body to the client itself, the connection is not this process' to watch until the worker says it is done */
+      let handedOff = false;
       let responseTimer: NodeJS.Timeout | undefined;
       /** when the response runs out of time, moved forward by every sign of progress, which only costs a number, not a timer */
       let responseDeadline = 0;
@@ -204,6 +213,56 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         if (unacknowledged >= RequestBodyWindow) request.pause();
       };
 
+      /** whether the body may go to the client from the worker: big enough to be worth a connection, on a plain HTTP/1 one that has nothing else to read or write */
+      const mayHandOff = ({ statusCode, headers }: ResponseMessage) =>
+        !!config.handOffResponses &&
+        Number(getHeader(headers, 'content-length')) >= config.handOffResponses &&
+        getHeader(headers, 'transfer-encoding') === undefined &&
+        statusCode >= 200 &&
+        !bodylessStatuses.includes(statusCode) &&
+        request.method !== 'HEAD' &&
+        request.httpVersionMajor === 1 &&
+        !streamsBody &&
+        !response.headersSent &&
+        // the state of TLS lives in this process, such a socket cannot be moved
+        request.socket instanceof net.Socket &&
+        !(request.socket instanceof TLSSocket) &&
+        !request.socket.destroyed;
+
+      const handOff = async (head: ResponseMessage) => {
+        const refuse = () => lease.send({ type: WORKER_EVENT.RESPONSE_HANDOFF_REFUSE, requestId });
+        if (!mayHandOff(head)) return refuse();
+
+        const { socket } = request;
+        const encoding = getHeader(head.headers, 'content-encoding');
+        // set one by one, so that what a middleware in front changes in them can be read back
+        Object.entries(head.headers ?? {}).forEach(([name, value]) => response.setHeader(name, value));
+        // the connection does not come back from the worker, the client is told that it ends with this response
+        response.setHeader('Connection', 'close');
+        response.writeHead(head.statusCode);
+        // a middleware that encodes the body, as the compression does, has to see it: it is streamed through this process then, the head is out already
+        if (response.getHeader('content-encoding') !== encoding || !response.hasHeader('content-length')) return refuse();
+
+        response.flushHeaders();
+        // the head has to be written before the socket leaves this process
+        await new Promise((resolve) => socket.write(Buffer.alloc(0), resolve));
+        // the client is gone, the cleanup has told the worker already
+        if (socket.destroyed) return undefined;
+
+        handedOff = true;
+        handedOffResponses.add(response);
+        clearTimeout(responseTimer);
+        try {
+          await lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, timeout: config.limitResponseTimeout ?? 0 }, socket);
+        } catch {
+          handedOff = false;
+          handedOffResponses.delete(response);
+          return failRequest(502, 'Worker could not take the connection.');
+        }
+        // the handle is in the worker now, this lets the server and the response here let go of the connection, the worker frees itself when it is done
+        return socket.destroy();
+      };
+
       const forwardBodyEnd = () => lease.send({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: null } });
 
       const messageListener = (responseEvent: WorkerOutputEvent) => {
@@ -239,6 +298,18 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
             // the upgrade was refused, the connection goes on as any other one and holds neither the worker nor the slot
             cleanupConnection();
           }
+        }
+
+        if (responseEvent.type === WORKER_EVENT.RESPONSE_HANDOFF && responseEvent.event) {
+          handOff(responseEvent.event).catch(() => failRequest(502, 'Worker could not take the connection.'));
+        }
+
+        // the worker has written the body to the client and ended the connection, it waits for the acknowledgement of the end
+        if (handedOff && responseEvent.type === WORKER_EVENT.RESPONSE_EMIT && responseEvent.event?.body === null) {
+          lease.send({ type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE, requestId });
+          handedOff = false;
+          cleanupConnection();
+          return;
         }
 
         if (responseEvent.type === WORKER_EVENT.RESPONSE_EMIT) {
@@ -286,7 +357,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       function cleanupConnection() {
         clearTimeout(responseTimer);
-        if (event.protocol === Protocols.http && !response.writableFinished) {
+        // the response closed as the connection was handed over, the worker is still writing to it
+        if (handedOff) return;
+        if (event.protocol === Protocols.http && !response.writableFinished && !handedOffResponses.has(response)) {
           // a worker that is streaming the response can stop
           lease.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
         }
@@ -310,7 +383,11 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         }
       }
 
-      lease.subscribe(requestId, messageListener, () => failRequest(502, 'Worker exited.'));
+      lease.subscribe(requestId, messageListener, () => {
+        // a worker that dies while it writes leaves the client with a truncated body, as when the body passes through here
+        handedOff = false;
+        failRequest(502, 'Worker exited.');
+      });
       armResponseTimeout();
       lease.send({
         type: WORKER_EVENT.REQUEST,
