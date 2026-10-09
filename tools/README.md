@@ -99,6 +99,7 @@ k6 run -e HTTPS_PORT=8443 tools/src/k6/example.ts
 The server also serves `lambda.localhost`, a `lambda` server running `examples/exampleLambda.js` in lambda processes, which the `lambda` route uses,
 and `upload.localhost`, where `examples/upload/exampleWorker.js` reads the request body as a stream and answers with its size and sha256, which the `upload` route checks,
 and `health.localhost`, whose worker answers `/health` and `/metrics` from the metrics the server gives to workers, which the `metrics` route checks.
+The https port of the load test server has `http2` on, and the `http2` route requests `https://secure.localhost` and checks that k6 got `HTTP/2.0`.
 
 ### Big binary responses
 

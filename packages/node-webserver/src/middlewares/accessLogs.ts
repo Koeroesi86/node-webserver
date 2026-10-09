@@ -53,7 +53,8 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
           (request.method || '!no-method!').toUpperCase(),
           fullUrl(request),
           response.statusCode,
-          response.statusMessage,
+          // HTTP/2 has no status message, and node warns when it is read
+          ...(request.httpVersionMajor >= 2 ? [] : [response.statusMessage]),
           `${response.get('Content-Length') || 0}b sent`,
         ].join(' ');
         logger[level](logLine);

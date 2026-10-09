@@ -72,7 +72,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * `compressed.localhost` serves the example worker with compression on.
  * `upload.localhost` serves a worker that reads the request body as a stream.
  * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
- * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests.
+ * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests. The https port serves HTTP/2 (`http2: true`).
  * WORKERS_PER_PATH overrides the number of workers started per path.
  */
 const configuration = {
@@ -85,6 +85,7 @@ const configuration = {
     warning: true,
   },
   servers: [...exampleConfiguration.servers, lambdaServer, compressedServer, uploadServer, healthServer, ...secureServers].map(withWorkerLimit),
+  http2: true,
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

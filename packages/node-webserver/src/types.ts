@@ -91,6 +91,8 @@ export interface Configuration {
   logLevels?: LogLevels;
   portHttp: number;
   portHttps: number;
+  /** serve HTTP/2 on the https port to the clients that offer it, the others keep getting HTTP/1.1 (and websockets) on the same port. Off by default. */
+  http2?: boolean;
   /**
    * how long an idle connection of a client is kept open, in milliseconds, for both the http and the https server. Defaults to 65000, longer than what load balancers keep theirs for.
    * Node itself closes them after 5 seconds.
