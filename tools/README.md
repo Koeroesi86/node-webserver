@@ -22,7 +22,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 ## Versions
 
-`src/scripts/version.ts` (`pnpm generate-version` in the root, run by the publish workflow) prepares the versions of the workspace packages for publishing.
+`src/scripts/version.ts` (`pnpm generate-version` in the root, run by the publish workflow, twice a day and by hand) prepares the versions of the workspace packages for publishing.
 A package is published when it has no published release yet, or when its own folder or the folder of any workspace package it depends on changed since the commit that its latest published release was created from (`gitHead`).
 Such packages get a new version and their commit written to `gitHead`. All the others get the version that is already on the registry, so the `workspace:` dependencies pointing at them are rewritten to an existing release and `pnpm publish` leaves them out.
 

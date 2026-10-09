@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           # the version script compares the packages with the commit of their latest release
           fetch-depth: 0
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -49,15 +49,18 @@ jobs:
     needs: [test, build]
     uses: ./.github/workflows/load-test.yml
 
-  # the one check that master requires: it fails unless the tests, the build and the load test all passed,
+  security:
+    uses: ./.github/workflows/security.yml
+
+  # the one check that master requires: it fails unless the tests, the build, the load test and the security scans all passed,
   # so the jobs and the operating systems can change without touching the branch protection
   required-checks:
     if: always()
-    needs: [test, build, load-test]
+    needs: [test, build, load-test, security]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Tests, build and load test passed
+      - name: Tests, build, load test and security scans passed
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |

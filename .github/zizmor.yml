@@ -1,0 +1,4 @@
+rules:
+  # the workflows call each other with relative paths, which is the same repository at the same commit
+  self-repository:
+    disable: true

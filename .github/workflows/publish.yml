@@ -1,44 +1,73 @@
 name: Publish
 
+# Twice a day, and by hand. A package is published when its folder changed since its latest release (see tools/README.md#versions),
+# so a run publishes everything that was merged since the previous one, and does nothing (and runs no tests) when there is nothing.
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'packages/**'
-      - 'tools/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
+  schedule:
+    - cron: '0 6,18 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yml
-
-  publish:
-    needs: test
+  # decides whether there is anything to publish, before the expensive jobs run
+  plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           # the version script compares the packages with the commit of their latest release
           fetch-depth: 0
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
-          cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
+      - name: Setup
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build the version script
+        timeout-minutes: 5
+        run: pnpm --filter @koeroesi86/tools build
+      - name: Packages to publish
+        id: plan
+        env:
+          VERSION_DRY_RUN: '1'
+        run: |
+          node tools/dist/scripts/version.js | tee plan.txt
+          # a line for every package: `name: version (reason)`, the ones with nothing to publish say so
+          count=$(grep -c -v 'unchanged, already published' plan.txt || true)
+          echo "${count} package(s) to publish"
+          [ "${count}" -gt 0 ] && echo 'publish=true' >> "$GITHUB_OUTPUT" || echo 'publish=false' >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    uses: ./.github/workflows/test.yml
+
+  # installs, builds and packs with a token that cannot publish: the install scripts and the build of the dependencies run here
+  build:
+    needs: [plan, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      # no `cache`: what is published is not built from a restored cache
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
       - name: Setup
         timeout-minutes: 10
         run: pnpm install --frozen-lockfile
@@ -48,6 +77,47 @@ jobs:
       - name: Package version
         timeout-minutes: 5
         run: pnpm generate-version
-      - name: Publish package
+      - name: Pack the packages to publish
         timeout-minutes: 5
-        run: pnpm -r publish --access public --provenance --no-git-checks
+        run: |
+          pnpm -r pack --pack-destination "${RUNNER_TEMP}/packed"
+          mkdir tarballs
+          # the version script writes the commit (`gitHead`) into the packages it publishes only
+          for file in "${RUNNER_TEMP}"/packed/*.tgz; do
+            if tar -xzOf "${file}" package/package.json | grep -q '"gitHead"'; then
+              cp "${file}" tarballs/
+            fi
+          done
+          ls -l tarballs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: tarballs
+          path: tarballs/*.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  # publishes what the build packed, and nothing else: it checks nothing out and installs nothing, so no code of the repository
+  # or of its dependencies runs with the token for the provenance
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # the provenance of the published packages
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: tarballs
+          path: tarballs
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish packages
+        timeout-minutes: 10
+        run: |
+          for file in tarballs/*.tgz; do
+            npm publish "${file}" --access public --provenance
+          done

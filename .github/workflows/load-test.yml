@@ -88,11 +88,11 @@ jobs:
       P95_OVERRIDES: ${{ matrix.p95-overrides }}
       P95_FACTOR: ${{ matrix.p95-factor }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -107,7 +107,7 @@ jobs:
       - name: Checkout the base
         if: github.event_name == 'pull_request'
         continue-on-error: true
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
@@ -173,7 +173,7 @@ jobs:
           echo 'Server did not become ready' >&2
           cat server.log
           exit 1
-      - uses: grafana/setup-k6-action@v1
+      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1
         with:
           k6-version: '1.2.2'
       - name: Look at the runner before the load test
@@ -267,7 +267,7 @@ jobs:
           printf '## Comparison with the base\n\nThe base has no load test (yet), or could not be built, so there is nothing to compare with.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: load-test-results-${{ matrix.os }}
           path: |

@@ -1,0 +1,57 @@
+name: Security
+
+# dependency and workflow scans, used by the pull request checks, and run on a schedule as well:
+# an advisory published later than the pull request that added the dependency is found by the scheduled run
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: dependency-review
+    # compares the dependencies of the pull request with the ones of its base
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  # the lockfile against the OSV database, which covers more advisories than the GitHub one
+  osv-scan:
+    name: osv-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
+            --config=osv-scanner.toml
+
+  # the workflows themselves: injection through expressions, permissions that are too wide, actions that are not pinned
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          # findings fail the job and show as annotations, rather than being uploaded to the security tab
+          advanced-security: false
+          annotations: true
