@@ -25,7 +25,11 @@ class FileStorage {
   static start() {
     [FileStorage.requestBase, FileStorage.responseBase]
       .filter((base) => existsSync(base))
-      .forEach((base) => readdirSync(base).forEach((name) => rmSync(resolve(base, name), { recursive: true, force: true })));
+      .forEach((base) =>
+        readdirSync(base)
+          .filter((name) => !name.startsWith('.'))
+          .forEach((name) => rmSync(resolve(base, name), { recursive: true, force: true }))
+      );
 
     if (!existsSync(FileStorage.requestBase)) mkdirSync(FileStorage.requestBase, { recursive: true });
     if (!existsSync(FileStorage.responseBase)) mkdirSync(FileStorage.responseBase, { recursive: true });

@@ -9,7 +9,9 @@ type ExitReason = NodeJS.Signals | 'exit' | 'uncaughtException';
 function cleanTmp() {
   const tmpLocation = resolve(PACKAGE_ROOT, 'tmp');
   if (existsSync(tmpLocation) && readdirSync(tmpLocation).length > 0) {
-    readdirSync(tmpLocation).forEach((name) => rmSync(resolve(tmpLocation, name), { recursive: true, force: true }));
+    readdirSync(tmpLocation)
+      .filter((name) => !name.startsWith('.'))
+      .forEach((name) => rmSync(resolve(tmpLocation, name), { recursive: true, force: true }));
     logger.info('Tmp folder cleaned.');
   }
 }
