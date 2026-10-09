@@ -1,4 +1,4 @@
-import { v4 as uuid } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import path from 'path';
 import { Duplex } from 'stream';
 import Worker from '@koeroesi86/node-worker';
@@ -186,7 +186,7 @@ class WorkerPool {
   private getBackoff = (workerPath: string) => Math.max(0, (this.failures.get(workerPath)?.retryAt ?? 0) - Date.now());
 
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
-    const id = uuid();
+    const id = randomUUID();
     // the fourth stdio is the socket pair the messages go through, in place of the IPC channel of node that sends JSON.
     // 'overlapped' is a plain pipe except on Windows, where the worker could not read and write it at the same time otherwise
     const instance = new Worker(createWorkerCommand(workerPath), {

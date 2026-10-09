@@ -23,8 +23,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@koeroesi86/node-worker": "workspace:*",
-    "uuid": "^9.0.0"
+    "@koeroesi86/node-worker": "workspace:*"
   },
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.0.0",

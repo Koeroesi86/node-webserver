@@ -1,4 +1,4 @@
-import uuid from 'uuid';
+import { randomUUID } from 'node:crypto';
 import url from 'url';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
@@ -47,7 +47,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     requestEvent.queryStringParameters = queryStringParameters;
     requestEvent.headers = request.headers;
 
-    const requestId = uuid.v4();
+    const requestId = randomUUID();
     let storage: Storage | undefined;
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
