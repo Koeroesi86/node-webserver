@@ -43,7 +43,7 @@
     "find-free-port": "^2.0.0",
     "http-proxy": "^1.17.0",
     "moment": "^2.31.0",
-    "pidusage": "^3.0.0",
+    "pidusage": "^4.0.1",
     "rimraf": "^3.0.2",
     "vhost": "^3.0.2"
   },
