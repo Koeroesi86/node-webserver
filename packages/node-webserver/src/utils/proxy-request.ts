@@ -48,16 +48,15 @@ const proxyRequest = (
   { changeOrigin = false, hideHeaders = [], timeout }: ProxyRequestOptions
 ) => {
   const upgrade = isUpgrade(request);
-  const headers = getOutgoingHeaders(request.headers);
+  // the host of the target with changeOrigin, and the upgrade of the client, are the only headers of the connection that go on
+  const headers = [
+    ...getOutgoingHeaders(request.headers, changeOrigin ? ['host'] : []),
+    ...(changeOrigin ? ['host', url.host] : []),
+    ...(upgrade ? ['connection', 'Upgrade', 'upgrade', `${request.headers.upgrade}`] : []),
+  ];
   // the brackets of an IPv6 address are part of the URL, not of the address
   const hostname = url.hostname.replace(/^\[(.*)]$/, '$1');
   let timedOut = false;
-
-  if (changeOrigin) headers.host = url.host;
-  if (upgrade) {
-    headers.connection = 'Upgrade';
-    headers.upgrade = request.headers.upgrade;
-  }
 
   const options: https.RequestOptions = {
     hostname,
@@ -88,11 +87,13 @@ const proxyRequest = (
     pipeline(incoming, response, () => undefined);
   });
   outgoing.on('upgrade', (incoming, socket, head) => {
-    response.writeHead(101, incoming.statusMessage, {
+    response.writeHead(101, incoming.statusMessage, [
       ...getOutgoingHeaders(incoming.headers, hideHeaders),
-      connection: 'Upgrade',
-      upgrade: incoming.headers.upgrade,
-    });
+      'connection',
+      'Upgrade',
+      'upgrade',
+      `${incoming.headers.upgrade}`,
+    ]);
     response.end();
     connect(request.socket, socket, head);
   });
