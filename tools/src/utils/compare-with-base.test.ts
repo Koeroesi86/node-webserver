@@ -79,6 +79,22 @@ describe('compareWithBase', () => {
     });
   }, 30000);
 
+  it('tells about a route that only the pull request serves, and still passes', async () => {
+    const [base, head] = [checkout('base', 4000), checkout('head', 4000)];
+    writeFileSync(join(base, 'missing.txt'), '/binary/?size=1\n');
+    const result = await compareWithBase(options(base, head, { rounds: 1 }));
+
+    expect(result.passed).toBe(true);
+    expect(result.markdown).toContain('Not served alike');
+    expect(result.markdown).toContain('- `web.localhost/binary/?size=1`: 404 on the base, 200 on the pull request');
+  }, 30000);
+
+  it('says nothing about the routes when both sides serve alike', async () => {
+    const result = await compareWithBase(options(checkout('base', 4000), checkout('head', 4000), { rounds: 1 }));
+
+    expect(result.markdown).not.toContain('Not served alike');
+  }, 30000);
+
   it('fails when the pull request is clearly slower', async () => {
     const result = await compareWithBase(options(checkout('base', 4000), checkout('head', 2000)));
 

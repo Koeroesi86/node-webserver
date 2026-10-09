@@ -5,13 +5,16 @@ import { join } from 'node:path';
 // so that the comparison can run without the real ones. The server writes its pid and the requests it got next to the checkout.
 const fakeServer = `
 const http = require('http');
-const { appendFileSync, readFileSync, writeFileSync } = require('fs');
+const { appendFileSync, existsSync, readFileSync, writeFileSync } = require('fs');
 const { join } = require('path');
 const checkout = join(__dirname, '../../../..');
 writeFileSync(join(checkout, 'server.pid'), String(process.pid));
 http.createServer((request, response) => {
   appendFileSync(join(checkout, 'requests.log'), [request.headers.host, request.method, request.url].join(' ') + '\\n');
   request.resume();
+  // routes that this side does not have, one per line in missing.txt
+  const missing = existsSync(join(checkout, 'missing.txt')) ? readFileSync(join(checkout, 'missing.txt'), 'utf8').split('\\n') : [];
+  if (missing.includes(request.url)) response.statusCode = 404;
   response.end(readFileSync(join(checkout, 'side.txt'), 'utf8'));
 }).listen(Number(process.env.PORT_HTTP));
 process.on('SIGTERM', () => process.exit(0));

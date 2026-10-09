@@ -2,7 +2,9 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ComparisonOptions, ComparisonResult } from '../types/comparison';
 import type { RunningProcess } from '../types/server';
+import type { WarmUpResult } from '../types/warm-up';
 import { compareFiles } from './compare-files';
+import { describeUnevenlyServed } from './describe-unevenly-served';
 import { readRequestRate } from './read-request-rate';
 import { startProcess } from './start-process';
 import { stopProcess } from './stop-process';
@@ -41,6 +43,9 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
   const stopAll = () => Promise.all([...active].map((launched) => stopProcess(launched)));
   const k6 = (args: string[], logPath: string) => launch([...k6Prefix, 'k6', 'run', '--quiet', ...args], logPath).exited;
 
+  // what every side answered at warm-up in the first round
+  const warmedUp = new Map<string, WarmUpResult[]>();
+
   const runSide = async (side: string, directory: string, round: number) => {
     const name = `${side}-${round}`;
     const server = launch([...serverPrefix, 'node', 'dist/scripts/load-test-server.js'], join(resultsDirectory, `server-${name}.log`), {
@@ -49,7 +54,8 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
     });
     await waitForServer(portHttp);
     // the first requests of a run would wait for the workers to start, which differs between versions on purpose
-    await warmUpServer(portHttp);
+    const warmUp = await warmUpServer(portHttp);
+    if (!warmedUp.has(side)) warmedUp.set(side, warmUp);
     // the thresholds are those of the pull request and mean nothing for the base, only the numbers are used, so the exit code of k6 does not matter
     await k6(
       [
@@ -107,5 +113,13 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
 
   const files = (prefix: string, side: string) => Array.from({ length: rounds }, (_, index) => join(resultsDirectory, `${prefix}${side}-${index + 1}.json`));
 
-  return compareFiles({ base: files('', 'base'), head: files('', 'head'), baseCpu: files('cpu-', 'base'), headCpu: files('cpu-', 'head') });
+  const result = compareFiles({ base: files('', 'base'), head: files('', 'head'), baseCpu: files('cpu-', 'base'), headCpu: files('cpu-', 'head') });
+  const unevenlyServed = describeUnevenlyServed(warmedUp.get('base') ?? [], warmedUp.get('head') ?? []);
+
+  return unevenlyServed === ''
+    ? result
+    : {
+        ...result,
+        markdown: `${result.markdown}\n\n⚠️ Not served alike, the numbers may differ because of work that only one side does:\n${unevenlyServed}\n`,
+      };
 };

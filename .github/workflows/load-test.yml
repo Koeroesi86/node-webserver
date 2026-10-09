@@ -39,6 +39,7 @@ jobs:
           # p95-overrides: the p95 allowed for routes (and `ws_connecting`, the time to connect a websocket) instead of their own, in the form of `route=ms,route=ms`. Lambdas are processes, which Windows is slow to start.
           # cpu-rate: requests per second for the CPU bound worker, cpu-max-dropped: how many of its requests k6 may fail to start (of 3000 in a run)
           # comparison-limits: the limits of the comparison with the base (see tools/README.md) that differ from the defaults. The identical code measured up to 40% apart on these systems.
+          # comparison-rounds: runs of each side, the median of which is compared. The systems with the large spread between runs of the same side get more of them.
           # p95-factor: multiplies the p95 allowed for every route, where everything is slower and shared runners are noisier.
           # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
           - os: ubuntu-latest
@@ -49,6 +50,7 @@ jobs:
             p95-overrides: ''
             comparison-limits: ''
             comparison-informational: false
+            comparison-rounds: 3
             p95-factor: 1
           - os: windows-latest
             requests-per-core: 100
@@ -58,6 +60,7 @@ jobs:
             p95-overrides: 'lambda=1500,ws_connecting=1000'
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
             comparison-informational: true
+            comparison-rounds: 5
             p95-factor: 2
           - os: macos-latest
             requests-per-core: 100
@@ -67,6 +70,7 @@ jobs:
             p95-overrides: ''
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
             comparison-informational: true
+            comparison-rounds: 5
             p95-factor: 2
     defaults:
       run:
@@ -80,6 +84,7 @@ jobs:
       CPU_RATE: ${{ matrix.cpu-rate }}
       MAX_DROPPED: ${{ matrix.cpu-max-dropped }}
       COMPARISON_LIMITS: ${{ matrix.comparison-limits }}
+      COMPARISON_ROUNDS: ${{ matrix.comparison-rounds }}
       P95_OVERRIDES: ${{ matrix.p95-overrides }}
       P95_FACTOR: ${{ matrix.p95-factor }}
     steps:
@@ -199,19 +204,24 @@ jobs:
         if: always()
         run: |
           seq 1 16 | xargs -P 8 -I{} curl -sS -o /dev/null -H 'Host: web.localhost' "http://localhost:${PORT_HTTP}/cpu/?rounds=1000"
-      # on its own, as other traffic would take the cores that its workers need
+      # on its own, as other traffic would take the cores that its workers need.
+      # Its limits are absolute and a runner that is held back for a while (steal time) fails them with any code, so a failed run is made once more: a slowdown of the code fails both.
       - name: Run CPU bound load test
-        timeout-minutes: 5
+        timeout-minutes: 8
         if: always()
         run: |
-          # shellcheck disable=SC2086
-          $K6_PREFIX k6 run \
-            --summary-export=k6-cpu-summary.json \
-            -e BASE_URL="http://localhost:${PORT_HTTP}" \
-            -e MAX_P95_MS="${CPU_MAX_P95_MS}" \
-            -e CPU_RATE="${CPU_RATE}" \
-            -e MAX_DROPPED="${MAX_DROPPED}" \
-            tools/src/k6/cpu.ts
+          for attempt in 1 2; do
+            # shellcheck disable=SC2086
+            $K6_PREFIX k6 run \
+              --summary-export=k6-cpu-summary.json \
+              -e BASE_URL="http://localhost:${PORT_HTTP}" \
+              -e MAX_P95_MS="${CPU_MAX_P95_MS}" \
+              -e CPU_RATE="${CPU_RATE}" \
+              -e MAX_DROPPED="${MAX_DROPPED}" \
+              tools/src/k6/cpu.ts && exit 0
+            echo "::warning::The CPU bound run failed its limits (attempt ${attempt} of 2)"
+          done
+          exit 1
       # big binary responses, on their own and not part of the comparison with the base, which has no such route
       - name: Run binary response load test
         timeout-minutes: 5
@@ -247,7 +257,7 @@ jobs:
           status=0
           # the limits are words of NAME=value, empty for the defaults
           # shellcheck disable=SC2086
-          env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . 3 15s > compare-summary.md || status=$?
+          env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . "${COMPARISON_ROUNDS}" 15s > compare-summary.md || status=$?
           cat compare-summary.md
           cat compare-summary.md >> "$GITHUB_STEP_SUMMARY"
           exit "${status}"
