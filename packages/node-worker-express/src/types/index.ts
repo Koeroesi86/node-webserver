@@ -178,6 +178,10 @@ export interface MiddlewareOptions {
   onForbiddenPath?: (request: Request, response: Response) => unknown;
   index?: string[];
   env?: object;
+  /**
+   * the worker file for the paths that no worker answers. With the default one, a path that does not exist is answered with 404 by the middleware itself, without a worker:
+   * another one is asked for those too, as it may answer them in its own way.
+   */
   staticWorker?: string;
   cwd?: string;
 }
