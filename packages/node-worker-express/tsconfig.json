@@ -4,6 +4,7 @@
     "baseUrl": "./",
     "outDir": "./dist",
     "noImplicitAny": false,
+    "strict": false,
     "declaration": true,
     "module": "es6",
     "moduleResolution": "node",
@@ -14,7 +15,8 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "esModuleInterop": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "types": ["node", "jest", "express"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

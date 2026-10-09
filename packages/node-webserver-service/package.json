@@ -36,7 +36,7 @@
     "nodemon": "^2.0.15",
     "rimraf": "^3.0.2",
     "ts-jest": "^29.4.14",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "files": [
     "dist",
