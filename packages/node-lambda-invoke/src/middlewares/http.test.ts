@@ -41,6 +41,15 @@ const processExists = (pid: number) => {
   }
 };
 
+/** a process can leave between looking for it and killing it (slow to tear down on Windows), which is what is wanted here */
+const killIfExists = (pid: number) => {
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // already gone
+  }
+};
+
 describe('httpMiddleware', () => {
   let build: string;
   let lambdaPath: string;
@@ -75,7 +84,7 @@ describe('httpMiddleware', () => {
 
   afterAll(async () => {
     const pids = (await fs.readFile(pidFile, 'utf8').catch(() => '')).split('\n').filter(Boolean).map(Number);
-    pids.filter(processExists).forEach((pid) => process.kill(pid, 'SIGKILL'));
+    pids.forEach(killIfExists);
     await fs.rm(build, { recursive: true, force: true });
   });
 
