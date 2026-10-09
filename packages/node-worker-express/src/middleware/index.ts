@@ -1,13 +1,13 @@
 import { randomBytes } from 'crypto';
 import path from 'path';
 import url from 'url';
-import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WORKER_EVENT } from '../constants';
+import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WebSocketCloseCode, WORKER_EVENT } from '../constants';
 import WorkerPool from '../utils/workerPool';
 import WorkerUnavailableError from '../utils/workerUnavailableError';
 import WorkerAbandonedError from '../utils/workerAbandonedError';
 import isWebSocket from '../utils/isWebSocket';
-import parseWsMessage from '../utils/parseWsMessage';
-import constructWsMessage from '../utils/constructWsMessage';
+import createWsConnection from '../utils/create-ws-connection';
+import createSlotCounter from '../utils/create-slot-counter';
 import getClientIp from '../utils/getClientIp';
 import hasBody from '../utils/hasBody';
 import takeSmallBody from '../utils/takeSmallBody';
@@ -25,6 +25,7 @@ const routeCacheSize = 10000;
 // ids only have to differ inside this process, which is cheaper to make than a random uuid
 const requestIdPrefix = randomBytes(4).toString('hex');
 let requestCount = 0;
+const noop = () => {};
 const createRequestId = () => `${requestIdPrefix}-${(requestCount += 1).toString(36)}`;
 
 const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
@@ -53,6 +54,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
   }
+  const webSocketSlots = createSlotCounter(config.limitWebSocketConnections);
   const routeCache = new TtlCache<{ indexPath: string; isWorker: boolean }>(routeCacheTtl, routeCacheSize);
   const probe = createProbe();
   registerMetricsSource(`workers:${config.name ?? rootPath}`, workerPool.getStats);
@@ -60,6 +62,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   return async (request, response, next) => {
     const { query: queryStringParameters, pathname } = url.parse(request.url, true);
     trackRequest(response);
+    /** frees the slot of a websocket connection, also when the request fails before it has a worker */
+    let releaseSlot = noop;
 
     try {
       const pathFragments = pathname.split(/\//gi).filter(Boolean);
@@ -109,6 +113,16 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
       };
 
+      const isSocketRequest = event.protocol === Protocols.websocket;
+      // the slot of a websocket connection is taken before the worker is, so that connections above the limit do not queue for one
+      const slot = isSocketRequest ? webSocketSlots.take(indexPath) : noop;
+      if (!slot) {
+        response.writeHead(503, { 'Content-Type': 'text/plain', 'Retry-After': 1 });
+        response.end('Too many connections.');
+        return;
+      }
+      releaseSlot = slot;
+
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
       // a request that waits for a worker leaves the line when its client goes away
       const abandoned = new AbortController();
@@ -121,26 +135,17 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       const requestId = createRequestId();
 
-      let firstReceived = false;
-      const requestSocketListener = (data) => {
-        const frame = parseWsMessage(data);
-
-        // TODO: filter open frame better
-        if (data.length === 8 && !firstReceived) {
-          firstReceived = true;
-          return;
-        }
-
-        firstReceived = true;
-
-        lease.send({
-          type: WORKER_EVENT.WS_MESSAGE_RECEIVE,
-          requestId,
-          event: { ...event, frame },
-        });
-      };
-      if (event.protocol === Protocols.websocket) {
-        request.socket.on('data', requestSocketListener);
+      const webSocket = isSocketRequest
+        ? createWsConnection(request.socket, {
+            limitMessage: config.limitWebSocketMessage,
+            pingInterval: config.webSocketPingInterval,
+            idleTimeout: config.limitWebSocketIdleTimeout,
+            // the message travels as the body, which spares encoding it: a string is a text message, a Buffer a binary one
+            onMessage: (data) => lease.send({ type: WORKER_EVENT.WS_MESSAGE_RECEIVE, requestId, event: { body: data } }),
+          })
+        : undefined;
+      if (webSocket) {
+        request.socket.on('data', webSocket.receive);
       }
 
       let responseTimer: NodeJS.Timeout | undefined;
@@ -148,7 +153,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       let responseDeadline = 0;
 
       const failRequest = (statusCode: number, message: string) => {
-        if (event.protocol === Protocols.websocket) {
+        if (isSocketRequest) {
           request.socket.destroy();
         } else if (!response.headersSent) {
           response.writeHead(statusCode, { 'Content-Type': 'text/plain' });
@@ -214,6 +219,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         }
 
         // a plain response is not acknowledged: the worker does not wait for it, and every message is a write to the pipe of the worker
+        // the upgrade was answered, what follows on the connection is not a response
+        if (isSocketRequest && response.headersSent && responseEvent.type === WORKER_EVENT.RESPONSE) return;
+
         if (responseEvent.type === WORKER_EVENT.RESPONSE) {
           const { event } = responseEvent;
           const body = event.body ?? Buffer.alloc(0);
@@ -222,6 +230,15 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
           response.writeHead(event.statusCode, hasLength ? event.headers : { ...event.headers, 'Content-Length': body.length });
           response.write(body);
           response.end();
+
+          if (webSocket && event.statusCode === 101) {
+            webSocket.open();
+            // the server closes a connection that stays quiet for its keep alive timeout once the response is done, which is not the idle time of a websocket
+            response.once('finish', () => request.socket.setTimeout(0));
+          } else if (isSocketRequest) {
+            // the upgrade was refused, the connection goes on as any other one and holds neither the worker nor the slot
+            cleanupConnection();
+          }
         }
 
         if (responseEvent.type === WORKER_EVENT.RESPONSE_EMIT) {
@@ -243,8 +260,15 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
           }
         }
 
-        if (responseEvent.type === WORKER_EVENT.WS_MESSAGE_SEND) {
-          request.socket.write(constructWsMessage(responseEvent.event.frame));
+        if (webSocket && responseEvent.type === WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE) {
+          webSocket.acknowledge();
+        }
+
+        if (webSocket && responseEvent.type === WORKER_EVENT.WS_MESSAGE_SEND) {
+          const { body, close } = responseEvent.event;
+          // the worker sends the next message once this one was written, which a slow client delays
+          if (body !== undefined) webSocket.send(body, (written) => written && lease.send({ type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE, requestId }));
+          if (close) webSocket.close(close.code ?? WebSocketCloseCode.normal, close.reason);
         }
       };
 
@@ -256,7 +280,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         });
         cleanupConnection();
       };
-      request.socket.on('close', requestCloseListener);
+      if (webSocket) {
+        request.socket.on('close', requestCloseListener);
+      }
 
       function cleanupConnection() {
         clearTimeout(responseTimer);
@@ -265,6 +291,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
           lease.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
         }
         lease.release();
+        releaseSlot();
+        webSocket?.dispose();
         if (streamsBody) {
           // what is still to come of the body is read and dropped, a request that is not read keeps its connection stuck
           request.off('data', forwardBodyPart);
@@ -277,7 +305,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         response.off('close', cleanupConnection);
 
         if (request.socket && request.socket.off) {
-          request.socket.off('data', requestSocketListener);
+          if (webSocket) request.socket.off('data', webSocket.receive);
           request.socket.off('close', requestCloseListener);
         }
       }
@@ -302,6 +330,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         response.on('finish', cleanupConnection);
       }
     } catch (e) {
+      releaseSlot();
       if (e instanceof WorkerAbandonedError) return;
       if (e instanceof WorkerUnavailableError && !response.headersSent) {
         // the details name a file of the server, the client only needs to know when to come back

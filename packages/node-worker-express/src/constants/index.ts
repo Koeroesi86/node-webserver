@@ -19,6 +19,8 @@ export enum WORKER_EVENT {
   RESPONSE_EMIT = 'WORKER_RESPONSE_EMIT',
   RESPONSE_ACKNOWLEDGE = 'WORKER_RESPONSE_ACK',
   WS_MESSAGE_RECEIVE = 'WS_MESSAGE_RECEIVE',
+  /** the worker is done with a received message, the server may pass on another one */
+  WS_MESSAGE_ACKNOWLEDGE = 'WS_MESSAGE_ACK',
   WS_MESSAGE_SEND = 'WS_MESSAGE_SEND',
   WS_CONNECTION_CLOSE = 'WS_CONNECTION_CLOSE',
   WS_CONNECTION_CLOSE_ACKNOWLEDGE = 'WS_CONNECTION_CLOSE_ACK',
@@ -39,6 +41,33 @@ export const WorkerMinUptime = 5000;
  */
 export const WorkerRestartBackoff = { base: 100, max: 10000 };
 
+/** how many websocket messages, and how many bytes of them, may be on their way to the worker before it has taken one, the socket of the client is paused above that */
+export const WebSocketWindow = { messages: 16, bytes: 1024 * 1024 };
+
+/** a client that does not take what is written to it, so that more than this many bytes wait in the server, is closed instead of buffered without a limit */
+export const WebSocketSendBuffer = 8 * 1024 * 1024;
+
+/** how long a connection that was told to close gets to close itself, before the server destroys the socket, in milliseconds */
+export const WebSocketCloseTimeout = 5000;
+
+export const WebSocketOpcode = {
+  continuation: 0x0,
+  text: 0x1,
+  binary: 0x2,
+  close: 0x8,
+  ping: 0x9,
+  pong: 0xa,
+} as const;
+
+export const WebSocketCloseCode = {
+  normal: 1000,
+  goingAway: 1001,
+  protocolError: 1002,
+  invalidData: 1007,
+  policy: 1008,
+  tooBig: 1009,
+} as const;
+
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
 export enum Protocols {
@@ -56,6 +85,10 @@ export const DefaultOptions: MiddlewareOptions = {
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
   limitQueue: 1000,
+  limitWebSocketMessage: 1024 * 1024,
+  limitWebSocketConnections: 1000,
+  webSocketPingInterval: 30000,
+  limitWebSocketIdleTimeout: 90000,
   onStdout: () => {},
   onStderr: () => {},
   onExit: () => {},

@@ -1,6 +1,7 @@
 import { gunzipSync } from 'zlib';
 import { startServer } from './helpers/start-server';
 import type { RunningServer } from './helpers/start-server';
+import { connectWebSocket } from './helpers/websocket-client';
 
 describe('the server', () => {
   let server: RunningServer;
@@ -58,6 +59,81 @@ describe('the server', () => {
 
       expect(reply.headers['content-encoding']).toBeUndefined();
       expect(reply.text).toBe('a'.repeat(5000));
+    });
+  });
+
+  describe('of the type worker, for websockets', () => {
+    const connect = () => connectWebSocket({ port: server.port, host: 'websocket.localhost' });
+
+    it('sends the messages of the client back, text as text and binary as binary, whatever their size', async () => {
+      const client = await connect();
+      const big = 'ő'.repeat(60000);
+
+      client.send('hello');
+      client.send(Buffer.from([0, 1, 255]));
+      client.send(big);
+
+      expect(client.status).toBe(101);
+      expect(await client.next()).toEqual({ opcode: 0x1, payload: Buffer.from('hello') });
+      expect(await client.next()).toEqual({ opcode: 0x2, payload: Buffer.from([0, 1, 255]) });
+      expect(await client.next()).toEqual({ opcode: 0x1, payload: Buffer.from(big) });
+      client.close();
+    });
+
+    it('answers a ping', async () => {
+      const client = await connect();
+
+      client.ping('beat');
+
+      expect(await client.next()).toEqual({ opcode: 0xa, payload: Buffer.from('beat') });
+      client.close();
+    });
+
+    it('keeps handling the messages of many connections at the same time', async () => {
+      const clients = await Promise.all(Array.from({ length: 10 }, connect));
+
+      clients.forEach((client, index) => client.send(`message ${index}`));
+
+      expect(await Promise.all(clients.map((client) => client.next()))).toEqual(
+        clients.map((_, index) => ({ opcode: 0x1, payload: Buffer.from(`message ${index}`) }))
+      );
+      clients.forEach((client) => client.close());
+    });
+
+    it('takes a burst of big messages faster than the worker handles them, and answers every one of them in order', async () => {
+      const client = await connect();
+
+      Array.from({ length: 100 }, (_, index) => client.send(`${index}:${'y'.repeat(32 * 1024)}`));
+
+      const answers = await Promise.all(Array.from({ length: 100 }, () => client.next()));
+      expect(answers.map(({ payload }) => payload.toString().split(':')[0])).toEqual(Array.from({ length: 100 }, (_, index) => `${index}`));
+      client.close();
+    });
+
+    it('delivers everything a worker sends to a client that reads slowly, without closing it', async () => {
+      const client = await connectWebSocket({ port: server.port, host: 'websocket.localhost', path: '/flood' });
+
+      client.pause();
+      // the server has to hold back what the client does not read, from here on
+      while (client.buffered() === 0) await new Promise((resolve) => setImmediate(resolve));
+      client.resume();
+      const messages = await Promise.all(Array.from({ length: 200 }, () => client.next()));
+
+      expect(messages.map(({ opcode, payload }) => [opcode, payload.toString().split(':')[0]])).toEqual(
+        Array.from({ length: 200 }, (_, index) => [0x1, `${index}`])
+      );
+      client.close();
+    });
+
+    it('closes a client that sends a message above the limit of the server', async () => {
+      const client = await connect();
+
+      client.send('x'.repeat(200001));
+      const { opcode, payload } = await client.next();
+
+      expect(opcode).toBe(0x8);
+      expect(payload.readUInt16BE(0)).toBe(1009);
+      await client.closed;
     });
   });
 

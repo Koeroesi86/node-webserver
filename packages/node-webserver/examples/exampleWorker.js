@@ -24,7 +24,7 @@ module.exports = async (event, callback) => {
           (function() {
             var timeHolder = document.getElementById('time');
             function connect() {
-              var w = new WebSocket('ws://' + window.location.host + ':' + window.location.port + '/websocket/exampleWorker.js');
+              var w = new WebSocket('ws://' + window.location.host + '/websocket/exampleWorker.js');
               w.addEventListener('message', e => {
                 var d = JSON.parse(e.data);
                 var now = new Date(d.now);
@@ -37,8 +37,7 @@ module.exports = async (event, callback) => {
                 }, 5000);
               });
             }
-            // TODO: fix
-            // connect();
+            connect();
           })();
         </script>
       </body>
