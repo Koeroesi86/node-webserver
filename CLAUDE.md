@@ -32,6 +32,12 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and 
 - The older packages use camelCase file names (`startServer.ts`, `setupVirtualHosts.ts`); new files follow the kebab-case rule above, and do not rename the existing ones without a reason, as that touches `packages/**` and publishes it.
 - `node >=24` and pnpm 12 (`corepack enable`). Eslint is v8 with prettier 2, run from the root only.
 
+## Local pitfalls
+
+- `node` and `pnpm` can be missing from the PATH of a non-interactive shell (nvm and the pnpm home are set up in the profile only). Prefix the command with `export PATH=$HOME/.nvm/versions/node/<node 24>/bin:$HOME/.local/share/pnpm/bin:$PATH`.
+- Never run `prettier --write` directly: it ignores the 160 columns of the eslint setup and reformats whole files. Use `pnpm exec eslint --fix --ext .ts <paths>` and read `git diff` for hunks in code you did not change.
+- k6, Docker and podman are not installed on the machine this was written on, so the load test cannot run there. Say so under **Not verified** instead of leaving it out.
+
 ## Pull requests
 
 - **Use `.github/pull_request_template.md` and fill in every section.** Delete a section only where the template says so (Behaviour changes, Release). The body is not a free-form summary.
