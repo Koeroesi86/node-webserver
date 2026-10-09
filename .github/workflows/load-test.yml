@@ -274,6 +274,17 @@ jobs:
             echo '::endgroup::'
             exit "${status}"
           }
+      # the table of routes against the probe of the file system it replaces, on its own and not part of the comparison with the base, which has no table
+      - name: Run route table load test
+        timeout-minutes: 5
+        if: always()
+        run: |
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
+            --summary-export=k6-routes-summary.json \
+            -e BASE_URL="http://localhost:${PORT_HTTP}" \
+            -e MAX_P95_MS="$(( 50 * P95_FACTOR ))" \
+            tools/src/k6/routes.ts
       - name: Summarize results
         if: always()
         run: |
@@ -286,6 +297,8 @@ jobs:
           node tools/dist/scripts/summary.js k6-tls-summary.json '' 'Load test: new TLS connections' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/summary.js k6-lambda-summary.json '' 'Load test: lambdas that fail' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-routes-summary.json '' 'Load test: table of routes' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
@@ -348,6 +361,7 @@ jobs:
             k6-cpu-summary.json
             k6-binary-summary.json
             k6-tls-summary.json
+            k6-routes-summary.json
             server.log
             runner-before.json
             runner-after.json

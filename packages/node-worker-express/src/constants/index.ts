@@ -84,6 +84,12 @@ export const LatencyPathLimit = 100;
 /** the name of the histogram the worker files above `LatencyPathLimit` share */
 export const LatencyOtherPaths = '(other)';
 
+/** a longer path matches no route, which bounds the work of a pattern on what a client sends */
+export const RoutePathLimit = 2048;
+
+/** the flags a route may give its pattern, the ones that keep a state between matches (`g`, `y`) would make a match depend on the requests before */
+export const RoutePatternFlags: readonly string[] = ['i', 's', 'u', 'v'];
+
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
 export enum Protocols {
@@ -116,6 +122,8 @@ export const DefaultOptions: MiddlewareOptions = {
     throw new Error('Forbidden path');
   },
   index: [],
+  routes: [],
+  fallthrough: true,
   env: {},
   staticWorker: path.resolve(__dirname, '../staticWorker.js'),
   cwd: process.cwd(),

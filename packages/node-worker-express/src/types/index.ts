@@ -13,6 +13,8 @@ export type RequestEvent = {
   headers: { [key: string]: string };
   remoteAddress: string;
   rootPath: string;
+  /** the named groups of the route the path matched, as they are in the path (not decoded). Only set for a request that matched a route with named groups. */
+  pathParameters?: { [key: string]: string };
   closed?: boolean;
   /** the text message of a websocket client */
   frame?: string;
@@ -145,6 +147,29 @@ export type InvokableWorker = (event: WorkerRequestEvent, callback: ResponseCall
  */
 export type WorkerMiddleware = RequestHandler & { close: (timeout?: number) => Promise<void> };
 
+/**
+ * A route of the static table: a request whose path matches it goes to `worker`, without looking for a worker in the files under the root.
+ * The worker is always the file named here, never a path made from the request.
+ */
+export type WorkerRoute =
+  | {
+      /** the path as it is, which is looked up in a map */
+      path: string;
+      /** the worker file, relative to the root or absolute, and may be outside of the root */
+      worker: string;
+    }
+  | {
+      /**
+       * a regular expression that the whole path (without the query) has to match, it is anchored at both ends. Named groups are handed to the worker as `pathParameters`.
+       * It runs on the front process for every request that gets to it, so it is trusted configuration: avoid patterns that backtrack, like nested repetitions.
+       */
+      pattern: string;
+      /** of the regular expression: `i`, `s`, `u` or `v` */
+      flags?: string;
+      /** the worker file, relative to the root or absolute, and may be outside of the root */
+      worker: string;
+    };
+
 export interface MiddlewareOptions {
   root: string;
   /** names the worker pool in the metrics, as `workers:<name>`. Defaults to the root folder. */
@@ -190,6 +215,10 @@ export interface MiddlewareOptions {
   onExit?: (code: number, workerPath: string, id: string) => void;
   onForbiddenPath?: (request: Request, response: Response) => unknown;
   index?: string[];
+  /** checked before the files under the root, in their order, the first one that matches is used. Validated when the middleware is created. */
+  routes?: WorkerRoute[];
+  /** a request that matches no route looks for a worker in the files under the root, as without routes. With `false` it is answered with 404. Defaults to true. */
+  fallthrough?: boolean;
   env?: object;
   /**
    * the worker file for the paths that no worker answers. With the default one, a path that does not exist is answered with 404 by the middleware itself, without a worker:

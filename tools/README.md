@@ -165,6 +165,17 @@ k6 run tools/src/k6/websocket.ts
 
 Options: `PRODUCED_MESSAGES`, `WORKER_DELAY_MS`, `FLOOD_MESSAGES`, `CONSUMER_DELAY_MS`, `VUS`, `DURATION`, `MAX_EXTERNAL_MIB`.
 
+### Table of routes
+
+`routes.ts` asks for the same worker (`examples/routes/exampleWorker.js`) in two ways, with 10 users and a path that was not asked for before in every request: `routed` through the table of routes of `routes.localhost`,
+where `/items/<id>` is the last of 401 routes (200 paths and 200 patterns before it, and anything else is answered with 404 by the server), and `probed` through the files under the root of `web.localhost` (`/routes/<id>`),
+which asks the file system about the new path. Both have a p95 of at most 50 ms (`MAX_P95_MS`), and the two side by side in the summary show whether matching the table costs more than the probe it replaces.
+Like `binary.ts` it runs on its own and is left out of the comparison with the base, which has no table of routes.
+
+```sh
+k6 run tools/src/k6/routes.ts
+```
+
 ### CPU bound worker
 
 `cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow

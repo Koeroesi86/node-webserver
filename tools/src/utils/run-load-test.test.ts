@@ -54,15 +54,16 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
   };
   const calls = () => readFileSync(join(folder, 'k6.log'), 'utf8').trim().split('\n');
 
-  it('runs the example scenario, the CPU bound one, the binary one, the one with new TLS connections and the lambda one against the server, and passes when all do', async () => {
+  it('runs the example scenario, the CPU bound one, the binary one, the one with new TLS connections, the lambda one and the routes one against the server, and passes when all do', async () => {
     expect(await run()).toBe(0);
 
-    const [example, cpu, binary, handshakes, lambda] = calls();
+    const [example, cpu, binary, handshakes, lambda, routes] = calls();
     expect(example).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 -e DURATION=2s -e HTTPS_PORT=18454 .*example\.ts$/);
     expect(cpu).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*cpu\.ts$/);
     expect(binary).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*binary\.ts$/);
     expect(handshakes).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 -e HTTPS_PORT=18454 .*tls\.ts$/);
     expect(lambda).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*lambda\.ts$/);
+    expect(routes).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*routes\.ts$/);
   });
 
   it('leaves the HTTPS routes and the TLS scenario out without a certificate', async () => {
@@ -76,6 +77,7 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
       expect.stringMatching(/cpu\.ts$/),
       expect.stringMatching(/binary\.ts$/),
       expect.stringMatching(/lambda\.ts$/),
+      expect.stringMatching(/routes\.ts$/),
     ]);
   });
 
@@ -83,7 +85,7 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
     process.env.FAKE_K6_FAIL = 'tls.ts';
 
     expect(await run()).toBe(1);
-    expect(calls()).toHaveLength(5);
+    expect(calls()).toHaveLength(6);
   });
 
   it('is 2 when neither k6 nor Docker can be used', async () => {

@@ -63,6 +63,33 @@ Only a few parts are on their way to the worker before it has read the earlier o
 `const body = await text(event.bodyStream)` (also `json` and `buffer`). **`event.body` does not exist any more.** Read the body before you answer, as the rest of it is dropped once the response is complete.
 A client that goes away during the upload destroys the stream with an error. `limitRequestBody` (bytes, 0 for none, the default) answers a bigger body with 413. Websockets and static files never have a body.
 
+## Routes
+
+By default the worker of a request is found in the files under `root`: the middleware walks up from the path and looks for a folder or file with an `index` worker. `routes` names the worker of some paths instead,
+so that a request for them does not ask the file system, and the worker does not have to sit in a folder that mirrors the URL:
+
+```javascript
+app.use(middleware({
+  root: path.resolve('./public'),
+  index: ['index.js'],
+  routes: [
+    { path: '/health', worker: 'workers/health.js' },
+    { pattern: '/items/(?<id>[0-9]+)', worker: '/srv/app/items.js' },
+    { pattern: '/files/(?<name>[a-z0-9-]+)\\.txt', flags: 'i', worker: '../shared/files.js' },
+  ],
+  fallthrough: true,
+}));
+```
+
+- A route has either a `path`, which is the path of the request as it is (a lookup in a map), or a `pattern`, a regular expression that the whole path has to match (it is anchored at both ends), with the `flags` `i`, `s`, `u` or `v`.
+  The query is not part of the path. The routes are tried in their order, and the first one that matches wins.
+- The named groups of the pattern are handed to the worker as `event.pathParameters`, as they are in the path (not decoded): `{ id: '12' }` for `/items/12`.
+- `worker` is a file, relative to `root` or absolute, and it may be outside of `root`. It is always that file: the worker is never made from the path, so a request cannot reach a file the configuration does not name.
+- The routes are checked when the middleware is created, which throws for a worker that is not a file, a pattern that is not valid, or a flag that cannot be used.
+- Paths with `..` are refused before the routes are looked at, and a path longer than 2048 characters matches no route.
+- A request that matches no route is looked for under `root` (`fallthrough: true`, the default). With `fallthrough: false` it is answered with 404 by the middleware, without a worker.
+- The patterns run in the server process for every request that gets to them, against what the client sent. They are trusted configuration: keep them simple, and avoid ones that backtrack a lot, like nested repetitions (`(a+)+`).
+
 ## Websockets
 
 The worker answers the upgrade request (`event.protocol === 'WS'`) with the handshake, a `101` with `Sec-WebSocket-Accept` (see `examples/public/websocket/worker.js`), and is called again for every message of the client and when the connection closes:

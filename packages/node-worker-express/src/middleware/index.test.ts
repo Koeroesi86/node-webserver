@@ -747,6 +747,87 @@ describe('workerMiddleware', () => {
     });
   });
 
+  describe('routes', () => {
+    const answer = () => mockLease((handlers, requestId) => respond(handlers, requestId));
+    const respond = (handlers: Handlers, requestId: string) =>
+      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } });
+    const routes = [
+      { path: '/exact', worker: 'routed.js' },
+      { pattern: '/items/(?<id>[0-9]+)', worker: 'routed.js' },
+    ];
+    const acquired = () => FakePool.last.acquire.mock.calls.map(([workerPath]: [string]) => workerPath);
+
+    beforeAll(() => fs.writeFile(path.join(root, 'routed.js'), ''));
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('sends a request whose path matches to the worker of the route, without asking the file system', async () => {
+      await start({ routes });
+      answer();
+      const access = jest.spyOn(fs, 'access');
+      const stat = jest.spyOn(fs, 'stat');
+
+      expect((await fetch(`${baseUrl}/exact`)).status).toBe(200);
+      expect((await fetch(`${baseUrl}/items/12?full=1`)).status).toBe(200);
+
+      expect(acquired()).toEqual([path.join(root, 'routed.js'), path.join(root, 'routed.js')]);
+      expect(access).not.toHaveBeenCalled();
+      expect(stat).not.toHaveBeenCalled();
+    });
+
+    it('hands the named groups of the pattern to the worker', async () => {
+      await start({ routes });
+      const lease = answer();
+
+      await fetch(`${baseUrl}/items/12?full=1`);
+      await fetch(`${baseUrl}/exact`);
+
+      const [first, second] = lease.send.mock.calls.map(([message]) => message.event);
+      expect(first).toMatchObject({ path: '/items/12', pathParameters: { id: '12' }, queryStringParameters: { full: '1' } });
+      expect(second).not.toHaveProperty('pathParameters');
+    });
+
+    it('looks for the worker under the root when no route matches', async () => {
+      await start({ routes });
+      answer();
+
+      await fetch(`${baseUrl}/items/twelve`);
+
+      expect(acquired()).toEqual([path.join(root, 'exampleWorker.js')]);
+    });
+
+    it('answers 404 itself when no route matches and it may not look under the root', async () => {
+      await start({ routes, fallthrough: false });
+      answer();
+
+      const response = await fetch(`${baseUrl}/items/twelve`);
+
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe('Not found.');
+      expect(FakePool.last.acquire).not.toHaveBeenCalled();
+    });
+
+    it('checks for forbidden paths before the routes', async () => {
+      const onForbiddenPath = jest.fn((request, response) => response.status(403).end());
+      await start({ routes: [{ pattern: '/.*', worker: 'routed.js' }], onForbiddenPath });
+      answer();
+
+      // a url would have the `..` resolved before it is sent
+      const status = await new Promise((resolve) =>
+        http.get({ host: 'localhost', port: new URL(baseUrl).port, path: '/items/../exact' }, (response) => resolve(response.statusCode))
+      );
+
+      expect(status).toBe(403);
+      expect(FakePool.last.acquire).not.toHaveBeenCalled();
+    });
+
+    it('refuses routes that are not valid when it is created', () => {
+      expect(() => workerMiddleware({ root, routes: [{ path: '/missing', worker: 'missing.js' }] })).toThrow(/is not a file/);
+    });
+  });
+
   describe('bodies for the static worker', () => {
     it('reads and drops them', async () => {
       await start();

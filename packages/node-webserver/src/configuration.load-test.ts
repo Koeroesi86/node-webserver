@@ -84,6 +84,22 @@ const proxiedServer: ServerInstance = {
   type: 'proxy',
   proxyOptions: { target: `http://127.0.0.1:${upstreamPort}` },
 };
+/** how many routes of each kind come before the one that the load test asks for, so that a request goes through all of them */
+const routesBefore = 200;
+const routesServer: ServerInstance = {
+  hostname: 'routes.localhost',
+  protocol: 'http',
+  type: 'worker',
+  options: {
+    root: resolve(PACKAGE_ROOT, 'examples/routes'),
+    routes: [
+      ...Array.from({ length: routesBefore }, (_, index) => ({ path: `/page/${index}`, worker: 'exampleWorker.js' })),
+      ...Array.from({ length: routesBefore }, (_, index) => ({ pattern: `/section-${index}/(?<id>[0-9]+)`, worker: 'exampleWorker.js' })),
+      { pattern: '/items/(?<id>[0-9]+)', worker: 'exampleWorker.js' },
+    ],
+    fallthrough: false,
+  },
+};
 const secureServers: ServerInstance[] =
   existsSync(key) && existsSync(cert)
     ? [
@@ -115,6 +131,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * `upload.localhost` serves a worker that reads the request body as a stream.
  * `proxied.localhost` is a proxy server in front of a static file server on PORT_UPSTREAM (8081), which the server starts as a child.
  * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
+ * `routes.localhost` finds its worker in a table of routes, where `/items/<id>` is the last of 401, and answers anything else with 404 itself.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests.
  * WORKERS_PER_PATH overrides the number of workers started per path.
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
@@ -137,6 +154,7 @@ const configuration = {
     compressedServer,
     uploadServer,
     healthServer,
+    routesServer,
     upstreamServer,
     proxiedServer,
     ...secureServers,
