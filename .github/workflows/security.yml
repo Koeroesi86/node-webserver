@@ -39,6 +39,7 @@ jobs:
         with:
           scan-args: |-
             --lockfile=pnpm-lock.yaml
+            --config=osv-scanner.toml
 
   # the workflows themselves: injection through expressions, permissions that are too wide, actions that are not pinned
   zizmor:

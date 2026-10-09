@@ -1,0 +1,22 @@
+# Advisories of the lockfile that are accepted, each until a date, so they are looked at again.
+# Everything else fails the osv-scan job (.github/workflows/security.yml).
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+ignoreUntil = 2027-01-09
+reason = "braces has no fixed version. Only dev tooling (nodemon through chokidar, jest and eslint through micromatch) uses it, on patterns of this repository, and none of it is published"
+
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+ignoreUntil = 2027-01-09
+reason = "sprintf-js has no fixed version. Only reached through js-yaml and argparse of the jest coverage tooling, not published"
+
+[[IgnoredVulns]]
+id = "GHSA-c2qf-rxjj-qqgw"
+ignoreUntil = 2027-01-09
+reason = "semver 7.0.0 is pinned by simple-update-notifier of nodemon, a dev dependency that is not published"
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2027-01-09
+reason = "uuid is only used as v4() without a buffer, which this advisory (a missing bounds check of the buffer argument) does not reach. The major upgrade belongs to the dependency update pull request of the packages"
