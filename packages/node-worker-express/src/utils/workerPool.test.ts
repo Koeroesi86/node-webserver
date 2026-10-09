@@ -220,7 +220,7 @@ describe('WorkerPool', () => {
 
       await pool.acquire(pathA, { stdio: ['pipe', 'pipe', 'pipe', 'ipc'] }, 1);
 
-      expect(FakeWorker.instances[0].options).toMatchObject({ stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
+      expect(FakeWorker.instances[0].options).toMatchObject({ stdio: ['pipe', 'pipe', 'pipe', 'overlapped'] });
     });
   });
 

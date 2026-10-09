@@ -104,7 +104,7 @@ describe('workerInvoke', () => {
   beforeEach(() => {
     received = [];
     // the channel is the fourth stdio, as the pool starts workers
-    child = spawn(process.execPath, [path.join(folder, 'workerInvoke.js'), path.join(folder, 'worker.js')], { stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, [path.join(folder, 'workerInvoke.js'), path.join(folder, 'worker.js')], { stdio: ['pipe', 'pipe', 'pipe', 'overlapped'] });
     const socket = child.stdio[3];
     if (!(socket instanceof Duplex)) throw new Error('The worker has no channel.');
     channel = createChannel<Received, WorkerInputEvent>(socket, (message) => received.push(message));

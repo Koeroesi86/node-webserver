@@ -35,7 +35,7 @@ describe('staticWorker', () => {
     const response = request('/index.html');
 
     expect(response.statusCode).toBe(200);
-    expect(Buffer.from(response.body ?? '', 'base64').toString()).toBe('<h1>home</h1>');
+    expect(String(response.body)).toBe('<h1>home</h1>');
   });
 
   it('answers a directory with 404 instead of failing', () => {

@@ -185,10 +185,11 @@ class WorkerPool {
 
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = uuid();
-    // the fourth stdio is the socket pair the messages go through, in place of the IPC channel of node that sends JSON
+    // the fourth stdio is the socket pair the messages go through, in place of the IPC channel of node that sends JSON.
+    // 'overlapped' is a plain pipe except on Windows, where the worker could not read and write it at the same time otherwise
     const instance = new Worker(createWorkerCommand(workerPath), {
       ...(typeof options === 'function' ? options() : options),
-      stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe', 'overlapped'],
     });
     const socket = instance.instance.stdio[3];
     if (!(socket instanceof Duplex)) {
