@@ -1,11 +1,12 @@
 import type { ChildProcess } from 'child_process';
+import type { Agent } from 'http';
 import type { SecureContext } from 'tls';
 import type HttpProxy from 'http-proxy';
 import type { middleware } from '@koeroesi86/node-worker-express';
 
 export type WorkerOptions = Parameters<typeof middleware>[0];
 
-export type ServerType = 'child' | 'lambda' | 'worker';
+export type ServerType = 'child' | 'lambda' | 'proxy' | 'worker';
 
 export interface PortLookup {
   from: number;
@@ -26,9 +27,54 @@ export interface ChildOptions {
   args?: string[] | ((port: number[]) => string[]);
 }
 
+/**
+ * What a `proxy` server tells its target about the client:
+ * - `sanitize`: the forwarding headers are believed only from a trusted proxy (`trustedProxies`), otherwise they are replaced by the real connection,
+ * - `pass`: the headers of the client go on untouched, for a target that needs the original chain and does not trust it blindly,
+ * - `none`: no forwarding headers at all, for a target that should not learn who is in front of it.
+ */
+export type ForwardedHeaders = 'sanitize' | 'pass' | 'none';
+
+/** a target of a `proxy` server that the service behind it registers itself, like a dyndns update */
+export interface DynamicTargetOptions {
+  /** the token of this host, prefer `tokenEnv` to keep it out of the configuration */
+  token?: string;
+  /** the name of the environment variable that holds the token of this host */
+  tokenEnv?: string;
+  /** seconds after which a target that was not set again expires, and requests are answered with 503. No expiry by default. */
+  ttl?: number;
+  /** the path of the host that is answered by the server instead of the target. Defaults to /.well-known/node-webserver/proxy */
+  controlPath?: string;
+  /** the protocol of a target that is registered without one. Defaults to http. */
+  protocol?: 'http' | 'https';
+  /** the port of a target that is registered without one */
+  port?: number;
+  /** let a target be a loopback, private or link-local address, for a LAN. Off by default. */
+  allowPrivate?: boolean;
+  /** a file the target is kept in, so that it survives a restart (still expiring by the ttl). Not kept by default. */
+  persistPath?: string;
+}
+
 export interface ProxyOptions extends HttpProxy.ServerOptions {
   hostname?: string;
   port?: number | number[];
+  /** `proxy` servers: the headers of the response that are not passed on to the client, for example the ones that give the provider away */
+  hideHeaders?: string[];
+  /** `proxy` servers: the forwarding headers sent to the target, `sanitize` by default */
+  forwardedHeaders?: ForwardedHeaders;
+  /** `proxy` servers: the path of a file with the certificates of the authorities the certificate of an https target is checked against */
+  ca?: string;
+  /** `proxy` servers: a target registered by the service itself, instead of a fixed `target` */
+  dynamic?: DynamicTargetOptions;
+}
+
+/** where a `proxy` server sends its requests to, and since when */
+export interface ProxyTarget {
+  url: URL;
+  /** keeps the connections to the target open between the requests */
+  agent: Agent;
+  setAt: number;
+  expiresAt?: number;
 }
 
 export interface InstanceServerOptions {
@@ -98,6 +144,9 @@ export interface ServerInstance {
   lambdas?: Record<string, { pid: number }>;
 }
 
+/** the addresses (CIDRs, or `loopback`, `linklocal`, `uniquelocal`) of the proxies whose forwarding headers are believed */
+export type TrustedProxies = string[];
+
 export interface Configuration {
   /** set to false to disable file logging */
   fileLogPath: string | false;
@@ -116,6 +165,11 @@ export interface Configuration {
   /** how many worker processes the worker servers may run together, 0 for no limit. When it is reached, an idle worker is stopped to make room for the first worker of a path. Defaults to 0. */
   workerLimit?: number;
   portLookup?: PortLookup;
+  /**
+   * the load balancers in front of the server, whose `X-Forwarded-*` headers are believed: for the client address, the protocol (whether a request came over HTTPS)
+   * and what `proxy` servers forward. Nobody by default. A list applies to both servers, `{ http, https }` sets it per server.
+   */
+  trustedProxies?: TrustedProxies | { http?: TrustedProxies; https?: TrustedProxies };
   /** set to false to disable */
   statsDomain: string | false;
   statsRefreshInterval: number;
@@ -127,4 +181,23 @@ export interface StorageDriver {
   save: (path: string, data: string) => Promise<void>;
   restore: (path: string) => Promise<string>;
   destroy: (path: string) => Promise<void>;
+}
+
+/** the target of a `proxy` server that the service behind it sets */
+export interface TargetStore {
+  /** the target, unless none was set or it expired */
+  get: () => ProxyTarget | undefined;
+  set: (url: URL, expiresAt?: number) => ProxyTarget;
+  unset: () => void;
+  /** resolves once what was changed is in the file it is kept in */
+  saved: () => Promise<void>;
+}
+
+export interface ProxyRequestOptions {
+  /** send the host of the target in the `Host` header instead of the one the client asked for */
+  changeOrigin?: boolean;
+  /** headers of the response, in lower case, that the client does not get */
+  hideHeaders?: string[];
+  /** how long the target may stay silent, in milliseconds, before the request is given up with 504 */
+  timeout: number;
 }

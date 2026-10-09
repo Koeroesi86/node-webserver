@@ -5,6 +5,7 @@ import getURL from './getURL';
 import virtualHostRouter from './virtual-host-router';
 import compressionMiddleware from '../middlewares/compression';
 import proxyMiddleware from '../middlewares/proxy';
+import proxyServerMiddleware from '../middlewares/proxy-server';
 import lambdaMiddleware from '../middlewares/lambda';
 import getDate from './getDate';
 import logger from './logger';
@@ -40,6 +41,9 @@ function getWorkerMiddleware(instance: ServerInstance, workerBudget?: WorkerBudg
 function getMiddleware(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   if (instance.type === 'child') {
     return proxyMiddleware(instance);
+  }
+  if (instance.type === 'proxy') {
+    return proxyServerMiddleware(instance);
   }
   if (instance.type === 'lambda') {
     return lambdaMiddleware(instance);

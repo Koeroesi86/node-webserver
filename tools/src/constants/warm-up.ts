@@ -15,6 +15,8 @@ export const warmUpEndpoints: Endpoint[] = [
   { host: 'compressed.localhost', path: '/' },
   { host: 'upload.localhost', path: '/', method: 'POST', body: 'warm-up' },
   { host: 'health.localhost', path: '/health' },
+  // answers 502 until its target, a child process, listens
+  { host: 'proxied.localhost', path: '/index.html' },
 ];
 
 export const defaultWarmUp: WarmUpOptions = { requests: 20, attempts: 60, intervalMs: 250 };

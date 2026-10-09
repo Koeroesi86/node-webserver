@@ -23,6 +23,8 @@ module.exports = {
   portHttps: Number(process.env.PORT_HTTPS),
   // the ports the child servers are started on
   portLookup: { from: Number(process.env.PORT_CHILD_FROM), to: Number(process.env.PORT_CHILD_FROM) + 20, address: 'localhost' },
+  // the tests stand in for a load balancer that ended TLS, for the control path of the proxy
+  trustedProxies: ['loopback'],
   statsDomain: false,
   statsRefreshInterval: 10000,
   servers: [
@@ -39,5 +41,9 @@ module.exports = {
       proxyOptions: {},
       serverOptions: { protocol: 'http' },
     },
+    // the tests register an application of their own as the target, which runs on the loopback address
+    { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'integration-token', allowPrivate: true } } },
+    // nothing listens on the port the tests give it
+    { hostname: 'proxy-down.localhost', protocol: 'http', type: 'proxy', proxyOptions: { target: `http://127.0.0.1:${process.env.PORT_CLOSED}` } },
   ],
 };

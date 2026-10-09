@@ -40,6 +40,10 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
     ...exampleConfig,
     ...configuration,
   };
+  const { trustedProxies = [] } = hydratedConfiguration;
+  // before the hosts are set up, as the client address and the protocol of every request depend on it
+  httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.http ?? []);
+  httpsApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.https ?? []);
   const instances = hydratedConfiguration.servers.flatMap((config) => (typeof config === 'string' ? loadInstance(config) : [config]));
   /** access logs */
   httpApp.use(accessLogsMiddleware({ alias: 'http' }));

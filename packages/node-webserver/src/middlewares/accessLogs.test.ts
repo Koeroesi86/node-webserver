@@ -10,12 +10,12 @@ const mockedLogger = jest.mocked(logger);
 
 const enable = (...levels: string[]) => mockedLogger.isEnabled.mockImplementation((level) => levels.includes(level));
 
-const createRequest = () =>
+const createRequest = (headers: Record<string, string> = {}) =>
   ({
     method: 'get',
     protocol: 'http',
     originalUrl: '/page?x=1',
-    headers: { host: 'web.localhost', accept: '*/*', 'user-agent': 'test' },
+    headers: { host: 'web.localhost', accept: '*/*', 'user-agent': 'test', ...headers },
     get: (name: string) => (name === 'host' ? 'web.localhost' : undefined),
   } as unknown as Request);
 
@@ -36,10 +36,10 @@ describe('accessLogsMiddleware', () => {
     jest.useRealTimers();
   });
 
-  const run = (statusCode: number, statusMessage?: string) => {
+  const run = (statusCode: number, statusMessage?: string, headers?: Record<string, string>) => {
     const response = createResponse(statusCode, statusMessage);
     const next = jest.fn();
-    accessLogsMiddleware({ alias: 'http' })(createRequest(), response, next as NextFunction);
+    accessLogsMiddleware({ alias: 'http' })(createRequest(headers), response, next as NextFunction);
     jest.runAllTimers();
     response.emit('finish');
 
@@ -69,6 +69,14 @@ describe('accessLogsMiddleware', () => {
 
       expect(mockedLogger.success).toHaveBeenCalledTimes(2);
       expect(protocol).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves the credentials out of the headers it logs', () => {
+      run(200, 'OK', { authorization: 'Bearer secret', 'proxy-authorization': 'Basic secret' });
+
+      expect(mockedLogger.success).toHaveBeenCalledWith(
+        '[2026-01-01 00:00:00] [http] REQUEST GET http://web.localhost/page?x=1 HEADERS {"accept":"*/*","authorization":"[redacted]","host":"web.localhost","proxy-authorization":"[redacted]","user-agent":"test"}'
+      );
     });
 
     it('logs a response below 400 as a success, with its size', () => {

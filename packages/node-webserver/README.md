@@ -89,7 +89,89 @@ Things to know:
 
 A worker answers the upgrade and is called for every message, see the README of `@koeroesi86/node-worker-express`. The server reads the frames (messages in pieces, UTF-8 text, binary, ping, close), holds the client back while the worker is behind,
 and holds the worker back (`await callback({ sendWsMessage: true, frame })`) while the client is behind. These options of the server limit them: `limitWebSocketMessage` (bytes, 1 MiB), `limitWebSocketConnections` (per worker file, 1000),
-`webSocketPingInterval` (30000 ms) and `limitWebSocketIdleTimeout` (90000 ms). Websockets of `child` servers are not proxied (see #56).
+`webSocketPingInterval` (30000 ms) and `limitWebSocketIdleTimeout` (90000 ms). Websockets of `proxy` servers are passed on to their target, the ones of `child` servers are not proxied yet (see #56).
+
+### Proxy servers
+
+A server of the type `proxy` passes the requests of its host on to an application that runs on its own, websockets included: a fixed `target`, or one that the application registers itself, like a dyndns update.
+
+```javascript
+// a fixed target, for example to put an address you own in front of a provider
+{
+  hostname: 'api.localhost',
+  protocol: 'https',
+  type: 'proxy',
+  proxyOptions: {
+    target: 'https://my-service.cloud-provider.example',
+    changeOrigin: true, // the Host header (and the TLS server name) of the target, not the one of the client
+    hideHeaders: ['server', 'x-powered-by'], // headers of the response that give the provider away
+    // secure: false, to skip the check of the certificate of the target, ca: '/path/to/ca.pem' for an internal authority
+    // proxyTimeout: 60000, how long the target may stay silent
+    // forwardedHeaders: 'sanitize' | 'pass' | 'none', see "Client address and forwarding headers"
+  },
+}
+
+// a dynamic target, which the application behind it sets
+{
+  hostname: 'app.localhost',
+  protocol: 'https',
+  type: 'proxy',
+  proxyOptions: {
+    dynamic: {
+      tokenEnv: 'APP_PROXY_TOKEN', // the environment variable that holds the token of this host (or token: '...')
+      ttl: 300, // seconds after which a target that was not set again expires, no expiry by default
+      // port: 8080, the port of a target registered without one
+      // protocol: 'http', of a target registered without one
+      // controlPath: '/.well-known/node-webserver/proxy'
+      // allowPrivate: false, see below
+      // persistPath: '/var/lib/node-webserver/app.json', to keep the target over a restart
+    },
+  },
+}
+```
+
+A request is answered with 503 while there is no target (not registered yet, removed, or expired), 502 when the target cannot be reached and 504 when it stays silent for `proxyTimeout` (60 seconds).
+The request to the target is aborted when the client goes away. The connections to a target are kept open between requests. Requests in flight when the target changes finish on the old one, new ones go to the new one.
+
+#### Registering a dynamic target
+
+The host answers one path itself, `/.well-known/node-webserver/proxy` (`controlPath`), which never reaches the target. Pick another one if the application uses it. With the token of the host in `Authorization: Bearer <token>`:
+
+| | |
+| --- | --- |
+| `PUT` | sets the target. `{ "port": 8080 }` registers the address the request comes from (as `myip` does for dyndns) with that port, `{}` with the `port` of the configuration, `{ "target": "http://203.0.113.7:8080" }` an address of your choice. Answers the target, when it was set and when it expires |
+| `GET` | the target, or 404 when there is none |
+| `DELETE` | removes the target, 204 |
+
+```sh
+curl -X PUT https://app.example.com/.well-known/node-webserver/proxy -H "Authorization: Bearer $APP_PROXY_TOKEN" -d '{"port":8080}'
+```
+
+With a `ttl`, the application sends the same request again before it runs out, as a heartbeat. A target that is not refreshed expires, instead of reaching whoever gets the old address next.
+With `persistPath` the target is written to that file and read from it at the start, and still expires by its `ttl`. Without it a restart starts without a target, until the application registers again.
+
+Security, as the proxy takes its target from a caller on the internet:
+- **The token is the only protection of the control path.** It is per host, compared in constant time, and never logged (`Authorization` is left out of the access logs).
+  The control path only accepts requests over HTTPS: on an `http` host only the ones a trusted proxy received over HTTPS (`X-Forwarded-Proto`), and the server warns at the start for such a host.
+  An address that fails 10 times in a minute is refused for the rest of the minute, and a host takes 10 updates a minute.
+- **A target is an IP address, http or https, and a public one.** Names are refused, as what they resolve to can change after the check. Loopback, private, shared (100.64.0.0/10), link-local (the metadata service 169.254.169.254 included),
+  multicast and unspecified addresses are refused unless the host sets `allowPrivate: true`, for a LAN.
+- The address of the caller is the one described below, so it cannot be spoofed with a header. Behind a load balancer that is not in `trustedProxies` it is the address of the load balancer, which is private and refused: the registration fails instead of pointing somewhere wrong.
+- Other requests are passed on with their `Authorization` header untouched, only the control path takes the token.
+
+#### Client address and forwarding headers
+
+Forwarding headers (`X-Forwarded-For`, `-Proto`, `-Host`) are believed only from the load balancers listed in `trustedProxies`, in the top level of the configuration: CIDRs and `loopback`, `linklocal`, `uniquelocal`, for both servers,
+or `{ http: [...], https: [...] }` per server. Nobody is trusted by default. It decides the client address of the control path, `req.ip` and `req.protocol`, and what a `proxy` server forwards (`forwardedHeaders`):
+
+| Request | Client address | `X-Forwarded-For` sent to the target (`sanitize`, the default) |
+| --- | --- | --- |
+| a client, with a made up `X-Forwarded-For: 1.2.3.4` | the address of the connection | replaced by the address of the connection, `-Proto` and `-Host` from the connection, `X-Real-IP`, `X-Client-IP` and `CF-Connecting-IP` removed |
+| a trusted load balancer, chain `client, lb` | `client`, the first address from the right that is not trusted | `client, lb, <load balancer>`, `-Proto` and `-Host` kept |
+| a load balancer that is not in `trustedProxies` | the address of the load balancer | replaced by the address of the load balancer |
+
+`forwardedHeaders: 'pass'` sends the headers of the client untouched, for a target that needs the original chain (it can be spoofed if the target trusts it blindly), `'none'` sends no forwarding headers at all.
+The client address workers get (`remoteAddress`) does not follow `trustedProxies` yet.
 
 ### Metrics for workers
 
