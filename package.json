@@ -11,6 +11,7 @@
     "start": "pnpm --filter @koeroesi86/node-webserver start",
     "build": "pnpm -r --if-present build",
     "generate-version": "pnpm --filter @koeroesi86/tools generate-version",
+    "load-test": "pnpm build && node tools/dist/scripts/load-test.js",
     "lint": "eslint --ext .ts --cache --cache-location .cache/eslint/ ."
   },
   "devDependencies": {

@@ -5,7 +5,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | Tool | What it does | Run |
 | --- | --- | --- |
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
-| [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `k6 run tools/src/k6/example.ts`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
+| [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
 ### Layout
 
@@ -13,7 +13,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`. They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`. They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
@@ -40,7 +40,53 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 ### Run locally
 
 ```sh
-pnpm install && pnpm build
+pnpm install
+pnpm load-test           # builds, starts the example server, runs the example scenario and then the CPU bound one, stops the server
+pnpm load-test 30s       # a longer example run (15s by default)
+```
+
+`scripts/load-test.ts` (`pnpm load-test` builds first) does what the workflow does, on one machine: it makes the certificate for `https://secure.localhost` (needs `openssl`, the HTTPS routes are left out without it),
+starts the server on `PORT_HTTP` / `PORT_HTTPS` (8080 and 8443), warms it up, runs `example.ts` and `cpu.ts` and stops the server. The exit code is 1 when a threshold fails.
+The k6 summary is printed, and the log of the server is in a temporary folder, whose path is printed first.
+
+It uses **the installed k6** when there is one, and otherwise **Docker** with the official [`grafana/k6`](https://hub.docker.com/r/grafana/k6) image (the version of the workflow, `k6Image` in `constants/load-test.ts`).
+
+#### Installing k6 (preferred)
+
+The scenarios are TypeScript that k6 runs itself, so k6 1.0 or newer is needed (the workflow uses 1.2.2). Other systems and the release binaries: [Install k6](https://grafana.com/docs/k6/latest/set-up/install-k6/).
+
+| System | Install |
+| --- | --- |
+| macOS | `brew install k6` |
+| Windows | `winget install k6 --source winget`, or `choco install k6` |
+| Debian, Ubuntu | add the repository, then `sudo apt-get install k6` (below) |
+| Fedora, RHEL, CentOS | `sudo dnf install https://dl.k6.io/rpm/repo.rpm`, then `sudo dnf install k6` |
+| Any (Linux, macOS, Windows) | the archive of a [release](https://github.com/grafana/k6/releases), with `k6` in the `PATH` |
+
+```sh
+## Debian, Ubuntu
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 \
+  --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update && sudo apt-get install k6
+```
+
+Check it with `k6 version`.
+
+#### Docker instead
+
+With no k6 installed `pnpm load-test` runs `docker run --rm -i --network host -v tools/src/k6:/scripts:ro grafana/k6:<version> run ...` for you, so Docker is all that is needed.
+The container shares the network of the host (`--network host`), so that it reaches the server on `localhost`. That works on Linux; on Docker Desktop (macOS, Windows)
+it needs host networking to be enabled (Settings > Resources > Network, Docker Desktop 4.34 or newer), otherwise install k6. SELinux labels are switched off for the container (`--security-opt label=disable`), so no mount is refused on Fedora.
+The container runs the scenarios on its own cores, so the numbers differ from the installed k6 a little, and an installed k6 is the one to compare with the workflow.
+
+#### By hand
+
+The same with the commands separate, for example to run one scenario or to pass other options (see the table below):
+
+```sh
+pnpm build
 ## optional, serves https://secure.localhost too, so the HTTPS and secure websocket routes can be tested
 mkdir -p packages/node-webserver/.certificates/localhost
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=secure.localhost" -addext "subjectAltName=DNS:secure.localhost" \
