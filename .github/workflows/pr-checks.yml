@@ -1,4 +1,4 @@
-name: Branch build
+name: Pull request checks
 
 on:
   pull_request:
@@ -48,3 +48,20 @@ jobs:
   load-test:
     needs: [test, build]
     uses: ./.github/workflows/load-test.yml
+
+  # the one check that master requires: it fails unless the tests, the build and the load test all passed,
+  # so the jobs and the operating systems can change without touching the branch protection
+  required-checks:
+    if: always()
+    needs: [test, build, load-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Tests, build and load test passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: ${RESULTS}"
+          for result in ${RESULTS}; do
+            [ "${result}" = "success" ] || exit 1
+          done

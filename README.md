@@ -1,7 +1,7 @@
 # node-webserver
 
 [![Publish](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml/badge.svg?branch=master)](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml)
-[![Pull request build](https://github.com/Koeroesi86/node-webserver/actions/workflows/build.yml/badge.svg?event=pull_request)](https://github.com/Koeroesi86/node-webserver/actions/workflows/build.yml)
+[![Pull request checks](https://github.com/Koeroesi86/node-webserver/actions/workflows/pr-checks.yml/badge.svg?event=pull_request)](https://github.com/Koeroesi86/node-webserver/actions/workflows/pr-checks.yml)
 [![CodeQL](https://github.com/Koeroesi86/node-webserver/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/Koeroesi86/node-webserver/actions/workflows/codeql.yml)
 
 A local web server that hosts workers, lambdas and proxied apps by virtual host, and the libraries it is built on.
