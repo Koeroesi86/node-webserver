@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # the pnpm workspace (packages/* and tools) is updated from its root, together with pnpm-lock.yaml
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # minor and patch updates in one pull request each, as every change in a package folder publishes a new version of it (see tools/README.md#versions)
+      # major updates are left out of the groups, so each one gets its own pull request to look at
+      development-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      production-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ['*']
