@@ -149,7 +149,7 @@ k6 run tools/src/k6/cpu.ts
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
 | k6 | `MIN_REQUEST_RATE` | 1000 | requests per second the whole run has to reach |
 | compare | `MAX_THROUGHPUT_DROP`, `MAX_P95_INCREASE`, `MAX_CPU_P95_INCREASE`, `MIN_P95_DIFFERENCE_MS` | 0.15, 0.5, 0.3, 5 | limits of the comparison with the base |
-| k6 (`cpu.ts`) | `CPU_RATE`, `MAX_P95_MS` | 150, 50 | requests per second for the CPU bound worker, and the p95 allowed |
+| k6 (`cpu.ts`) | `CPU_RATE`, `MAX_P95_MS` | 150, 100 | requests per second for the CPU bound worker, and the p95 allowed |
 
 ### Cores
 
@@ -209,6 +209,9 @@ The workflow runs the same steps on the three systems (bash, also on Windows), w
 - there is no `taskset`, so the server and k6 share the cores instead of having cores of their own, and the throughput floor is lower for each core (`requests-per-core`),
 - the p95 of the routes is allowed to be higher (`P95_FACTOR` multiplies all of them, `P95_OVERRIDES` of `example.ts` sets some, for example the lambdas, which are processes, and the time to connect a websocket), and the CPU bound run has its own p95, rate and number of dropped requests it may have (`MAX_P95_MS`, `CPU_RATE`, `MAX_DROPPED`),
 - the limits of the comparison with the base are wider (`MAX_THROUGHPUT_DROP` and the others in the table above), as the same code measured up to 40% apart there. They still catch a collapse,
-- the comparison does not fail the job there (`comparison-informational`): a run of the same code was 4 times faster than the others, and a route moved by 170% between them. The table and the verdict are in the job summary, and Linux is the one that decides.
+- the comparison does not fail the job there (`comparison-informational`). The table and the verdict are in the job summary, and Linux is the one that decides. Eight pull requests that do not touch the request path showed why (October 2026):
+  - on Windows the first run of the comparison (always the base) measured 3 to 7 times the throughput of the other nine runs (4,385 to 10,818 req/s against 1,250 to 2,750), in every one of them. The median of five runs leaves it out, but the throughput there is held back mostly by the lambdas (a p95 of 330-680 ms, against 15-40 ms on Linux and macOS, see issue #38), so a run in which they answer fast, or with errors, would be several times faster. Every run of the comparison logs its share of failed requests and checks, its slowest route and (on Linux) the steal time, which tells which of them it is,
+  - on macOS the runs of the same side differ by up to 2.5 times (1,200 to 3,086 req/s), the medians of unchanged code moved between −18% and +18%, and the p95 of the CPU bound run by up to +57%,
+  - on Linux the medians stayed within 6% and the p95 of the CPU bound run within 15%, while it is 9-14 ms on some runners and 24-37 ms on others.
 
-On Windows a process that is killed leaves the processes it started behind, which keep the handles of the step open and the step from finishing, so `stopProcess` ends the whole tree there (`taskkill /T`).
+On Windows a process that is killed leaves the processes it started behind, which keep the handles of the step open and the step from finishing, so `stopProcess` ends the whole tree there (`taskkill /T`), and so does the step of the workflow that stops the server before the comparison. The comparison step took about 5 minutes in every one of those runs, it has not hung again.
