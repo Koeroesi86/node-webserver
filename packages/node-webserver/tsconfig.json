@@ -12,7 +12,8 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "types": ["node", "jest", "express", "http-proxy", "pidusage"]
   },
   "include": ["src"]
 }
