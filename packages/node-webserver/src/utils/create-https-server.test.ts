@@ -16,31 +16,15 @@ const hostname = 'secure.localhost';
 /** a self signed certificate of the host, made with openssl as node cannot make one */
 const makeCertificate = () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'create-https-server-'));
-  const [key, cert] = ['privkey.pem', 'cert.pem'].map((name) => path.join(folder, name));
+  const key = path.join(folder, 'privkey.pem');
   const made = spawnSync(
     'openssl',
-    [
-      'req',
-      '-x509',
-      '-newkey',
-      'rsa:2048',
-      '-nodes',
-      '-days',
-      '1',
-      '-subj',
-      `/CN=${hostname}`,
-      '-addext',
-      `subjectAltName=DNS:${hostname}`,
-      '-keyout',
-      key,
-      '-out',
-      cert,
-    ],
-    // Git Bash on Windows would turn the subject into a path
-    { env: { ...process.env, MSYS_NO_PATHCONV: '1' } }
+    ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', `/CN=${hostname}`, '-addext', `subjectAltName=DNS:${hostname}`, '-keyout', key],
+    // Git Bash on Windows would turn the subject into a path. The certificate is on stdout, which the clients trust without reading it back from a file.
+    { env: { ...process.env, MSYS_NO_PATHCONV: '1' }, encoding: 'utf8' }
   );
   if (made.status !== 0) throw new Error(`openssl could not make a certificate: ${made.stderr}`);
-  const pair = { key: fs.readFileSync(key, 'utf8'), cert: fs.readFileSync(cert, 'utf8') };
+  const pair = { key: fs.readFileSync(key, 'utf8'), cert: made.stdout };
   fs.rmSync(folder, { recursive: true, force: true });
 
   return pair;
