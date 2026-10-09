@@ -78,6 +78,7 @@ module.exports = async (event, callback) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
   }
+  if (event.path === '/event-keys') return callback({ statusCode: 200, headers: {}, body: JSON.stringify(Object.keys(event).sort()), isBase64Encoded: false });
   if (event.path === '/upload-ignored') return callback({ statusCode: 413, headers: {}, body: 'too large', isBase64Encoded: false });
   if (event.path === '/upload-catches') {
     try {
@@ -158,7 +159,7 @@ describe('workerInvoke', () => {
         rootPath: folder,
         headers: {},
         ...(hasBody && { hasBody: true }),
-        ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
+        ...(inlineBody !== undefined && { body: inlineBody }),
       },
     });
   const sendUpgrade = (requestId: string, requestPath = '/ws') =>
@@ -442,6 +443,15 @@ describe('workerInvoke', () => {
       await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
 
       expect(answerOf('a')).toEqual({ size: body.length, sha256: sha256(body) });
+    });
+
+    it('is not a part of the request the worker is called with', async () => {
+      send('a', '/event-keys', false, Buffer.from('inline'));
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).not.toContain('body');
+      expect(answerOf('a')).toContain('bodyStream');
     });
 
     it('keeps every byte', async () => {
