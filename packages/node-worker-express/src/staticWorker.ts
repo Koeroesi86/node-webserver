@@ -7,6 +7,7 @@ import streamResponse from './streamResponse';
 import getFileInfo from './utils/getFileInfo';
 import isInside from './utils/isInside';
 import isNotModified from './utils/isNotModified';
+import readSmallFile from './utils/read-small-file';
 
 let timer: NodeJS.Timeout | undefined;
 
@@ -69,7 +70,7 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   } else if (stats.size > StaticStreamThreshold) {
     await streamFile(fileName, response, callback);
   } else {
-    callback({ ...response, body: await fs.readFile(fileName) });
+    callback({ ...response, body: await readSmallFile(fileName, stats) });
   }
 };
 

@@ -29,6 +29,12 @@ export enum WORKER_EVENT {
 /** the static worker sends files up to this size in one part, bigger ones are streamed so they do not have to fit into the memory */
 export const StaticStreamThreshold = 1024 * 1024;
 
+/**
+ * Every static worker keeps the files it sends in one part in memory, up to this many of them and this many bytes, the least recently used go first.
+ * A file is read again when its size or modification time changed, which the worker checks for every request anyway.
+ */
+export const StaticFileCache = { entries: 1000, bytes: 16 * 1024 * 1024 };
+
 /** how many parts of a streamed request body may be on their way to the worker before it takes one */
 export const RequestBodyWindow = 4;
 
