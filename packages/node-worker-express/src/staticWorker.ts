@@ -10,9 +10,7 @@ import isNotModified from './utils/isNotModified';
 
 let timer: NodeJS.Timeout | undefined;
 
-const chunkSize = 64 * 1024;
-/** parts that may wait to be written to the client while the next ones are read */
-const streamWindow = 4;
+const chunkSize = 1024 * 1024;
 
 function debounce(fn = () => {}, timeout = 0) {
   if (timer) clearTimeout(timer);
@@ -24,7 +22,7 @@ function debounce(fn = () => {}, timeout = 0) {
 
 /** Sends the file in parts and waits for the client to take them, it stops when the client is gone. */
 const streamFile = (fileName: string, { statusCode, headers }: ResponseEvent, callback: ResponseCallback) =>
-  streamResponse(callback, { statusCode, headers, window: streamWindow }, createReadStream(fileName, { highWaterMark: chunkSize }));
+  streamResponse(callback, { statusCode, headers }, createReadStream(fileName, { highWaterMark: chunkSize }));
 
 const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   debounce(() => {

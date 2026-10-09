@@ -110,6 +110,64 @@ describe('streamResponse', () => {
     expect(sent).toBe(11);
   });
 
+  it('does not send more bytes than the byte window allows before they are acknowledged', async () => {
+    const pending: Array<() => void> = [];
+    let sent = 0;
+    const done = streamResponse(
+      () => {
+        sent += 1;
+        return new Promise((resolve) => pending.push(() => resolve(true)));
+      },
+      { windowBytes: 30 },
+      generate(...Array.from({ length: 10 }, () => '0123456789'))
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sent).toBe(3);
+
+    while (pending.length > 0) {
+      pending.shift()();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(await done).toBe(true);
+    expect(sent).toBe(11);
+  });
+
+  it('keeps the bytes waiting for the client within the window, however much the source has to give', async () => {
+    const chunk = Buffer.alloc(1024, 1);
+    const windowBytes = 16 * 1024;
+    let outstanding = 0;
+    let peak = 0;
+    let total = 0;
+    async function* source() {
+      for (let index = 0; index < 2000; index += 1) yield chunk;
+    }
+
+    const completed = await streamResponse(
+      (part) => {
+        const size = Buffer.isBuffer(part.body) ? part.body.length : 0;
+        outstanding += size;
+        total += size;
+        peak = Math.max(peak, outstanding);
+        // a slow client: the part is written a turn of the event loop later
+        return new Promise((resolve) =>
+          setImmediate(() => {
+            outstanding -= size;
+            resolve(true);
+          })
+        );
+      },
+      { windowBytes },
+      source()
+    );
+
+    expect(completed).toBe(true);
+    expect(total).toBe(2000 * chunk.length);
+    // the part that crosses the window is the last one that is sent before waiting
+    expect(peak).toBeLessThanOrEqual(windowBytes + chunk.length);
+  });
+
   it('stops when the client is gone, and lets the source clean up', async () => {
     const { parts, callback } = collect((part) => part < 2);
     let cleanedUp = false;

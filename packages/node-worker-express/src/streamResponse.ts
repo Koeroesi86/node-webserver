@@ -6,8 +6,10 @@ export type StreamBody = Readable | AsyncIterable<Buffer | Uint8Array | string>;
 export interface StreamResponseOptions {
   statusCode?: number;
   headers?: ResponseEvent['headers'];
-  /** how many parts may wait to be written to the client while the next ones are produced. Defaults to 4. */
+  /** how many parts may wait to be written to the client while the next ones are produced. Not limited by default. */
   window?: number;
+  /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
+  windowBytes?: number;
 }
 
 const proceeds = (result: unknown) => result !== false;
@@ -24,10 +26,12 @@ const proceeds = (result: unknown) => result !== false;
  */
 async function streamResponse(
   callback: ResponseCallback,
-  { statusCode = 200, headers = {}, window = 4 }: StreamResponseOptions,
+  { statusCode = 200, headers = {}, window = Infinity, windowBytes = 4 * 1024 * 1024 }: StreamResponseOptions,
   body: StreamBody
 ): Promise<boolean> {
   const written: Array<Promise<unknown>> = [];
+  const sizes: number[] = [];
+  let inFlight = 0;
   const send = (part: Partial<ResponseEvent>) => Promise.resolve(callback({ statusCode, headers, emit: true, ...part }));
   let completed = true;
 
@@ -39,9 +43,15 @@ async function streamResponse(
       if (buffer.length === 0) continue;
 
       written.push(send({ body: buffer }));
-      if (written.length >= window && !proceeds(await written.shift())) {
-        completed = false;
-        return false;
+      sizes.push(buffer.length);
+      inFlight += buffer.length;
+      // the oldest part is awaited until both the number of parts and the bytes in flight are within the window
+      while (written.length > 0 && (written.length >= window || inFlight >= windowBytes)) {
+        inFlight -= sizes.shift() ?? 0;
+        if (!proceeds(await written.shift())) {
+          completed = false;
+          return false;
+        }
       }
     }
   } catch (error) {
