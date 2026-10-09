@@ -143,6 +143,7 @@ k6 run tools/src/k6/cpu.ts
 | --- | --- | --- | --- |
 | server | `PORT_HTTP`, `PORT_HTTPS` | 8080, 8443 | ports of the server |
 | server | `WORKERS_PER_PATH` | CPU cores | workers started per path, 1 reproduces the single worker bottleneck |
+| server | `ACCESS_LOGS` | not set | `1` turns the access logs on (the `info` and `success` levels), to measure the logger on the path of every request |
 | k6 | `BASE_URL` | `http://localhost:8080` | |
 | k6 | `HTTPS_PORT` | not set | enables the HTTPS and secure websocket routes |
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |

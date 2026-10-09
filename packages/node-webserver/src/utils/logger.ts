@@ -69,10 +69,22 @@ function flush() {
   });
 }
 
+/** the file of each level, resolved once: the name only depends on the level and the start, and a request logs two lines */
+const files = new Map<keyof LogLevels, string>();
+
+function getFile(directory: string, level: keyof LogLevels) {
+  const cached = files.get(level);
+  if (cached) return cached;
+
+  const file = resolve(directory, `./${startedAt.valueOf()}.${level}.log`);
+  files.set(level, file);
+  return file;
+}
+
 function fileLog(level: keyof LogLevels, args: unknown[]) {
   if (!fileLogPath) return;
 
-  const file = resolve(fileLogPath, `./${startedAt.valueOf()}.${level}.log`);
+  const file = getFile(fileLogPath, level);
   const line = `${args.join(', ')}\n`;
 
   if (!fileLogFlushInterval) {

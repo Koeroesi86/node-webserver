@@ -64,6 +64,21 @@ describe('logger', () => {
     expect(appendFileSync.mock.calls.every(([file]) => path.dirname(file) === logFolder)).toBe(true);
   });
 
+  it('resolves the file of a level once, not for every line', () => {
+    const resolve = jest.fn(path.resolve);
+    jest.doMock('path', () => ({ ...jest.requireActual('path'), resolve }));
+    const { logger, appendFileSync } = load();
+
+    logger.info('a');
+    logger.info('b');
+    logger.error('c');
+    logger.info('d');
+    jest.advanceTimersByTime(100);
+
+    expect(resolve.mock.calls.filter((args) => String(args[args.length - 1]).endsWith('.log'))).toHaveLength(2);
+    expect(appendFileSync).toHaveBeenCalledWith(expect.stringMatching(/\.info\.log$/), 'a\nb\nd\n', 'utf8');
+  });
+
   describe('the console', () => {
     it('gets the lines at the end of the turn of the event loop, not before', () => {
       const { logger } = load();
