@@ -1,6 +1,5 @@
-import { existsSync } from 'fs';
+import { existsSync, rmSync } from 'fs';
 import { resolve } from 'path';
-import rimraf from 'rimraf';
 import FileStorage from './FileStorage';
 import RequestEvent from './RequestEvent';
 
@@ -16,7 +15,7 @@ describe('FileStorage', () => {
   });
 
   afterEach(() => {
-    rimraf.sync(base);
+    rmSync(base, { recursive: true, force: true });
     Object.assign(FileStorage, originalBases);
   });
 

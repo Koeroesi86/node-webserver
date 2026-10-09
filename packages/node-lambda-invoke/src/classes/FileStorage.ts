@@ -1,7 +1,6 @@
 import { resolve } from 'path';
-import { readFile, writeFile, existsSync, mkdirSync } from 'fs';
+import { readFile, writeFile, existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { rm } from 'fs/promises';
-import rimraf from 'rimraf';
 import { PACKAGE_ROOT } from '../constants';
 import type RequestEvent from './RequestEvent';
 import type ResponseEvent from './ResponseEvent';
@@ -24,8 +23,9 @@ class FileStorage {
   static responseBase = resolve(PACKAGE_ROOT, 'responses/');
 
   static start() {
-    rimraf.sync(resolve(FileStorage.requestBase, './*'));
-    rimraf.sync(resolve(FileStorage.responseBase, './*'));
+    [FileStorage.requestBase, FileStorage.responseBase]
+      .filter((base) => existsSync(base))
+      .forEach((base) => readdirSync(base).forEach((name) => rmSync(resolve(base, name), { recursive: true, force: true })));
 
     if (!existsSync(FileStorage.requestBase)) mkdirSync(FileStorage.requestBase, { recursive: true });
     if (!existsSync(FileStorage.responseBase)) mkdirSync(FileStorage.responseBase, { recursive: true });

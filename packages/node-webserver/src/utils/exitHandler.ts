@@ -1,6 +1,5 @@
-import rimraf from 'rimraf';
 import { resolve } from 'path';
-import { readdirSync, existsSync } from 'fs';
+import { readdirSync, existsSync, rmSync } from 'fs';
 import logger from './logger';
 import { PACKAGE_ROOT } from '../constants';
 import type { ServerInstance } from '../types';
@@ -10,7 +9,7 @@ type ExitReason = NodeJS.Signals | 'exit' | 'uncaughtException';
 function cleanTmp() {
   const tmpLocation = resolve(PACKAGE_ROOT, 'tmp');
   if (existsSync(tmpLocation) && readdirSync(tmpLocation).length > 0) {
-    rimraf.sync(`${tmpLocation}/*`, { glob: { silent: true } });
+    readdirSync(tmpLocation).forEach((name) => rmSync(resolve(tmpLocation, name), { recursive: true, force: true }));
     logger.info('Tmp folder cleaned.');
   }
 }
