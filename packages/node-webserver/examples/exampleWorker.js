@@ -24,7 +24,7 @@ module.exports = async (event, callback) => {
           (function() {
             var timeHolder = document.getElementById('time');
             function connect() {
-              var w = new WebSocket('ws://' + window.location.host + ':' + window.location.port + '/websocket/exampleWorker.js');
+              var w = new WebSocket('ws://' + window.location.host + '/websocket/exampleWorker.js');
               w.addEventListener('message', e => {
                 var d = JSON.parse(e.data);
                 var now = new Date(d.now);
@@ -37,8 +37,9 @@ module.exports = async (event, callback) => {
                 }, 5000);
               });
             }
-            // TODO: fix
-            // connect();
+            // the server sends its time every second, and the page reloads when the connection closes.
+            // Keep the page above 1 KiB: the load test needs it to be big enough for compressed.localhost to compress it.
+            connect();
           })();
         </script>
       </body>

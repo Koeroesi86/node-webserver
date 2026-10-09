@@ -32,6 +32,22 @@ const readBody = async (event) => {
 const part = (body) => ({ statusCode: 200, headers: {}, emit: true, body, isBase64Encoded: false });
 
 module.exports = async (event, callback) => {
+  if (event.protocol === 'WS' && event.closed) return fs.writeFileSync(path.join(event.rootPath, 'ws-closed'), event.path);
+  if (event.protocol === 'WS' && event.frame === undefined && event.binaryFrame === undefined) {
+    callback({ statusCode: 101, headers: { Upgrade: 'websocket', Connection: 'Upgrade' }, body: '' });
+    if (event.path === '/ws-waits') {
+      const sent = await callback({ sendWsMessage: true, frame: 'first' });
+      fs.writeFileSync(path.join(event.rootPath, 'ws-waited'), String(sent));
+    }
+    if (event.path === '/ws-closes') callback({ sendWsMessage: true, close: { code: 4000, reason: 'bye' } });
+    return;
+  }
+  if (event.protocol === 'WS') {
+    if (event.frame === 'slow') await new Promise((resolve) => setTimeout(resolve, 100));
+    if (event.frame === 'throws') throw new Error('message failure');
+    if (event.binaryFrame) return callback({ sendWsMessage: true, frame: Buffer.from(event.binaryFrame).reverse() });
+    return callback({ sendWsMessage: true, frame: event.frame.toUpperCase() });
+  }
   if (event.path === '/plain') return callback({ statusCode: 200, headers: {}, body: 'plain', isBase64Encoded: false });
   if (event.path === '/throws') throw new Error('sync failure');
   if (event.path === '/rejects') throw await Promise.reject(new Error('async failure'));
@@ -133,6 +149,22 @@ describe('workerInvoke', () => {
         ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
       },
     });
+  const sendUpgrade = (requestId: string, requestPath = '/ws') =>
+    channel.send({
+      type: WORKER_EVENT.REQUEST,
+      requestId,
+      event: {
+        httpMethod: 'GET',
+        protocol: 'WS',
+        path: requestPath,
+        pathFragments: [],
+        queryStringParameters: {},
+        remoteAddress: '',
+        rootPath: folder,
+        headers: {},
+      },
+    });
+  const sendMessage = (requestId: string, body: string | Buffer) => channel.send({ type: WORKER_EVENT.WS_MESSAGE_RECEIVE, requestId, event: { body } });
   /** a part of a streamed request body, no argument ends it */
   const sendPart = (requestId: string, bytes: Buffer | null = null) => channel.send({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: bytes } });
   const until = async (condition: () => boolean) => {
@@ -470,6 +502,125 @@ describe('workerInvoke', () => {
       await settle();
 
       expect(received.filter(({ type }) => type === WORKER_EVENT.METRICS_REQUEST)).toHaveLength(0);
+    });
+  });
+  describe('websockets', () => {
+    const upgrade = async (requestId: string, requestPath?: string) => {
+      sendUpgrade(requestId, requestPath);
+      await until(() => of(requestId, WORKER_EVENT.RESPONSE).length === 1);
+    };
+    const acknowledge = (requestId: string) => channel.send({ type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE, requestId });
+
+    it('answers the upgrade', async () => {
+      await upgrade('a');
+
+      expect(of('a', WORKER_EVENT.RESPONSE)[0].event).toMatchObject({ statusCode: 101 });
+    });
+
+    it('sends the answer to a text message as a text, and to a binary message as bytes', async () => {
+      await upgrade('a');
+
+      sendMessage('a', 'hello');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+      acknowledge('a');
+      sendMessage('a', Buffer.from([1, 2, 3]));
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 2);
+
+      expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND).map(({ event }) => event.body)).toEqual(['HELLO', Buffer.from([3, 2, 1])]);
+    });
+
+    it('tells the server that it took a message once the worker is done with it, which for a worker that waits for the client is after the client took the answer', async () => {
+      await upgrade('a');
+
+      sendMessage('a', 'hello');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+      await settle();
+      expect(of('a', WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE)).toHaveLength(0);
+      acknowledge('a');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE).length === 1);
+    });
+
+    it('handles the messages of a connection one after the other, in the order they came in', async () => {
+      await upgrade('a');
+
+      sendMessage('a', 'slow');
+      sendMessage('a', 'fast');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+      acknowledge('a');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 2);
+
+      expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND).map(({ event }) => event.body)).toEqual(['SLOW', 'FAST']);
+    });
+
+    it('goes on with the next message when the worker fails on one, and tells the server it is done with it', async () => {
+      await upgrade('a');
+
+      sendMessage('a', 'throws');
+      sendMessage('a', 'next');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+
+      expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND)[0].event.body).toBe('NEXT');
+      expect(of('a', WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE)).toHaveLength(1);
+    });
+
+    it('lets a worker that waits for the client stop waiting when the connection closes', async () => {
+      await upgrade('a', '/ws-waits');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+      const marker = path.join(folder, 'ws-waited');
+
+      channel.send({ type: WORKER_EVENT.WS_CONNECTION_CLOSE, requestId: 'a', event: undefined });
+      await until(() => fsSync.existsSync(marker));
+
+      expect(fsSync.readFileSync(marker, 'utf8')).toBe('false');
+    });
+
+    it('lets a worker that waits for the client go on once the client took the message', async () => {
+      await upgrade('a', '/ws-waits');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+      const marker = path.join(folder, 'ws-waited');
+      fsSync.rmSync(marker, { force: true });
+
+      acknowledge('a');
+      await until(() => fsSync.existsSync(marker));
+
+      expect(fsSync.readFileSync(marker, 'utf8')).toBe('true');
+    });
+
+    it('sends the end of the connection that a worker asks for', async () => {
+      await upgrade('a', '/ws-closes');
+      await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
+
+      expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND)[0].event).toEqual({ close: { code: 4000, reason: 'bye' } });
+    });
+
+    it('calls the worker when the connection closes', async () => {
+      await upgrade('a', '/ws-closes');
+      fsSync.rmSync(path.join(folder, 'ws-closed'), { force: true });
+
+      channel.send({
+        type: WORKER_EVENT.WS_CONNECTION_CLOSE,
+        requestId: 'a',
+        event: {
+          httpMethod: 'GET',
+          protocol: 'WS',
+          path: '/ws-closes',
+          pathFragments: [],
+          queryStringParameters: {},
+          remoteAddress: '',
+          rootPath: folder,
+          headers: {},
+        },
+      });
+      await until(() => fsSync.existsSync(path.join(folder, 'ws-closed')));
+
+      expect(fsSync.readFileSync(path.join(folder, 'ws-closed'), 'utf8')).toBe('/ws-closes');
+    });
+
+    it('does not call the worker for a message of a connection that was not upgraded', async () => {
+      sendMessage('a', 'hello');
+      await settle();
+
+      expect(of('a')).toHaveLength(0);
     });
   });
 });

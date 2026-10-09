@@ -14,7 +14,10 @@ export type RequestEvent = {
   remoteAddress: string;
   rootPath: string;
   closed?: boolean;
+  /** the text message of a websocket client */
   frame?: string;
+  /** the binary message of a websocket client */
+  binaryFrame?: Buffer;
   /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
   hasBody?: boolean;
   /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
@@ -37,6 +40,12 @@ export type RequestBodyEvent = { body: Buffer | null };
 
 export type WorkerInputEvent =
   | {
+      type: WORKER_EVENT.WS_MESSAGE_RECEIVE;
+      requestId: string;
+      /** the message of the client travels as the body: a string is a text message, a Buffer a binary one. The rest of the event is what the request was. */
+      event: { body: Buffer | string };
+    }
+  | {
       type: WORKER_EVENT.REQUEST_BODY;
       requestId: string;
       event: RequestBodyEvent;
@@ -47,7 +56,7 @@ export type WorkerInputEvent =
       event: ServerMetrics;
     }
   | {
-      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS>;
+      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
       requestId: string;
       event?: RequestEvent;
     };
@@ -64,7 +73,7 @@ export type WorkerOutputEvent =
   | {
       type: WORKER_EVENT.WS_MESSAGE_SEND;
       requestId: string;
-      event?: WSFrameEvent;
+      event: WSMessage;
     };
 
 export type ResponseEvent = {
@@ -77,9 +86,22 @@ export type ResponseEvent = {
   body?: string | Buffer | null;
 };
 
+/**
+ * What a worker sends to a websocket client: a message, or the end of the connection. A string `frame` is sent as a text message, a Buffer as a binary one.
+ * The promise `callback` returns resolves when the message was written to the client (`true`), or when the connection is gone (`false`).
+ * A worker that sends faster than the client takes waits for it, so the memory stays flat.
+ */
 export type WSFrameEvent = {
   sendWsMessage: boolean;
-  frame: string;
+  frame?: string | Buffer;
+  /** closes the connection after the messages sent before, `code` defaults to 1000 */
+  close?: { code?: number; reason?: string };
+};
+
+/** a message to a websocket client as it travels from the worker to the server: the body is a text message when it is a string and a binary one when it is a Buffer */
+export type WSMessage = {
+  body?: Buffer | string;
+  close?: { code?: number; reason?: string };
 };
 
 /**
@@ -118,6 +140,14 @@ export interface MiddlewareOptions {
    * for the time they would be given (`limitRequestTimeout`). 0 for no limit. Defaults to 1000.
    */
   limitQueue?: number;
+  /** the largest websocket message in bytes (also of one frame), a client that sends a bigger one is closed with 1009. 0 for no limit. Defaults to 1 MiB. */
+  limitWebSocketMessage?: number;
+  /** how many websocket connections a worker file may have at the same time, the next ones are answered with 503. 0 for no limit. Defaults to 1000. */
+  limitWebSocketConnections?: number;
+  /** how often an idle websocket connection is pinged, in milliseconds. 0 for no pings. Defaults to 30000. */
+  webSocketPingInterval?: number;
+  /** a websocket connection that sent nothing (not even an answer to a ping) for this long, in milliseconds, is closed. 0 for never. Defaults to 90000. */
+  limitWebSocketIdleTimeout?: number;
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
   onExit?: (code: number, workerPath: string, id: string) => void;

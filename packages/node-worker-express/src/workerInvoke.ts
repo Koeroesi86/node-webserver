@@ -1,6 +1,6 @@
 import net from 'net';
 import { Readable } from 'stream';
-import { WORKER_EVENT } from './constants';
+import { Protocols, WORKER_EVENT } from './constants';
 import { InvokableWorker, RequestBodyEvent, RequestEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WorkerRequestEvent, WSFrameEvent } from './types';
 import createChannel from './utils/createChannel';
 import type { ServerMetrics } from './utils/metrics';
@@ -21,6 +21,12 @@ interface Stream {
 }
 
 const streams = new Map<string, Stream>();
+
+/** the websocket connections that are open, per request: the request they were upgraded by, and the stream that holds the messages sent to the client which it has not taken yet */
+const webSockets = new Map<string, { event: RequestEvent; stream: Stream }>();
+
+/** the messages of a client are handled one after the other, in the order they came in: the end of the last one that was started, per request */
+const receiving = new Map<string, Promise<void>>();
 
 /** the socket pair to the server, which the pool opens as the fourth stdio of the worker */
 const channelSocket = new net.Socket({ fd: 3, readable: true, writable: true });
@@ -106,6 +112,39 @@ function createUpload(requestId: string): Readable {
   return stream;
 }
 
+/**
+ * sends a message (or the end) to a websocket client. The promise resolves with `true` once the server has written the message to the client,
+ * and with `false` when the connection is gone, so a worker that awaits it sends no faster than the client takes.
+ */
+function sendWsMessage(requestId: string, stream: Stream | undefined, { frame, close }: WSFrameEvent) {
+  if (!stream || stream.aborted) return Promise.resolve(false);
+
+  // the acknowledgements find the stream by the request
+  streams.set(requestId, stream);
+  channel.send({
+    type: WORKER_EVENT.WS_MESSAGE_SEND,
+    requestId,
+    event: {
+      ...(frame !== undefined && { body: frame }),
+      ...(close && { close }),
+    },
+  });
+
+  return frame === undefined ? Promise.resolve(false) : new Promise<boolean>((resolve) => stream.waiting.push(resolve));
+}
+
+/** the connection is gone: what the worker waits for will not come */
+function closeWsConnection(requestId: string) {
+  const stream = webSockets.get(requestId)?.stream;
+  webSockets.delete(requestId);
+  receiving.delete(requestId);
+  if (!stream) return;
+
+  stream.aborted = true;
+  stream.waiting.splice(0).forEach((resolve) => resolve(false));
+  if (streams.get(requestId) === stream) streams.delete(requestId);
+}
+
 /** runs the worker, a synchronous throw and a rejected promise end up in the same error handler instead of crashing the process */
 function invoke(event: Parameters<InvokableWorker>[0], callback: Parameters<InvokableWorker>[1], onError: (error: unknown) => void, onSettled = () => {}) {
   try {
@@ -142,18 +181,17 @@ function messageListener(message: WorkerInputEvent) {
     let responded = false;
     const stream: Stream = { waiting: [], aborted: false };
     streams.set(message.requestId, stream);
+    if (message.event.protocol === Protocols.websocket) webSockets.set(message.requestId, { event: message.event, stream });
 
     const callback = (responseEvent: ResponseEvent | WSFrameEvent) => {
       let e: WorkerOutputEvent;
       responded = true;
 
       if ('sendWsMessage' in responseEvent) {
-        e = {
-          type: WORKER_EVENT.WS_MESSAGE_SEND,
-          requestId: message.requestId,
-          event: responseEvent,
-        };
-      } else if ('emit' in responseEvent) {
+        return sendWsMessage(message.requestId, stream, responseEvent);
+      }
+
+      if ('emit' in responseEvent) {
         e = {
           type: WORKER_EVENT.RESPONSE_EMIT,
           requestId: message.requestId,
@@ -166,6 +204,8 @@ function messageListener(message: WorkerInputEvent) {
           event: toMessage(responseEvent),
         };
         streams.delete(message.requestId);
+        // an answer that is not the upgrade ends the request, the connection does not become a websocket
+        if (responseEvent.statusCode !== 101) webSockets.delete(message.requestId);
       }
 
       if (stream.aborted && e.type === WORKER_EVENT.RESPONSE_EMIT) {
@@ -214,24 +254,43 @@ function messageListener(message: WorkerInputEvent) {
       // a worker that answered without streaming is done, one that still streams cleans up after its last part
       () => {
         metricsWaiting.delete(message.requestId);
-        return stream.waiting.length === 0 && streams.delete(message.requestId);
+        // a websocket connection is streamed to until it closes
+        return !webSockets.has(message.requestId) && stream.waiting.length === 0 && streams.delete(message.requestId);
       }
     );
   }
 
   if (message.type === WORKER_EVENT.WS_MESSAGE_RECEIVE) {
-    const callback = (responseEvent) => {
-      const e: WorkerOutputEvent = {
-        type: WORKER_EVENT.WS_MESSAGE_SEND,
-        requestId: message.requestId,
-        event: responseEvent,
-      };
-      channel.send(e);
-    };
-    invoke(toWorkerEvent(message.event, message.requestId, createEmptyBody()), callback, console.error);
+    const { requestId } = message;
+    const { body } = message.event;
+    const callback = (responseEvent: ResponseEvent | WSFrameEvent) =>
+      'sendWsMessage' in responseEvent
+        ? sendWsMessage(requestId, webSockets.get(requestId)?.stream, responseEvent)
+        : console.error(new Error('A websocket message is answered with sendWsMessage.'));
+    const acknowledge = () => channel.send({ type: WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE, requestId });
+
+    // one at a time, so that a message is handled after the one before it, and the server is told when the worker has taken it
+    const handled = (receiving.get(requestId) ?? Promise.resolve()).then(
+      () =>
+        new Promise<void>((resolve) => {
+          const request = webSockets.get(requestId)?.event;
+          if (!request) return resolve();
+
+          const event = {
+            ...request,
+            ...(typeof body === 'string' ? { frame: body } : { binaryFrame: body }),
+          };
+          invoke(toWorkerEvent(event, requestId, createEmptyBody()), callback, console.error, () => {
+            acknowledge();
+            resolve();
+          });
+        })
+    );
+    receiving.set(requestId, handled);
   }
 
   if (message.type === WORKER_EVENT.WS_CONNECTION_CLOSE) {
+    closeWsConnection(message.requestId);
     invoke(
       toWorkerEvent({ ...message.event, closed: true }, message.requestId, createEmptyBody()),
       (responseEvent: ResponseEvent) => {

@@ -28,6 +28,7 @@ module.exports = {
   servers: [
     worker('worker.localhost'),
     worker('compressed.localhost', { compression: { threshold: 100 } }),
+    worker('websocket.localhost', { options: { root: resolve(__dirname, 'websocket'), index: ['worker.js'], limitWebSocketMessage: 200000 } }),
     lambda('lambda-ipc.localhost', 'lambda.js', 'ipc'),
     lambda('lambda-file.localhost', 'lambda-file.js', 'file'),
     {

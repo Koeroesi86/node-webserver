@@ -9,7 +9,7 @@ const createDigest = key => createHash('sha1')
   .digest('base64');
 
 module.exports = (event, callback) => {
-  if (event.protocol === 'WS' && event.frame === undefined) {
+  if (event.protocol === 'WS' && event.frame === undefined && event.binaryFrame === undefined) {
     const key = (event.headers['sec-websocket-key'] || '').trim();
     const digest = createDigest(key);
 
@@ -43,7 +43,7 @@ module.exports = (event, callback) => {
     }
   }
 
-  if (event.protocol === 'WS' && event.frame !== undefined) {
+  if (event.protocol === 'WS' && (event.frame !== undefined || event.binaryFrame !== undefined)) {
     console.log('incoming message:', event.frame);
     return;
   }

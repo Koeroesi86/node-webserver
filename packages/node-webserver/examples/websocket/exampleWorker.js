@@ -6,6 +6,9 @@ const timers = {};
 
 module.exports = (event, callback) => {
   if (event.protocol === 'WS') {
+    // a message of the client calls the worker again, the upgrade is answered once and the timer is started once
+    if (event.frame !== undefined || event.binaryFrame !== undefined) return;
+
     const key = (event.headers['sec-websocket-key'] || '').trim();
     const digest = createHash('sha1')
       .update(key + GUID)

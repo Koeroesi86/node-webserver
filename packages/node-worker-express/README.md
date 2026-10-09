@@ -61,6 +61,35 @@ Only a few parts are on their way to the worker before it has read the earlier o
 `const body = await text(event.bodyStream)` (also `json` and `buffer`). **`event.body` does not exist any more.** Read the body before you answer, as the rest of it is dropped once the response is complete.
 A client that goes away during the upload destroys the stream with an error. `limitRequestBody` (bytes, 0 for none, the default) answers a bigger body with 413. Websockets and static files never have a body.
 
+## Websockets
+
+The worker answers the upgrade request (`event.protocol === 'WS'`) with the handshake, a `101` with `Sec-WebSocket-Accept` (see `examples/public/websocket/worker.js`), and is called again for every message of the client and when the connection closes:
+
+```javascript
+module.exports = async (event, callback) => {
+  if (event.closed) return; // the connection is gone, stop what you started for it
+  if (event.frame !== undefined) return callback({ sendWsMessage: true, frame: event.frame.toUpperCase() }); // a text message
+  if (event.binaryFrame !== undefined) return callback({ sendWsMessage: true, frame: event.binaryFrame }); // a binary message
+  // the upgrade: answer it once, and start what the connection needs
+  callback({ statusCode: 101, headers: { Upgrade: 'websocket', Connection: 'Upgrade', 'Sec-WebSocket-Accept': '...' }, body: '' });
+};
+```
+
+- The server reads the frames: a message that comes in many pieces or in many frames is passed on whole, text is decoded as UTF-8 (`event.frame`, a string), binary stays bytes (`event.binaryFrame`, a `Buffer`).
+  A frame that breaks the protocol (not masked, reserved bits, bad UTF-8, ...) closes the connection with 1002 or 1007, a message above `limitWebSocketMessage` with 1009. Pings are answered, and the close of the client is, by the server, without the worker.
+- A worker sends text with a string `frame`, binary with a `Buffer` (any size), and ends the connection with `callback({ sendWsMessage: true, close: { code: 1000, reason: 'bye' } })`.
+- **The messages of a connection are handled one at a time, in the order they came in.** The worker is not called with the next one before the function (or the promise it returns) has finished with the one before.
+- **Backpressure, towards the worker:** while the worker has not finished with the last 16 messages (or 1 MiB of them), the server stops reading the socket of the client, so a client that sends faster than the worker handles slows down, in the TCP window,
+  and the memory of the server stays flat. Return a promise from the worker to hold the client back for as long as you work on a message.
+- **Backpressure, towards the client:** `callback({ sendWsMessage: true, frame })` returns a promise that resolves with `true` once the message was written to the client, and with `false` when the connection is gone.
+  A worker that `await`s it sends no faster than the client takes. The messages of a worker that does not wait are held by the server up to 8 MiB for a client, a client that reads even slower is closed with 1008.
+- The messages written in the same turn of the event loop leave in one write, and the messages to the worker travel in the writes of the channel, which already joins those of a turn.
+- The server pings an idle connection every `webSocketPingInterval` (30 s by default, 0 for none) and closes one that sent nothing, not even an answer to a ping, for `limitWebSocketIdleTimeout` (90 s, 0 never), as it would otherwise stay until the operating system gives up on it.
+  A connection is not subject to the keep alive timeout of the HTTP server once it was upgraded, which used to close a quiet websocket after a few seconds.
+- `limitWebSocketConnections` (1000 by default, 0 for no limit) is the number of connections one worker file may have at the same time, the next ones are answered with 503 and `Retry-After`. A connection holds a worker until it closes.
+- `limitWebSocketMessage` (bytes, 1 MiB by default, 0 for no limit) is the largest message, and the largest frame.
+- The worker is called with `closed: true` when a **websocket** connection closes, and not for HTTP requests any more. A second answer to the upgrade is ignored, and so is an answer that is not `sendWsMessage` to a message.
+
 ## Metrics
 
 `await event.getMetrics()` in a worker gives a snapshot of the server (uptime, memory, event loop delay, request counts, worker pools) for health and metrics endpoints, see the README of `@koeroesi86/node-webserver`.
