@@ -245,7 +245,14 @@ jobs:
           node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
         if: always()
-        run: kill "$(cat server.pid)" || echo 'The server had already stopped.'
+        run: |
+          # on Windows kill ends the server only, and its workers and lambdas would stay through the comparison with the base. taskkill ends them all,
+          # it needs the Windows pid of the process, which Git Bash keeps next to its own
+          if [ "${RUNNER_OS}" = 'Windows' ]; then
+            taskkill //PID "$(cat "/proc/$(cat server.pid)/winpid")" //T //F || echo 'The server had already stopped.'
+          else
+            kill "$(cat server.pid)" || echo 'The server had already stopped.'
+          fi
       # one server at a time, the one above is stopped, and the cores of the runner are the same for both sides
       - name: Compare with the base
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
