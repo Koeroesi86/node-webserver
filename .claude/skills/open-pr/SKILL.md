@@ -38,7 +38,7 @@ Fill in `.github/pull_request_template.md`, section by section, no free-form sum
 - **Not verified**: everything that was not run or not tried by hand, with the reason (no k6 or Docker on the machine is a reason). Write "nothing" only when everything was.
 - **Not in this pull request**: known limits and follow-ups with issue numbers.
 
-Run the checks that are missing before opening, unless the user said not to. A workflow change also needs `zizmor .github`.
+Run the checks that are missing before opening (the `verify-change` skill does that and gives the list for the two sections), unless the user said not to. A workflow change also needs `zizmor .github`.
 
 ## Opening it
 
