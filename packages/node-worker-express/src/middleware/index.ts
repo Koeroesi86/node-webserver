@@ -4,6 +4,7 @@ import url from 'url';
 import { DefaultOptions, ForbiddenPaths, Protocols, RequestBodyWindow, WORKER_EVENT } from '../constants';
 import WorkerPool from '../utils/workerPool';
 import WorkerUnavailableError from '../utils/workerUnavailableError';
+import WorkerAbandonedError from '../utils/workerAbandonedError';
 import isWebSocket from '../utils/isWebSocket';
 import parseWsMessage from '../utils/parseWsMessage';
 import constructWsMessage from '../utils/constructWsMessage';
@@ -109,9 +110,14 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       };
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
+      // a request that waits for a worker leaves the line when its client goes away
+      const abandoned = new AbortController();
+      const abandon = () => abandoned.abort();
+      response.once('close', abandon);
       const lease = await (isWorker
-        ? workerPool.acquire(indexPath, workerOptions, limitPerPath)
-        : workerPool.acquire(config.staticWorker, staticWorkerOptions, limitPerPath));
+        ? workerPool.acquire(indexPath, workerOptions, limitPerPath, abandoned.signal)
+        : workerPool.acquire(config.staticWorker, staticWorkerOptions, limitPerPath, abandoned.signal)
+      ).finally(() => response.off('close', abandon));
 
       const requestId = createRequestId();
 
@@ -296,6 +302,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         response.on('finish', cleanupConnection);
       }
     } catch (e) {
+      if (e instanceof WorkerAbandonedError) return;
       if (e instanceof WorkerUnavailableError && !response.headersSent) {
         // the details name a file of the server, the client only needs to know when to come back
         response.writeHead(503, { 'Content-Type': 'text/plain', 'Retry-After': Math.max(1, Math.ceil(e.retryAfterMs / 1000)) });

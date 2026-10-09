@@ -1,6 +1,7 @@
 import type { EventEmitter } from 'events';
 import { WORKER_EVENT } from '../constants';
 import WorkerPool from './workerPool';
+import WorkerAbandonedError from './workerAbandonedError';
 import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
 import type { WorkerLease } from './workerPool';
@@ -314,7 +315,15 @@ describe('WorkerPool', () => {
     });
 
     it('is empty for a pool that has not started a worker', () => {
-      expect(createPool().getStats()).toEqual({ workers: 0, active: 0, waiting: 0, refused: { queueFull: 0, timedOut: 0 }, failing: {}, paths: {} });
+      expect(createPool().getStats()).toEqual({
+        workers: 0,
+        active: 0,
+        waiting: 0,
+        refused: { queueFull: 0, timedOut: 0 },
+        abandoned: 0,
+        failing: {},
+        paths: {},
+      });
     });
   });
 
@@ -645,6 +654,62 @@ describe('WorkerPool', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('leaves the line when its signal aborts, takes no worker and does not delay the ones behind it', async () => {
+      const { pool, first } = await fullPool();
+      const controller = new AbortController();
+      const abandoned = pool.acquire(pathB, {}, 1, controller.signal).catch((error) => error);
+      const behind = pool.acquire(pathB, {}, 1);
+
+      controller.abort();
+
+      expect(await abandoned).toBeInstanceOf(WorkerAbandonedError);
+      expect(pool.getStats()).toMatchObject({ waiting: 1, abandoned: 1, refused: { queueFull: 0, timedOut: 0 } });
+      first.release();
+      expect((await behind).worker).toBe(FakeWorker.instances[2]);
+      expect(FakeWorker.instances).toHaveLength(3);
+      expect(pool.getStats().paths[pathB]).toMatchObject({ workers: 1, active: 1 });
+    });
+
+    it('clears its deadline timer when its signal aborts', async () => {
+      jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] });
+      try {
+        const { pool } = await fullPool({ acquireTimeout: 300 });
+        const timersBefore = jest.getTimerCount();
+        const controller = new AbortController();
+        const abandoned = pool.acquire(pathB, {}, 1, controller.signal).catch((error) => error);
+
+        controller.abort();
+        await abandoned;
+
+        expect(jest.getTimerCount()).toBe(timersBefore);
+        jest.advanceTimersByTime(300);
+        expect(pool.getStats()).toMatchObject({ abandoned: 1, refused: { timedOut: 0 } });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('is not queued when its signal aborted already', async () => {
+      const { pool } = await fullPool();
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(pool.acquire(pathB, {}, 1, controller.signal)).rejects.toBeInstanceOf(WorkerAbandonedError);
+      expect(pool.getStats()).toMatchObject({ waiting: 0, abandoned: 1 });
+    });
+
+    it('ignores the signal once it got its worker', async () => {
+      const { pool, first } = await fullPool();
+      const controller = new AbortController();
+      const waiting = pool.acquire(pathB, {}, 1, controller.signal);
+      first.release();
+      await waiting;
+
+      controller.abort();
+
+      expect(pool.getStats().abandoned).toBe(0);
     });
 
     it('is refused at once when too many wait already, and the ones that wait are not affected', async () => {

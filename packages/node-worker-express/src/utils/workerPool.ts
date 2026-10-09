@@ -7,6 +7,7 @@ import type { Channel } from './createChannel';
 import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
+import WorkerAbandonedError from './workerAbandonedError';
 import type { WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const pools: WorkerPool[] = [];
@@ -89,6 +90,7 @@ class WorkerPool {
   private readonly maxQueue: number;
   /** how many requests were refused because too many waited, and how many gave up after waiting too long, since the pool started */
   private refused = { queueFull: 0, timedOut: 0 };
+  private abandoned = 0;
 
   constructor({
     overallLimit = 0,
@@ -320,11 +322,17 @@ class WorkerPool {
   };
 
   /** the request waits in line for a worker, for as long as the acquire timeout, unless too many wait already */
-  private enqueue = (workerPath: string, options: SpawnOptions, limit: number) =>
+  private enqueue = (workerPath: string, options: SpawnOptions, limit: number, signal?: AbortSignal) =>
     new Promise<WorkerLease>((resolve, reject) => {
       if (this.maxQueue > 0 && this.queue.length >= this.maxQueue) {
         this.refused.queueFull += 1;
         reject(new WorkerBusyError(workerPath, `${this.queue.length} requests wait for a worker for ${workerPath} already.`));
+        return;
+      }
+
+      if (signal?.aborted) {
+        this.abandoned += 1;
+        reject(new WorkerAbandonedError(workerPath));
         return;
       }
 
@@ -333,9 +341,23 @@ class WorkerPool {
         const index = this.queue.indexOf(waiter);
         if (index >= 0) this.queue.splice(index, 1);
         this.refused.timedOut += 1;
-        reject(new WorkerBusyError(workerPath, `No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`));
+        waiter.reject(new WorkerBusyError(workerPath, `No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`));
       }, this.acquireTimeout);
-      const waiter: Waiter = { workerPath, options, limit, resolve, reject, timer };
+      const onAbort = () => {
+        clearTimeout(timer);
+        const index = this.queue.indexOf(waiter);
+        if (index >= 0) this.queue.splice(index, 1);
+        this.abandoned += 1;
+        reject(new WorkerAbandonedError(workerPath));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const settle =
+        <T>(settleWaiter: (value: T) => void) =>
+        (value: T) => {
+          signal?.removeEventListener('abort', onAbort);
+          settleWaiter(value);
+        };
+      const waiter: Waiter = { workerPath, options, limit, resolve: settle(resolve), reject: settle(reject), timer };
       this.queue.push(waiter);
     });
 
@@ -348,6 +370,8 @@ class WorkerPool {
     waiting: this.queue.length,
     /** requests that were refused because too many waited, and requests that gave up after waiting too long, since the pool started */
     refused: { ...this.refused },
+    /** requests that stopped waiting because their client went away, since the pool started */
+    abandoned: this.abandoned,
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
     failing: Object.fromEntries(
       Array.from(this.failures.entries()).map(([workerPath, { count }]) => [workerPath, { crashes: count, retryInMs: this.getBackoff(workerPath) }])
@@ -365,11 +389,12 @@ class WorkerPool {
    * A limit of 0 (or less) keeps a single worker for the path.
    * When none could be started, as the overall limit is used up by other paths, the request waits in line. Rejects with a WorkerBusyError when too many wait already
    * or when it waited for the acquire timeout, and with a WorkerUnavailableError when the workers of the path keep crashing.
+   * A request that waits leaves the line when the signal aborts, and rejects with a WorkerAbandonedError.
    */
-  acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0): Promise<WorkerLease> => {
+  acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0, signal?: AbortSignal): Promise<WorkerLease> => {
     const worker = this.tryGetWorker(workerPath, options, limit);
 
-    return worker === undefined ? this.enqueue(workerPath, options, limit) : this.createLease(worker);
+    return worker === undefined ? this.enqueue(workerPath, options, limit, signal) : this.createLease(worker);
   };
 }
 

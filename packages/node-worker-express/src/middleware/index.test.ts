@@ -160,7 +160,7 @@ describe('workerMiddleware', () => {
 
     await fetch(`${baseUrl}/`);
 
-    expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7);
+    expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7, expect.any(AbortSignal));
   });
 
   describe('messages to the worker', () => {
@@ -574,7 +574,12 @@ describe('workerMiddleware', () => {
 
       await send([Buffer.from('hello')], { requestPath: '/plain/missing' });
 
-      expect(FakePool.last.acquire).toHaveBeenCalledWith(expect.stringMatching(/staticWorker\.js$/), expect.anything(), expect.anything());
+      expect(FakePool.last.acquire).toHaveBeenCalledWith(
+        expect.stringMatching(/staticWorker\.js$/),
+        expect.anything(),
+        expect.anything(),
+        expect.any(AbortSignal)
+      );
       expect(messagesOf(lease, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('hasBody');
     });
   });
@@ -644,7 +649,12 @@ describe('workerMiddleware', () => {
 
       await fetch(`${baseUrl}/plain/missing`);
 
-      expect(FakePool.last.acquire).toHaveBeenCalledWith(expect.stringMatching(/staticWorker\.js$/), expect.anything(), expect.anything());
+      expect(FakePool.last.acquire).toHaveBeenCalledWith(
+        expect.stringMatching(/staticWorker\.js$/),
+        expect.anything(),
+        expect.anything(),
+        expect.any(AbortSignal)
+      );
     });
   });
 
