@@ -1,3 +1,5 @@
+import { ChannelMaxFrameLength } from '../constants';
+
 /**
  * The wire format of the channel between the server and its workers.
  *
@@ -57,7 +59,7 @@ export class FrameDecoder<T extends WireMessage> {
   /** how many bytes the frame in progress has, once known */
   private needed = 0;
 
-  constructor(private readonly onMessage: (message: T) => void) {}
+  constructor(private readonly onMessage: (message: T) => void, private readonly maxFrameLength = ChannelMaxFrameLength) {}
 
   /** throws when a frame cannot be understood, the stream is not to be trusted after that */
   push(chunk: Buffer) {
@@ -75,6 +77,9 @@ export class FrameDecoder<T extends WireMessage> {
 
     while (buffer.length - offset >= 4) {
       const frameLength = buffer.readUInt32LE(offset);
+      if (frameLength > this.maxFrameLength) {
+        throw new Error(`A frame of ${frameLength} bytes is longer than the ${this.maxFrameLength} allowed.`);
+      }
       if (buffer.length - offset - 4 < frameLength) {
         this.needed = 4 + frameLength;
         break;

@@ -1,7 +1,11 @@
 import crypto from 'crypto';
 import net from 'net';
+import { ChannelMaxFrameLength as maxFrameLength } from '../constants';
 import createChannel from './createChannel';
 import type { WireMessage } from './frames';
+
+// a limit that a test can go over without allocating half a gigabyte
+jest.mock('../constants', () => ({ ...jest.requireActual('../constants'), ChannelMaxFrameLength: 1024 * 1024 }));
 
 /** the two ends of a connected socket pair, like the one to a worker */
 const connect = async () => {
@@ -103,10 +107,34 @@ describe('createChannel', () => {
     const write = jest.spyOn(ends.client, 'write');
     ends.client.destroy();
 
-    expect(() => left.send({ type: 'ACK', requestId: 'a' })).not.toThrow();
+    expect(left.send({ type: 'ACK', requestId: 'a' })).toBe(false);
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it('does not send a message above the limit of a frame, and goes on with the next one', async () => {
+    const { ends, left, received } = await open();
+    const write = jest.spyOn(ends.client, 'write');
+
+    expect(left.send({ type: 'RESPONSE', requestId: 'big', event: { body: Buffer.alloc(maxFrameLength) } })).toBe(false);
+    expect(write).not.toHaveBeenCalled();
+    expect(left.send({ type: 'RESPONSE', requestId: 'small', event: { body: Buffer.alloc(maxFrameLength / 2) } })).toBe(true);
+
+    await until(() => received.right.length === 1);
+    expect(received.right[0].requestId).toBe('small');
+  });
+
+  it('closes the stream on the length of a frame above the limit, without waiting for its bytes', async () => {
+    const { ends, received } = await open();
+    const closed = new Promise((resolve) => ends.server.once('close', resolve));
+
+    const length = Buffer.alloc(4);
+    length.writeUInt32LE(maxFrameLength + 1);
+    ends.client.write(length);
+
+    await closed;
+    expect(received.right).toHaveLength(0);
   });
 
   it('closes the stream instead of going on after garbage', async () => {

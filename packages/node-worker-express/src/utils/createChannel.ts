@@ -1,9 +1,11 @@
+import { ChannelMaxFrameLength } from '../constants';
 import { encodeMessage, FrameDecoder } from './frames';
 import type { Duplex } from 'stream';
 import type { WireMessage } from './frames';
 
 export interface Channel<Outgoing extends WireMessage> {
-  send: (message: Outgoing) => void;
+  /** false when the message was not written: the stream is gone, or the message does not fit into a frame, which the other end would close the channel for */
+  send: (message: Outgoing) => boolean;
 }
 
 /**
@@ -11,6 +13,9 @@ export interface Channel<Outgoing extends WireMessage> {
  *
  * Messages written during the same turn of the event loop leave in a single write. Under load this saves more than half of the system calls
  * and of the time spent in them, and costs at most the rest of the current loop iteration.
+ *
+ * A write does not wait for the stream to drain. What waits in the stream is bounded by the requests in flight instead: each gets one response,
+ * and streamed bodies and websocket messages wait for acknowledgements. Pausing the reading while the writes wait would let both ends wait for each other.
  */
 export default function createChannel<Incoming extends WireMessage, Outgoing extends WireMessage>(
   socket: Duplex,
@@ -37,14 +42,19 @@ export default function createChannel<Incoming extends WireMessage, Outgoing ext
 
   return {
     send: (message) => {
-      if (socket.destroyed || !socket.writable) return;
+      if (socket.destroyed || !socket.writable) return false;
+
+      const parts = encodeMessage(message);
+      // the frame starts with its length
+      if (parts[0].readUInt32LE(0) > ChannelMaxFrameLength) return false;
 
       if (!corked) {
         corked = true;
         socket.cork();
         setImmediate(uncork);
       }
-      encodeMessage(message).forEach((part) => socket.write(part));
+      parts.forEach((part) => socket.write(part));
+      return true;
     },
   };
 }
