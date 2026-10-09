@@ -4,6 +4,8 @@ export interface SummaryOptions {
   rate?: number;
   routes?: Record<string, number>;
   checks?: Record<string, number>;
+  /** requests per second of a route, which are part of the rate */
+  routeRates?: Record<string, number>;
   connecting?: number;
   overall?: number;
 }
@@ -15,12 +17,20 @@ export interface CpuSummaryOptions {
 }
 
 /** a summary with the throughput, the p95 per route and whether the checks of the routes passed */
-export const summary = ({ rate = 4000, routes = { worker: 6, static: 7 }, checks = {}, connecting = 100, overall = 8 }: SummaryOptions = {}): K6Summary => ({
+export const summary = ({
+  rate = 4000,
+  routes = { worker: 6, static: 7 },
+  checks = {},
+  routeRates = {},
+  connecting = 100,
+  overall = 8,
+}: SummaryOptions = {}): K6Summary => ({
   metrics: {
     http_reqs: { rate },
     http_req_duration: { 'p(95)': overall },
     ws_connecting: { 'p(95)': connecting },
     ...Object.fromEntries(Object.entries(routes).map(([route, p95]) => [`http_req_duration{route:${route}}`, { 'p(95)': p95 }])),
+    ...Object.fromEntries(Object.entries(routeRates).map(([route, routeRate]) => [`http_reqs{route:${route}}`, { rate: routeRate }])),
     ...Object.fromEntries(Object.entries(checks).map(([route, value]) => [`checks{route:${route}}`, { value }])),
   },
 });
