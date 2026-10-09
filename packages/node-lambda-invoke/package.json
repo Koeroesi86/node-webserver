@@ -24,7 +24,7 @@
   "dependencies": {
     "moment": "^2.24.0",
     "rimraf": "^2.6.3",
-    "uuid": "^3.3.2"
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
