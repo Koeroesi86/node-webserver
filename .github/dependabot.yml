@@ -6,6 +6,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # a release is only proposed once it has been out for a week, so that a compromised one is likely to be pulled before
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       # minor and patch updates in one pull request each, as every change in a package folder publishes a new version of it (see tools/README.md#versions)
@@ -22,6 +25,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ['*']
