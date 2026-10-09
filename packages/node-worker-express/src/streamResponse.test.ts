@@ -1,6 +1,7 @@
+import net from 'net';
 import { Readable } from 'stream';
 import streamResponse from './streamResponse';
-import type { ResponseEvent } from './types';
+import type { ResponseCallback, ResponseEvent } from './types';
 
 const bodyOf = (parts: ResponseEvent[]) => Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer));
 
@@ -150,7 +151,7 @@ describe('streamResponse', () => {
 
     const completed = await streamResponse(
       (part) => {
-        const size = Buffer.isBuffer(part.body) ? part.body.length : 0;
+        const size = 'body' in part && Buffer.isBuffer(part.body) ? part.body.length : 0;
         outstanding += size;
         total += size;
         peak = Math.max(peak, outstanding);
@@ -222,5 +223,75 @@ describe('streamResponse', () => {
     await streamResponse((part) => void parts.push(part), {}, generate('a', 'b', 'c', 'd', 'e', 'f'));
 
     expect(parts).toHaveLength(7);
+  });
+
+  describe('with the connection of the client', () => {
+    let server: net.Server;
+    let client: net.Socket;
+    let connection: net.Socket;
+
+    beforeEach(async () => {
+      server = net.createServer();
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const accepted = new Promise<net.Socket>((resolve) => server.once('connection', resolve));
+      client = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+      connection = await accepted;
+    });
+
+    afterEach(() => {
+      client.destroy();
+      return new Promise((resolve) => server.close(resolve));
+    });
+
+    const read = (socket: net.Socket) =>
+      new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+        socket.once('close', () => resolve(Buffer.concat(chunks).toString()));
+      });
+    /** the server hands the connection over when asked, the parts are collected */
+    const handingOver = () => {
+      const parts: Array<Parameters<ResponseCallback>[0]> = [];
+      const callback: ResponseCallback = (part) => {
+        parts.push(part);
+        return Promise.resolve('handOff' in part ? connection : true);
+      };
+
+      return { parts, callback };
+    };
+
+    it('asks for the connection for a response with a length, writes the body to it and closes it, then ends the response', async () => {
+      const received = read(client);
+      const { parts, callback } = handingOver();
+
+      const completed = await streamResponse(callback, { headers: { 'content-length': '13' } }, generate('one ', Buffer.from('two '), 'three'));
+
+      expect(completed).toBe(true);
+      expect(await received).toBe('one two three');
+      expect(parts).toEqual([
+        { statusCode: 200, headers: { 'content-length': '13' }, handOff: true },
+        { statusCode: 200, headers: { 'content-length': '13' }, emit: true, body: null },
+      ]);
+    });
+
+    it('does not ask for the connection without a length', async () => {
+      const { parts, callback } = handingOver();
+
+      await streamResponse(callback, {}, generate('one'));
+
+      expect(parts.some((part) => 'handOff' in part)).toBe(false);
+    });
+
+    it('stops reading the source when the client goes away', async () => {
+      const { callback } = handingOver();
+      const readable = new Readable({ read() {} });
+      readable.push('first');
+      client.on('data', () => client.destroy());
+
+      const completed = await streamResponse(callback, { headers: { 'Content-Length': '1000' } }, readable);
+
+      expect(completed).toBe(false);
+      expect(readable.destroyed).toBe(true);
+    });
   });
 });

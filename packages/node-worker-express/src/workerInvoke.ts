@@ -1,7 +1,17 @@
 import net from 'net';
 import { Readable } from 'stream';
 import { ChannelMaxFrameLength, Protocols, WORKER_EVENT } from './constants';
-import { InvokableWorker, RequestBodyEvent, RequestEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WorkerRequestEvent, WSFrameEvent } from './types';
+import {
+  HandOffEvent,
+  InvokableWorker,
+  RequestBodyEvent,
+  RequestEvent,
+  ResponseEvent,
+  WorkerInputEvent,
+  WorkerOutputEvent,
+  WorkerRequestEvent,
+  WSFrameEvent,
+} from './types';
 import createChannel from './utils/createChannel';
 import type { ServerMetrics } from './utils/metrics';
 
@@ -36,6 +46,37 @@ const channel = createChannel<WorkerInputEvent, WorkerOutputEvent>(channelSocket
 const toMessage = ({ isBase64Encoded, body, ...rest }: ResponseEvent) => ({
   ...rest,
   body: typeof body === 'string' ? Buffer.from(body, isBase64Encoded ? 'base64' : 'utf8') : body,
+});
+
+/** the requests that asked for the connection of their client, until the server sends it or refuses */
+const handOffs = new Map<string, (socket?: net.Socket) => void>();
+
+/** resolves with the connection of the client, or with nothing when the server keeps it and the body has to be streamed through it */
+const requestHandOff = (requestId: string, { statusCode, headers }: HandOffEvent) =>
+  new Promise<net.Socket | undefined>((resolve) => {
+    handOffs.set(requestId, (socket) => {
+      handOffs.delete(requestId);
+      resolve(socket);
+    });
+    channel.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, event: { statusCode, headers } });
+  });
+
+// the connections arrive over the IPC channel of node, which can carry them, the socket pair cannot
+process.on('message', (message: unknown, socket: unknown) => {
+  if (typeof message !== 'object' || message === null || !('requestId' in message) || typeof message.requestId !== 'string') return;
+  if (!(socket instanceof net.Socket)) return;
+
+  const take = handOffs.get(message.requestId);
+  if (!take) {
+    // nobody waits for it any more, the request was aborted in the meantime
+    socket.destroy();
+    return;
+  }
+
+  const timeout = 'timeout' in message && typeof message.timeout === 'number' ? message.timeout : 0;
+  // the server does not watch the connection any more, a client that stops taking the body would hold the worker forever
+  if (timeout > 0) socket.setTimeout(timeout, () => socket.destroy());
+  take(socket);
 });
 
 /** the streamed request bodies that are still coming in, per request */
@@ -164,6 +205,7 @@ type MessageOf<Type extends WORKER_EVENT> = Extract<WorkerInputEvent, { type: Ty
 
 /** the request is over for the worker: what it waits for will not come, and the rest of the request body is dropped */
 const abortRequest = (requestId: string) => {
+  handOffs.get(requestId)?.();
   uploads.get(requestId)?.stream.destroy(new Error('The request was aborted.'));
   const stream = streams.get(requestId);
   if (!stream) return;
@@ -220,8 +262,10 @@ const sendResponsePart = (requestId: string, stream: Stream, responseEvent: Resp
 };
 
 /** what the worker answers a request with: the response, a part of it, or a message to a websocket client */
-const createResponseCallback = (requestId: string, stream: Stream, onResponded: () => void) => (responseEvent: ResponseEvent | WSFrameEvent) => {
+const createResponseCallback = (requestId: string, stream: Stream, onResponded: () => void) => (responseEvent: ResponseEvent | HandOffEvent | WSFrameEvent) => {
   onResponded();
+
+  if ('handOff' in responseEvent) return stream.aborted ? Promise.resolve(undefined) : requestHandOff(requestId, responseEvent);
 
   if ('sendWsMessage' in responseEvent) return sendWsMessage(requestId, stream, responseEvent);
 
@@ -289,7 +333,10 @@ function closeConnection(requestId: string, request: RequestEvent | undefined) {
   closeWsConnection(requestId);
   invoke(
     toWorkerEvent({ ...request, closed: true }, requestId, createEmptyBody()),
-    (responseEvent: ResponseEvent) => {
+    (responseEvent: ResponseEvent | HandOffEvent) => {
+      // the connection is gone, there is nothing to hand over
+      if ('handOff' in responseEvent) return;
+
       channel.send({
         type: WORKER_EVENT.WS_CONNECTION_CLOSE_ACKNOWLEDGE,
         requestId,
@@ -312,6 +359,9 @@ function messageListener(message: WorkerInputEvent) {
       break;
     case WORKER_EVENT.METRICS:
       metricsWaiting.get(message.requestId)?.shift()?.(message.event);
+      break;
+    case WORKER_EVENT.RESPONSE_HANDOFF_REFUSE:
+      handOffs.get(message.requestId)?.();
       break;
     case WORKER_EVENT.REQUEST_ABORT:
       abortRequest(message.requestId);

@@ -1,6 +1,25 @@
+import { Socket } from 'node:net';
+import { pipeline } from 'node:stream/promises';
 import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from './types';
 
 const proceeds = (result: unknown) => result !== false;
+
+/** what a client that goes away or a closed connection fails a write with, which is not an error of the source */
+const connectionErrors = ['ERR_STREAM_PREMATURE_CLOSE', 'ECONNRESET', 'EPIPE'];
+
+/** the body goes straight to the connection of the client, with the backpressure of the socket, which is closed after it */
+const writeToSocket = (socket: Socket, body: StreamBody) =>
+  pipeline(body, socket).then(
+    () => {
+      socket.destroySoon();
+      return true;
+    },
+    (error: unknown) => {
+      if (!(error instanceof Error && 'code' in error && connectionErrors.includes(`${error.code}`))) console.error(error);
+      socket.destroy();
+      return false;
+    }
+  );
 
 /** leaving the loop early makes an async generator run its cleanup, a stream has to be told */
 const destroyBody = (body: StreamBody) => {
@@ -15,6 +34,9 @@ const destroyBody = (body: StreamBody) => {
  * Resolves with `true` when the whole body was sent and `false` when the client went away first. An error of the source ends the response early,
  * which the client sees as a truncated one, as the headers are out by then.
  *
+ * A response with a `Content-Length` header asks the server for the connection of the client first. When the server hands it over, the worker writes the body to the client
+ * itself, and the bytes do not pass through the server, which then is not the limit of how fast big files are sent. Otherwise the body is streamed through the server as described.
+ *
  * Use it from a worker: `await streamResponse(callback, { headers: { 'Content-Type': 'text/plain' } }, someReadableOrAsyncGenerator)`
  */
 async function streamResponse(
@@ -27,6 +49,14 @@ async function streamResponse(
   let inFlight = 0;
   const send = (part: Partial<ResponseEvent>) => Promise.resolve(callback({ statusCode, headers, emit: true, ...part }));
   let completed = true;
+
+  const hasLength = Object.keys(headers).some((name) => name.toLowerCase() === 'content-length');
+  const socket = hasLength ? await callback({ statusCode, headers, handOff: true }) : undefined;
+  if (socket instanceof Socket) {
+    const sent = await writeToSocket(socket, body);
+    // the server waits for the end to free the worker
+    return proceeds(await send({ body: null })) && sent;
+  }
   // the oldest part is awaited until both the number of parts and the bytes in flight are within the window, false when the client went away
   const drain = async () => {
     while (written.length > 0 && (written.length >= window || inFlight >= windowBytes)) {

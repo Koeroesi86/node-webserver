@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import { Protocols, WORKER_EVENT } from '../constants';
 import type { MiddlewareOptions, RequestEvent } from '../types';
 import createBodyForwarder from './create-body-forwarder';
+import createResponseHandOff from './create-response-hand-off';
+import isHandedOff from './is-handed-off';
 import createResponseTimeout from './create-response-timeout';
 import createWorkerMessageListener from './create-worker-message-listener';
 import createWsConnection from './create-ws-connection';
@@ -22,7 +24,7 @@ interface ServeRequestParams {
   releaseSlot: () => void;
   options: Pick<
     MiddlewareOptions,
-    'limitRequestBody' | 'limitResponseTimeout' | 'limitWebSocketMessage' | 'webSocketPingInterval' | 'limitWebSocketIdleTimeout'
+    'handOffResponses' | 'limitRequestBody' | 'limitResponseTimeout' | 'limitWebSocketMessage' | 'webSocketPingInterval' | 'limitWebSocketIdleTimeout'
   >;
 }
 
@@ -70,12 +72,25 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     onProgress: responseTimeout.arm,
   });
 
+  const handOff = createResponseHandOff({
+    request,
+    response,
+    lease,
+    requestId,
+    streamsBody,
+    minimumLength: options.handOffResponses,
+    timeout: options.limitResponseTimeout,
+    onHandedOver: responseTimeout.clear,
+    onFailed: () => failRequest(502, 'Worker could not take the connection.'),
+  });
+
   const messageListener = createWorkerMessageListener({
     request,
     response,
     lease,
     requestId,
     webSocket,
+    handOff,
     armResponseTimeout: responseTimeout.arm,
     onBodyPartTaken: bodyForwarder.acknowledge,
     cleanup: () => cleanupConnection(),
@@ -95,7 +110,9 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
 
   function cleanupConnection() {
     responseTimeout.clear();
-    if (event.protocol === Protocols.http && !response.writableFinished) {
+    // the response closed as the connection was handed over, the worker is still writing to it
+    if (handOff.isActive()) return;
+    if (event.protocol === Protocols.http && !response.writableFinished && !isHandedOff(response)) {
       // a worker that is streaming the response can stop
       lease.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
     }
@@ -119,7 +136,11 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     }
   }
 
-  lease.subscribe(requestId, messageListener, () => failRequest(502, 'Worker exited.'));
+  lease.subscribe(requestId, messageListener, () => {
+    // a worker that dies while it writes leaves the client with a truncated body, as when the body passes through here
+    handOff.reset();
+    failRequest(502, 'Worker exited.');
+  });
   responseTimeout.arm();
   lease.send({
     type: WORKER_EVENT.REQUEST,
