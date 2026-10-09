@@ -4,7 +4,7 @@ import type { ServerResponse } from 'http';
 export type StatusClass = '1xx' | '2xx' | '3xx' | '4xx' | '5xx';
 
 /** a snapshot of the server, for health and metrics endpoints */
-export interface ServerMetrics {
+export type ServerMetrics = {
   uptimeSeconds: number;
   memory: { rss: number; heapTotal: number; heapUsed: number; external: number };
   /** how late the event loop of the server ran in the time since the metrics were read the last time, in milliseconds. All zero the first time. */
@@ -13,7 +13,7 @@ export interface ServerMetrics {
   requests: { total: number; active: number; status: Record<StatusClass, number> };
   /** what other parts of the server registered, by name: worker pools, connections, lambdas */
   sources: Record<string, unknown>;
-}
+};
 
 const sources = new Map<string, () => unknown>();
 

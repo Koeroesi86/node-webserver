@@ -1,10 +1,13 @@
 import { v4 as uuid } from 'uuid';
 import path from 'path';
+import { Duplex } from 'stream';
 import Worker from '@koeroesi86/node-worker';
+import createChannel from './createChannel';
+import type { Channel } from './createChannel';
 import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
-import type { WorkerOutputEvent } from '../types';
+import type { WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const pools: WorkerPool[] = [];
 
@@ -41,6 +44,8 @@ export type SpawnOptions = object | (() => object);
 /** A worker handed out for one request, it counts as load for the worker until it is released. */
 export interface WorkerLease {
   readonly worker: Worker;
+  /** sends a message to the worker */
+  send: (message: WorkerInputEvent) => void;
   /** `onMessage` receives the messages of the worker for the request, `onExit` is called when the worker dies before the lease is released */
   subscribe: (requestId: string, onMessage: (message: WorkerOutputEvent) => void, onExit: (code: number | null) => void) => void;
   /** frees the worker for other requests, safe to call more than once */
@@ -69,6 +74,7 @@ class WorkerPool {
   protected readonly onExit: (code: number, workerPath: string, id: string) => void;
   protected readonly workers: Map<string, Map<string, Worker>>;
   private readonly leases: Map<Worker, Set<LeaseState>>;
+  private readonly channels: Map<Worker, Channel<WorkerInputEvent>>;
   private readonly subscriptions: Map<string, LeaseState>;
   private readonly cursors: Map<string, number>;
   /** the workers that crashed in a row per path, and when another one may be started */
@@ -104,6 +110,7 @@ class WorkerPool {
     this.stopping = new WeakSet();
     this.workers = new Map();
     this.leases = new Map();
+    this.channels = new Map();
     this.subscriptions = new Map();
     this.cursors = new Map();
     pools.push(this);
@@ -178,13 +185,26 @@ class WorkerPool {
 
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = uuid();
-    const instance = new Worker(createWorkerCommand(workerPath), typeof options === 'function' ? options() : options);
+    // the fourth stdio is the socket pair the messages go through, in place of the IPC channel of node that sends JSON.
+    // 'overlapped' is a plain pipe except on Windows, where the worker could not read and write it at the same time otherwise
+    const instance = new Worker(createWorkerCommand(workerPath), {
+      ...(typeof options === 'function' ? options() : options),
+      stdio: ['pipe', 'pipe', 'pipe', 'overlapped'],
+    });
+    const socket = instance.instance.stdio[3];
+    if (!(socket instanceof Duplex)) {
+      instance.terminate();
+      throw new Error(`The worker ${workerPath} has no channel.`);
+    }
     const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
     this.workers.set(workerPath, workersForPath);
     this.leases.set(instance, new Set());
 
     // a single listener dispatches the messages of all requests of the worker
-    instance.addEventListener('message', (message: WorkerOutputEvent) => this.subscriptions.get(message?.requestId)?.onMessage?.(message));
+    this.channels.set(
+      instance,
+      createChannel<WorkerOutputEvent, WorkerInputEvent>(socket, (message) => this.subscriptions.get(message.requestId)?.onMessage?.(message))
+    );
 
     // once for the worker, not for every request it gets, and from the start, so that nothing it writes waits unread in the pipe
     if (this.onStdout) instance.instance.stdout?.on('data', this.onStdout);
@@ -206,6 +226,7 @@ class WorkerPool {
       const states = Array.from(this.leases.get(instance) ?? []);
       workersForPath.delete(id);
       this.leases.delete(instance);
+      this.channels.delete(instance);
       states.forEach((state) => {
         this.subscriptions.delete(state.requestId);
         state.onExit?.(code);
@@ -259,6 +280,7 @@ class WorkerPool {
 
     return {
       worker: leased,
+      send: (message) => this.channels.get(leased)?.send(message),
       subscribe: (requestId, onMessage, onExit) => {
         Object.assign(state, { requestId, onMessage, onExit });
         this.subscriptions.set(requestId, state);

@@ -39,13 +39,15 @@ describe('staticWorker', () => {
     new Promise<ResponseEvent>((resolve) => {
       staticWorker(event(requestPath, httpMethod, headers), resolve);
     });
-  const bodyOf = ({ body, isBase64Encoded }: ResponseEvent) => Buffer.from(body ?? '', isBase64Encoded ? 'base64' : 'utf8').toString();
+  const bodyOf = ({ body }: ResponseEvent) => `${body ?? ''}`;
 
   it('serves a file', async () => {
     const response = await request('/index.html');
 
     expect(response.statusCode).toBe(200);
     expect(bodyOf(response)).toBe('<h1>home</h1>');
+    // the bytes of the file as they are, not a base64 string that the server would have to decode
+    expect(Buffer.isBuffer(response.body)).toBe(true);
     expect(response.headers).toMatchObject({ 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': '13' });
   });
 
@@ -140,7 +142,7 @@ describe('staticWorker', () => {
       expect(parts.every(({ emit }) => emit)).toBe(true);
       expect(parts[0]).toMatchObject({ statusCode: 200, headers: { 'Content-Length': String(big.length) } });
       expect(parts[parts.length - 1].body).toBeNull();
-      expect(Buffer.concat(parts.slice(0, -1).map(({ body }) => Buffer.from(body, 'base64')))).toEqual(big);
+      expect(Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer))).toEqual(big);
     });
 
     it('does not send more parts than the window allows before they are acknowledged', async () => {

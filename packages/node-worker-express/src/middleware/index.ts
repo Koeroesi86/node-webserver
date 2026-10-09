@@ -45,11 +45,10 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   });
   // a function, as copying the environment is costly and only needed when a worker is started, not for every request
   const workerOptions = () => ({
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     env: { ...process.env, ...config.env },
     cwd: config.cwd,
   });
-  const staticWorkerOptions = { cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe', 'ipc'] };
+  const staticWorkerOptions = { cwd: process.cwd() };
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
   }
@@ -113,7 +112,6 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       const lease = await (isWorker
         ? workerPool.acquire(indexPath, workerOptions, limitPerPath)
         : workerPool.acquire(config.staticWorker, staticWorkerOptions, limitPerPath));
-      const { worker } = lease;
 
       const requestId = createRequestId();
 
@@ -129,7 +127,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
         firstReceived = true;
 
-        worker.postMessage({
+        lease.send({
           type: WORKER_EVENT.WS_MESSAGE_RECEIVE,
           requestId,
           event: { ...event, frame },
@@ -188,20 +186,20 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
           return;
         }
 
-        worker.postMessage({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: chunk.toString('base64'), isBase64Encoded: true } });
+        lease.send({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: chunk } });
         unacknowledged += 1;
         armResponseTimeout();
         // the worker takes the parts at its pace, so a slow worker slows the upload down instead of filling the memory
         if (unacknowledged >= RequestBodyWindow) request.pause();
       };
 
-      const forwardBodyEnd = () => worker.postMessage({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: null, isBase64Encoded: false } });
+      const forwardBodyEnd = () => lease.send({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: null } });
 
       const messageListener = (responseEvent: WorkerOutputEvent) => {
         armResponseTimeout();
 
         if (responseEvent.type === WORKER_EVENT.METRICS_REQUEST) {
-          worker.postMessage({ type: WORKER_EVENT.METRICS, requestId, event: getServerMetrics() });
+          lease.send({ type: WORKER_EVENT.METRICS, requestId, event: getServerMetrics() });
         }
 
         if (responseEvent.type === WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE) {
@@ -212,9 +210,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         // a plain response is not acknowledged: the worker does not wait for it, and every message is a write to the pipe of the worker
         if (responseEvent.type === WORKER_EVENT.RESPONSE) {
           const { event } = responseEvent;
-          const bufferEncoding = event.isBase64Encoded ? 'base64' : 'utf8';
-
-          const body = Buffer.from(event.body, bufferEncoding);
+          const body = event.body ?? Buffer.alloc(0);
           // the size is known, which spares the client a chunked answer and lets a compression middleware see how big it is
           const hasLength = Object.keys(event.headers ?? {}).some((name) => ['content-length', 'transfer-encoding'].includes(name.toLowerCase()));
           response.writeHead(event.statusCode, hasLength ? event.headers : { ...event.headers, 'Content-Length': body.length });
@@ -224,7 +220,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
         if (responseEvent.type === WORKER_EVENT.RESPONSE_EMIT) {
           const { event } = responseEvent;
-          const acknowledge = () => worker.postMessage({ type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE, requestId });
+          const acknowledge = () => lease.send({ type: WORKER_EVENT.RESPONSE_ACKNOWLEDGE, requestId });
 
           if (!response.headersSent) {
             response.writeHead(event.statusCode, event.headers);
@@ -234,7 +230,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
             acknowledge();
           } else {
             // the worker waits for the acknowledgement before it goes on, so a slow client slows the worker down instead of filling the memory
-            response.write(Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'utf8'), () => {
+            response.write(event.body ?? Buffer.alloc(0), () => {
               acknowledge();
               armResponseTimeout();
             });
@@ -247,7 +243,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       };
 
       const requestCloseListener = () => {
-        worker.postMessage({
+        lease.send({
           type: WORKER_EVENT.WS_CONNECTION_CLOSE,
           requestId,
           event,
@@ -260,7 +256,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         clearTimeout(responseTimer);
         if (event.protocol === Protocols.http && !response.writableFinished) {
           // a worker that is streaming the response can stop
-          worker.postMessage({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
+          lease.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
         }
         lease.release();
         if (streamsBody) {
@@ -282,7 +278,7 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       lease.subscribe(requestId, messageListener, () => failRequest(502, 'Worker exited.'));
       armResponseTimeout();
-      worker.postMessage({
+      lease.send({
         type: WORKER_EVENT.REQUEST,
         requestId,
         event,

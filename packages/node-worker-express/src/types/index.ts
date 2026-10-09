@@ -32,8 +32,8 @@ export type WorkerRequestEvent = RequestEvent & {
   getMetrics: () => Promise<ServerMetrics>;
 };
 
-/** a part of a streamed request body, `null` ends it */
-export type RequestBodyEvent = { body: string | null; isBase64Encoded: boolean };
+/** a part of a streamed request body as it travels to the worker, `null` ends it */
+export type RequestBodyEvent = { body: Buffer | null };
 
 export type WorkerInputEvent =
   | {
@@ -52,11 +52,14 @@ export type WorkerInputEvent =
       event?: RequestEvent;
     };
 
+/** a response as it travels from the worker to the server: the body is raw bytes, and null ends a streamed response */
+export type ResponseMessage = Omit<ResponseEvent, 'body' | 'isBase64Encoded'> & { body?: Buffer | null };
+
 export type WorkerOutputEvent =
   | {
       type: Exclude<WORKER_EVENT, WORKER_EVENT.WS_MESSAGE_SEND>;
       requestId: string;
-      event?: ResponseEvent;
+      event?: ResponseMessage;
     }
   | {
       type: WORKER_EVENT.WS_MESSAGE_SEND;
@@ -67,9 +70,11 @@ export type WorkerOutputEvent =
 export type ResponseEvent = {
   statusCode: number;
   headers?: { [key: string]: string };
+  /** whether a string `body` is base64, ignored for a Buffer */
   isBase64Encoded?: boolean;
   emit?: boolean;
-  body?: string;
+  /** a Buffer is sent as it is, a string is utf8 unless `isBase64Encoded`, and null ends a streamed response */
+  body?: string | Buffer | null;
 };
 
 export type WSFrameEvent = {

@@ -71,7 +71,7 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   } else if (stats.size > StaticStreamThreshold) {
     await streamFile(fileName, response, callback);
   } else {
-    callback({ ...response, body: (await fs.readFile(fileName)).toString('base64'), isBase64Encoded: true });
+    callback({ ...response, body: await fs.readFile(fileName) });
   }
 };
 

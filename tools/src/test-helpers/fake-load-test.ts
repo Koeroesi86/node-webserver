@@ -68,7 +68,7 @@ export const createCheckout = (folder: string, side: string, rate: number) => {
   writeFileSync(join(directory, 'packages/node-webserver/dist/scripts/load-test-server.js'), fakeServer);
   writeFileSync(join(directory, 'side.txt'), `${side} ${rate}`);
   mkdirSync(join(directory, 'tools/src/k6'), { recursive: true });
-  ['example.ts', 'cpu.ts'].forEach((name) => writeFileSync(join(directory, 'tools/src/k6', name), ''));
+  ['example.ts', 'cpu.ts', 'binary.ts'].forEach((name) => writeFileSync(join(directory, 'tools/src/k6', name), ''));
 
   return directory;
 };

@@ -24,7 +24,7 @@ const runVisible = ([command, ...args]: string[]) =>
   });
 
 /**
- * Starts the example server, warms it up and runs the scenarios of the workflow against it (the example load test, then the CPU bound one on its own),
+ * Starts the example server, warms it up and runs the scenarios of the workflow against it (the example load test, then the CPU bound one and the one with big binary responses, each on its own),
  * with the installed k6 or else the official Docker image. Resolves with the exit code: 0 when the thresholds of both held.
  */
 export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner = chooseK6Runner() }: LoadTestOptions) => {
@@ -67,7 +67,9 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
     // on its own, as other traffic would take the cores that its workers need
     const cpu = await scenario('cpu.ts', []);
 
-    return example === 0 && cpu === 0 ? 0 : 1;
+    const binary = await scenario('binary.ts', []);
+
+    return example === 0 && cpu === 0 && binary === 0 ? 0 : 1;
   } finally {
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);

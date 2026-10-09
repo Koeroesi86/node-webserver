@@ -33,11 +33,12 @@ async function streamResponse(
 
   try {
     for await (const chunk of body) {
-      const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+      // a copy: the bytes leave with the next write to the channel, and the source may reuse its buffer by then
+      const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.concat([chunk]);
       // an empty part would look like the end for nobody, but it is a message that has to be acknowledged for nothing
       if (buffer.length === 0) continue;
 
-      written.push(send({ body: buffer.toString('base64'), isBase64Encoded: true }));
+      written.push(send({ body: buffer }));
       if (written.length >= window && !proceeds(await written.shift())) {
         completed = false;
         return false;
@@ -52,7 +53,7 @@ async function streamResponse(
   }
 
   // the last part, without a body, ends the response
-  written.push(send({ body: null, isBase64Encoded: false }));
+  written.push(send({ body: null }));
   const results = await Promise.all(written);
 
   return completed && results.every(proceeds);

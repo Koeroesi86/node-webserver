@@ -65,3 +65,18 @@ A client that goes away during the upload destroys the stream with an error. `li
 
 `await event.getMetrics()` in a worker gives a snapshot of the server (uptime, memory, event loop delay, request counts, worker pools) for health and metrics endpoints, see the README of `@koeroesi86/node-webserver`.
 In the server process `getServerMetrics()` gives the same, and `registerMetricsSource(name, read)` adds a source to it.
+
+## How the server and the workers talk
+
+The messages between the server and a worker do not use the IPC channel of node (`child_process` with `'ipc'`, which serializes every message as JSON and turns a binary body into text), but a socket pair that
+is the fourth stdio of the worker (a Unix domain socket, a named pipe on Windows). A message is a frame: the metadata as JSON and the body as raw bytes, so bodies are neither base64 encoded nor escaped,
+and the messages written in the same turn of the event loop leave in a single write. Nothing listens anywhere, so there is nothing else to connect to and no token to protect: only the two processes hold the descriptor.
+A worker that loses the server (the socket closes, also when the server was killed) exits.
+
+What this changes for you:
+
+- A worker file is called with `(event, callback)` as before, and answering works as before: `body` is a `string` (utf8, or base64 with `isBase64Encoded: true`) or a **`Buffer`**, which is sent as it is and is the cheapest for binary content.
+  `streamResponse` and the static files use buffers too.
+- **A worker script that uses `process.send` or `process.on('message')` to talk to the server breaks**, as the worker process has no IPC channel any more (`process.send` is `undefined`). Answer through `callback` instead.
+  The protocol between the processes is internal and may change, only `callback` and `event` are the interface of a worker.
+- The `stdio` option of `@koeroesi86/node-worker` is set by the middleware, a worker started through `middleware({ ... })` cannot pick its own.

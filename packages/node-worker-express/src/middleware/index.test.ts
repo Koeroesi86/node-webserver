@@ -59,20 +59,19 @@ describe('workerMiddleware', () => {
   const createLease = (react: (handlers: Handlers, requestId: string) => void) => {
     let handlers: Handlers;
     const stream = { on: jest.fn(), off: jest.fn() };
-
-    return {
-      worker: {
-        instance: { stdout: stream, stderr: stream },
-        postMessage: jest.fn(
-          (message: { type: string; requestId: string; event?: { headers: Record<string, string> } }) =>
-            message.type === WORKER_EVENT.REQUEST && setImmediate(() => react(handlers, message.requestId))
-        ),
-      },
+    const lease = {
+      worker: { instance: { stdout: stream, stderr: stream } },
+      send: jest.fn(
+        (message: { type: string; requestId: string; event?: { headers: Record<string, string> } }) =>
+          message.type === WORKER_EVENT.REQUEST && setImmediate(() => react(handlers, message.requestId))
+      ),
       subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
         handlers = { onMessage, onExit };
       }),
       release: jest.fn(),
     };
+
+    return lease;
   };
 
   /** every request gets this lease */
@@ -102,7 +101,7 @@ describe('workerMiddleware', () => {
       handlers.onMessage({
         type: WORKER_EVENT.RESPONSE,
         requestId,
-        event: { statusCode: 201, headers: { 'Content-Type': 'text/plain' }, body: 'hello', isBase64Encoded: false },
+        event: { statusCode: 201, headers: { 'Content-Type': 'text/plain' }, body: Buffer.from('hello') },
       })
     );
 
@@ -137,10 +136,7 @@ describe('workerMiddleware', () => {
   it('does not time out when the timeout is disabled', async () => {
     await start({ limitResponseTimeout: 0 });
     mockLease((handlers, requestId) =>
-      setTimeout(
-        () => handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: 'late', isBase64Encoded: false } }),
-        150
-      )
+      setTimeout(() => handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('late') } }), 150)
     );
 
     expect(await (await fetch(`${baseUrl}/`)).text()).toBe('late');
@@ -159,7 +155,7 @@ describe('workerMiddleware', () => {
   it('passes the limit per path on when acquiring a worker', async () => {
     await start({ limitPerPath: (workerPath: string) => (workerPath.endsWith('exampleWorker.js') ? 7 : 1) });
     mockLease((handlers, requestId) =>
-      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: '', isBase64Encoded: false } })
+      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
     );
 
     await fetch(`${baseUrl}/`);
@@ -171,20 +167,46 @@ describe('workerMiddleware', () => {
     it('sends the request and nothing else for a plain response, which the worker does not wait for', async () => {
       await start();
       const lease = mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: 'hello', isBase64Encoded: false } })
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('hello') } })
       );
 
       await (await fetch(`${baseUrl}/`)).text();
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(lease.worker.postMessage.mock.calls.map(([message]) => message.type)).toEqual([WORKER_EVENT.REQUEST]);
+      expect(lease.send.mock.calls.map(([message]) => message.type)).toEqual([WORKER_EVENT.REQUEST]);
+    });
+  });
+
+  describe('response bodies', () => {
+    const respondWith = (body?: Buffer) =>
+      mockLease((handlers, requestId) => handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body } }));
+
+    it('writes the bytes of a response as they are', async () => {
+      await start();
+      const bytes = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
+      respondWith(bytes);
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+      expect(response.headers.get('content-length')).toBe('256');
+    });
+
+    it('answers with an empty body when the worker sent none', async () => {
+      await start();
+      respondWith(undefined);
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('');
     });
   });
 
   describe('response headers', () => {
     const respondWith = (headers: Record<string, string | number>) =>
       mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers, body: 'hello', isBase64Encoded: false } })
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers, body: Buffer.from('hello') } })
       );
 
     it('adds the size of the body when the worker does not say it', async () => {
@@ -219,7 +241,7 @@ describe('workerMiddleware', () => {
     it('are made by a function, as copying the environment for every request is costly', async () => {
       await start({ env: { FROM_CONFIG: 'yes' }, cwd: '/somewhere' });
       mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: '', isBase64Encoded: false } })
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
       );
 
       await fetch(`${baseUrl}/`);
@@ -227,7 +249,6 @@ describe('workerMiddleware', () => {
       const options = FakePool.last.acquire.mock.calls[0][1];
       expect(typeof options).toBe('function');
       expect(options()).toMatchObject({
-        stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
         cwd: '/somewhere',
         env: expect.objectContaining({ FROM_CONFIG: 'yes', PATH: process.env.PATH }),
       });
@@ -239,7 +260,7 @@ describe('workerMiddleware', () => {
       await start({ staticWorker: '/static-worker.js' });
 
       expect(FakePool.last.warm).toHaveBeenCalledTimes(1);
-      expect(FakePool.last.warm).toHaveBeenCalledWith('/static-worker.js', expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe', 'ipc'] }));
+      expect(FakePool.last.warm).toHaveBeenCalledWith('/static-worker.js', expect.objectContaining({ cwd: process.cwd() }));
     });
 
     it('can be switched off', async () => {
@@ -251,7 +272,7 @@ describe('workerMiddleware', () => {
     it('asks for the static worker with the same options when a file is requested, so the started one is used', async () => {
       await start({ staticWorker: '/static-worker.js' });
       mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: '', isBase64Encoded: false } })
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
       );
 
       await fetch(`${baseUrl}/plain/file.txt`);
@@ -270,8 +291,7 @@ describe('workerMiddleware', () => {
         statusCode: 200,
         headers: { 'Content-Type': 'application/octet-stream' },
         emit: true,
-        body: body === null ? null : body.toString('base64'),
-        isBase64Encoded: body !== null,
+        body,
       },
     });
 
@@ -286,7 +306,7 @@ describe('workerMiddleware', () => {
       const response = await fetch(`${baseUrl}/`);
 
       expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.concat([bytes, bytes]));
-      const acknowledgements = lease.worker.postMessage.mock.calls.filter(([message]) => message.type === WORKER_EVENT.RESPONSE_ACKNOWLEDGE);
+      const acknowledgements = lease.send.mock.calls.filter(([message]) => message.type === WORKER_EVENT.RESPONSE_ACKNOWLEDGE);
       expect(acknowledgements).toHaveLength(3);
     });
 
@@ -305,20 +325,20 @@ describe('workerMiddleware', () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(lease.worker.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
+      expect(lease.send).toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
       expect(lease.release).toHaveBeenCalled();
     });
 
     it('does not tell the worker to stop after a complete response', async () => {
       await start();
       const lease = mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: 'done', isBase64Encoded: false } })
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('done') } })
       );
 
       await (await fetch(`${baseUrl}/`)).text();
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(lease.worker.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
+      expect(lease.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
     });
 
     it('ends a response early when the worker stops sending parts', async () => {
@@ -349,7 +369,7 @@ describe('workerMiddleware', () => {
   });
 
   describe('streamed request bodies', () => {
-    type Message = { type: string; requestId: string; event?: { body?: string | null; hasBody?: boolean } };
+    type Message = { type: string; requestId: string; event?: { body?: Buffer | null; hasBody?: boolean } };
 
     const until = async (condition: () => boolean) => {
       for (let waited = 0; !condition() && waited < 3000; waited += 5) {
@@ -364,10 +384,8 @@ describe('workerMiddleware', () => {
       let handlers: Handlers;
       const stream = { on: jest.fn(), off: jest.fn() };
       const lease = {
-        worker: {
-          instance: { stdout: stream, stderr: stream },
-          postMessage: jest.fn((message: Message) => setImmediate(() => answer(message, handlers))),
-        },
+        worker: { instance: { stdout: stream, stderr: stream } },
+        send: jest.fn((message: Message) => setImmediate(() => answer(message, handlers))),
         subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
           handlers = { onMessage, onExit };
         }),
@@ -379,12 +397,12 @@ describe('workerMiddleware', () => {
     };
 
     const messagesOf = (lease: ReturnType<typeof mockUploadLease>, type: string) =>
-      lease.worker.postMessage.mock.calls.map(([message]) => message).filter((message) => message.type === type);
+      lease.send.mock.calls.map(([message]) => message).filter((message) => message.type === type);
     const bytesOf = (lease: ReturnType<typeof mockUploadLease>) =>
       Buffer.concat(
         messagesOf(lease, WORKER_EVENT.REQUEST_BODY)
           .filter(({ event }) => event.body !== null)
-          .map(({ event }) => Buffer.from(event.body, 'base64'))
+          .map(({ event }) => event.body)
       );
     const acknowledge = (handlers: Handlers, requestId: string) => handlers.onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
     const respond = (handlers: Handlers, requestId: string, statusCode = 200, body = 'done') =>
@@ -565,7 +583,7 @@ describe('workerMiddleware', () => {
 
       await Promise.all(Array.from({ length: 20 }, () => fetch(`${baseUrl}/`)));
 
-      const ids = leases.flatMap(({ worker }) => worker.postMessage.mock.calls.map(([message]) => message.requestId));
+      const ids = leases.flatMap(({ send }) => send.mock.calls.map(([message]) => message.requestId));
       expect(ids).toHaveLength(20);
       expect(new Set(ids).size).toBe(20);
     });
@@ -664,7 +682,7 @@ describe('workerMiddleware', () => {
 
       await fetch(`${baseUrl}/`);
 
-      const answers = lease.worker.postMessage.mock.calls.map(([message]) => message).filter((message) => message.type === WORKER_EVENT.METRICS);
+      const answers = lease.send.mock.calls.map(([message]) => message).filter((message) => message.type === WORKER_EVENT.METRICS);
       expect(answers).toHaveLength(1);
       expect(answers[0].event).toMatchObject({
         uptimeSeconds: expect.any(Number),
@@ -775,7 +793,7 @@ describe('workerMiddleware', () => {
     const part = (requestId: string, body: Buffer | null) => ({
       type: WORKER_EVENT.RESPONSE_EMIT,
       requestId,
-      event: { statusCode: 200, headers: {}, emit: true, body: body === null ? null : body.toString('base64'), isBase64Encoded: body !== null },
+      event: { statusCode: 200, headers: {}, emit: true, body },
     });
 
     it('is watched by one timer for the whole response, however many parts come in', async () => {
@@ -818,7 +836,7 @@ describe('workerMiddleware', () => {
   });
 
   describe('bodies that arrive with the request', () => {
-    type Sent = { type: string; requestId: string; event?: { inlineBody?: string; hasBody?: boolean; body?: string | null } };
+    type Sent = { type: string; requestId: string; event?: { inlineBody?: string; hasBody?: boolean; body?: Buffer | null } };
 
     /** answers the request as soon as it is there, and the parts of a body as they come */
     const answerAtOnce = (message: Sent, handlers: Handlers) => {
@@ -830,7 +848,7 @@ describe('workerMiddleware', () => {
     const acknowledge = (handlers: Handlers, requestId: string) => handlers.onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
 
     interface Lease {
-      worker: { postMessage: jest.Mock<unknown, [Sent]> };
+      send: jest.Mock<unknown, [Sent]>;
       subscribe: jest.Mock;
       release: jest.Mock;
     }
@@ -841,7 +859,8 @@ describe('workerMiddleware', () => {
         let handlers: Handlers;
         const stream = { on: jest.fn(), off: jest.fn() };
         const lease = {
-          worker: { instance: { stdout: stream, stderr: stream }, postMessage: jest.fn((message: Sent) => setImmediate(() => answer(message, handlers))) },
+          worker: { instance: { stdout: stream, stderr: stream } },
+          send: jest.fn((message: Sent) => setImmediate(() => answer(message, handlers))),
           subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
             handlers = { onMessage, onExit };
           }),
@@ -856,7 +875,7 @@ describe('workerMiddleware', () => {
     };
 
     const messagesOf = (leases: Lease[], type: string): Sent[] =>
-      leases.flatMap(({ worker }) => worker.postMessage.mock.calls.map(([message]) => message)).filter((message) => message.type === type);
+      leases.flatMap(({ send }) => send.mock.calls.map(([message]) => message)).filter((message) => message.type === type);
 
     /** sends a request over a socket of its own, in the writes that are given: whatever is in one write arrives together, which fetch does not let one decide */
     const rawRequest = (head: string, writes: Array<Buffer | string>, pauseBetweenWrites = 0) =>
@@ -974,7 +993,7 @@ describe('workerMiddleware', () => {
       const sent = Buffer.concat(
         messagesOf(leases, WORKER_EVENT.REQUEST_BODY)
           .filter(({ event }) => event.body !== null)
-          .map(({ event }) => Buffer.from(event.body, 'base64'))
+          .map(({ event }) => event.body)
       );
       expect(sent).toEqual(Buffer.alloc(101, 1));
     });

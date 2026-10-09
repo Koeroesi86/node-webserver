@@ -35,7 +35,7 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 
 ## Load tests
 
-[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow, on Linux, Windows and macOS. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
+[k6](https://k6.io) scenarios against the example server, run on every pull request by the `Load test` workflow (a job of the branch build, after the lint, tests and build passed), on Linux, Windows and macOS. The scenarios are TypeScript that k6 runs itself (k6 1.0 or newer strips the types), the rest needs `pnpm build` first (`tools/dist`).
 
 ### Run locally
 
@@ -100,6 +100,12 @@ The server also serves `lambda.localhost`, a `lambda` server running `examples/e
 and `upload.localhost`, where `examples/upload/exampleWorker.js` reads the request body as a stream and answers with its size and sha256, which the `upload` route checks,
 and `health.localhost`, whose worker answers `/health` and `/metrics` from the metrics the server gives to workers, which the `metrics` route checks.
 
+### Big binary responses
+
+`binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms.
+It runs on its own after the CPU bound one, and is left out of the comparison with the base: a base without the route would answer it with fast errors, and look better for it.
+To see the difference to another build, give that build the route (a worker with the same name) and run the script against both servers.
+
 ### CPU bound worker
 
 `cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow
@@ -145,7 +151,7 @@ Both sides run the load test of the pull request against their own server, so th
   every route, which makes the routes compete for the cores: the p95 of one route can rise while the build is better. The limits only catch a route that got much slower,
 - a route that the base cannot serve (the pull request added it, which the checks per route show) is listed with n/a and not judged,
 - the p95 of all requests and the connect time of the websocket are shown, not judged,
-- **warm-up**: before the measuring of every run the server is warmed up (`utils/warm-up-server.ts`). Each endpoint in `constants/warm-up.ts` (the worker, static, CPU, stream, lambda, compressed, upload and health servers) is polled until it answers with anything but a server error, which starts its worker, and then gets 20 more requests. The first seconds of a run would otherwise measure the start of the workers, which differs between versions on purpose (for example the pre-started static worker). An endpoint that does not answer in time (the base may lack a server of the pull request) is reported in the log and the run goes on. The WebSocket and the secure server are not warmed up,
+- **warm-up**: before the measuring of every run the server is warmed up (`utils/warm-up-server.ts`). Each endpoint in `constants/warm-up.ts` (the worker, static, CPU, stream, binary, lambda, compressed, upload and health servers) is polled until it answers with anything but a server error, which starts its worker, and then gets 20 more requests. The first seconds of a run would otherwise measure the start of the workers, which differs between versions on purpose (for example the pre-started static worker). An endpoint that does not answer in time (the base may lack a server of the pull request) is reported in the log and the run goes on. The WebSocket and the secure server are not warmed up,
 - **the CPU bound run** (`cpu.ts`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
   and tighter limits hold: a p95 more than 30% and 5 milliseconds higher fails (`MAX_CPU_P95_INCREASE`, 0.3), and so does a build that drops requests where the base does not. A base without the CPU bound worker is listed with n/a and not judged.
   The duration is the fifth argument of `compare-with-base.js`.

@@ -1,16 +1,17 @@
 name: Load test
 
+# run by the branch build once lint, the tests and the build passed, and by hand
 on:
-  pull_request:
-    branches:
-      - master
-    paths:
-      - 'packages/**'
-      - 'tools/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/load-test.yml'
+  workflow_call:
+    inputs:
+      vus:
+        description: Concurrent virtual users
+        type: string
+        default: '20'
+      duration:
+        description: Test duration (k6 format, e.g. 30s, 2m)
+        type: string
+        default: '30s'
   workflow_dispatch:
     inputs:
       vus:
@@ -22,10 +23,6 @@ on:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   load-test:
@@ -215,12 +212,25 @@ jobs:
             -e CPU_RATE="${CPU_RATE}" \
             -e MAX_DROPPED="${MAX_DROPPED}" \
             tools/src/k6/cpu.ts
+      # big binary responses, on their own and not part of the comparison with the base, which has no such route
+      - name: Run binary response load test
+        timeout-minutes: 5
+        if: always()
+        run: |
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
+            --summary-export=k6-binary-summary.json \
+            -e BASE_URL="http://localhost:${PORT_HTTP}" \
+            -e MAX_P95_MS="$(( 100 * P95_FACTOR ))" \
+            tools/src/k6/binary.ts
       - name: Summarize results
         if: always()
         run: |
           node tools/dist/scripts/summary.js k6-summary.json server.log >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/summary.js k6-cpu-summary.json '' 'Load test: CPU bound worker' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-binary-summary.json '' 'Load test: big binary responses' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
@@ -253,6 +263,7 @@ jobs:
           path: |
             k6-summary.json
             k6-cpu-summary.json
+            k6-binary-summary.json
             server.log
             runner-before.json
             runner-after.json

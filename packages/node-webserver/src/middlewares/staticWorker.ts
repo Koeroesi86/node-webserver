@@ -160,8 +160,7 @@ const staticWorker = (event: RequestEvent, callback: (response: ResponseEvent) =
         ETag: currentEtag,
         ...(stats.mtime && { 'Last-Modified': lastModified.toUTCString() }),
       },
-      body: bodyBuffer.toString('base64'),
-      isBase64Encoded: true,
+      body: bodyBuffer,
     });
   } else {
     callback({
