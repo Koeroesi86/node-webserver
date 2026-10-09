@@ -16,6 +16,28 @@ pnpm load-test          # k6 against the example server, needs k6 or Docker
 
 Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm test:integration`, plus the load test when the request path, workers, logging or proxying changed. Say which of them you did not run.
 
+## Layout
+
+| Folder | What it is |
+|---|---|
+| `packages/node-webserver` | the front server: `src/utils/startServer.ts` builds two express apps (http, https with SNI) from the configuration, `src/middlewares/` has one middleware per server type (`staticWorker`, `lambda`, `proxy`) plus access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one example per server type, `integration/` the integration test |
+| `packages/node-webserver-cli`, `node-webserver-service` | thin wrappers around `node-webserver`: a command line runner and an OS service (`os-service`) |
+| `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each in its own process |
+| `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node and the express middleware that uses it, which is what the worker pools of the server are built on |
+| `tools/` | `@koeroesi86/tools`, never published: versioning for the pipeline and the k6 load tests, layout in `tools/README.md` |
+| `.github/` | workflows (`pr-checks.yml` gates master), the pull request template, dependabot and zizmor config |
+
+- `node-worker` and `node-worker-express` build with rollup, all the others with `tsc -p tsconfig.build.json`; every package builds to `dist/`. Packages depend on each other through `workspace:*`, so a package is tested against the `dist` of the ones it uses: run `pnpm build` after changing a dependency.
+- Jest with ts-jest, `src/**/*.test.ts`. `jest-retry.js` in the root retries a failing test twice because process and socket tests depend on the runner, so a test that only passes on a retry is still a flaky test: fix it. The integration test has its own config (`packages/node-webserver/integration/jest.config.js`).
+- The older packages use camelCase file names (`startServer.ts`, `setupVirtualHosts.ts`); new files follow the kebab-case rule above, and do not rename the existing ones without a reason, as that touches `packages/**` and publishes it.
+- `node >=24` and pnpm 12 (`corepack enable`). Eslint is v8 with prettier 2, run from the root only.
+
+## Local pitfalls
+
+- `node` and `pnpm` can be missing from the PATH of a non-interactive shell (nvm and the pnpm home are set up in the profile only). Prefix the command with `export PATH=$HOME/.nvm/versions/node/<node 24>/bin:$HOME/.local/share/pnpm/bin:$PATH`.
+- Never run `prettier --write` directly: it ignores the 160 columns of the eslint setup and reformats whole files. Use `pnpm exec eslint --fix --ext .ts <paths>` and read `git diff` for hunks in code you did not change.
+- k6, Docker and podman are not installed on the machine this was written on, so the load test cannot run there. Say so under **Not verified** instead of leaving it out.
+
 ## Pull requests
 
 - **Use `.github/pull_request_template.md` and fill in every section.** Delete a section only where the template says so (Behaviour changes, Release). The body is not a free-form summary.
