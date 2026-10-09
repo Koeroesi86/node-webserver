@@ -17,7 +17,7 @@ describe('staticWorker', () => {
     jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick', 'hrtime'] });
     parent = await fs.mkdtemp(path.join(os.tmpdir(), 'static-worker-'));
     root = path.join(parent, 'root');
-    big = crypto.randomBytes(StaticStreamThreshold * 2 + 12345);
+    big = crypto.randomBytes(StaticStreamThreshold * 6 + 12345);
     await fs.mkdir(path.join(root, 'sub'), { recursive: true });
     await fs.writeFile(path.join(root, 'index.html'), '<h1>home</h1>');
     await fs.writeFile(path.join(root, 'a..b.txt'), 'dots');
@@ -142,10 +142,10 @@ describe('staticWorker', () => {
       expect(parts.every(({ emit }) => emit)).toBe(true);
       expect(parts[0]).toMatchObject({ statusCode: 200, headers: { 'Content-Length': String(big.length) } });
       expect(parts[parts.length - 1].body).toBeNull();
-      expect(Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer))).toEqual(big);
+      expect(Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer)).equals(big)).toBe(true);
     });
 
-    it('does not send more parts than the window allows before they are acknowledged', async () => {
+    it('does not send more bytes than the window allows before they are acknowledged', async () => {
       const pending: Array<() => void> = [];
       let sent = 0;
       // file reads take as long as the machine needs, so the worker has to be quiet for a while on a real clock before it is known to wait
@@ -166,7 +166,8 @@ describe('staticWorker', () => {
       });
 
       await settle(150);
-      expect(sent).toBe(4);
+      // 4 MiB in parts of 256 KiB
+      expect(sent).toBe(16);
 
       while (pending.length > 0) {
         pending.shift()();
@@ -174,14 +175,15 @@ describe('staticWorker', () => {
       }
       await done;
 
-      expect(sent).toBeGreaterThan(4);
+      expect(sent).toBeGreaterThan(16);
     });
 
     it('stops reading when the client is gone', async () => {
       const parts = await stream((part) => part < 6);
 
-      // the window is 4 and the answer to the 6th part is the first no, so reading stops soon after
-      expect(parts.length).toBeLessThan(12);
+      // the answer to the 6th part is the first no, it is read once the window is full, so the rest of the file is not sent
+      const all = await stream();
+      expect(parts.length).toBeLessThan(all.length - 2);
       expect(parts[parts.length - 1].body).not.toBeNull();
     });
   });

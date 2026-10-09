@@ -110,6 +110,30 @@ describe('streamResponse', () => {
     expect(sent).toBe(11);
   });
 
+  it('does not send more bytes than the byte window allows before they are acknowledged', async () => {
+    const pending: Array<() => void> = [];
+    let sent = 0;
+    const done = streamResponse(
+      () => {
+        sent += 1;
+        return new Promise((resolve) => pending.push(() => resolve(true)));
+      },
+      { windowBytes: 30 },
+      generate(...Array.from({ length: 10 }, () => '0123456789'))
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sent).toBe(3);
+
+    while (pending.length > 0) {
+      pending.shift()();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(await done).toBe(true);
+    expect(sent).toBe(11);
+  });
+
   it('stops when the client is gone, and lets the source clean up', async () => {
     const { parts, callback } = collect((part) => part < 2);
     let cleanedUp = false;
