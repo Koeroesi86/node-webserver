@@ -21,6 +21,7 @@ jest.mock('../utils/workerPool', () => {
     acquire = jest.fn();
     warm = jest.fn();
     dispose = jest.fn(async () => {});
+    keepWarm = jest.fn();
     getStats = () => ({ workers: 2, active: 1, waiting: 0, paths: {} });
 
     constructor(readonly params: { onStdout?: () => void; onStderr?: () => void; maxQueue?: number; acquireTimeout?: number }) {
@@ -290,6 +291,36 @@ describe('workerMiddleware', () => {
       await fetch(`${baseUrl}/plain/file.txt`);
 
       expect(FakePool.last.acquire.mock.calls[0][1]).toBe(FakePool.last.warm.mock.calls[0][1]);
+    });
+  });
+
+  describe('warm paths', () => {
+    it('keeps the worker file of a path warm, found the way a request finds it, with the options of a request', async () => {
+      await start({ warmPaths: ['/some/page'], cwd: '/somewhere' });
+
+      await until(() => FakePool.last.keepWarm.mock.calls.length > 0);
+      const [workerPath, options, count] = FakePool.last.keepWarm.mock.calls[0];
+      expect(workerPath).toBe(path.join(root, 'exampleWorker.js'));
+      expect(options()).toMatchObject({ cwd: '/somewhere' });
+      expect(count).toBe(1);
+    });
+
+    it('keeps as many workers as asked for, but not more than the limit of the path', async () => {
+      await start({
+        warmPaths: ['/', '/again'],
+        warmWorkersPerPath: 3,
+        limitPerPath: (workerPath: string) => (workerPath.endsWith('exampleWorker.js') ? 2 : 8),
+      });
+
+      await until(() => FakePool.last.keepWarm.mock.calls.length === 2);
+      expect(FakePool.last.keepWarm.mock.calls.map(([, , count]) => count)).toEqual([2, 2]);
+    });
+
+    it('leaves out a path that the static worker serves', async () => {
+      await start({ warmPaths: ['/plain/file.txt'], index: ['missing.js'] });
+
+      await settle();
+      expect(FakePool.last.keepWarm).not.toHaveBeenCalled();
     });
   });
 

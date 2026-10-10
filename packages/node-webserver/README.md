@@ -286,6 +286,14 @@ When either is used up and a file has no worker, an idle worker is stopped to ma
 The last worker of a file is only taken while it has no request, so a busy file cannot starve the others. `evicted` in the metrics of a worker pool counts the workers stopped for being idle (`idle`) and to make room (`forRoom`),
 and the `workers` metrics show the processes of all the servers against `workerLimit`.
 
+### Warm workers
+
+The first request to a worker file waits for its process to start and load the module. `warmPaths` in the `options` of a worker server lists request paths (`['/', '/api/']`) whose worker file is started with the server, and started again
+whenever it has fewer than `warmWorkersPerPath` workers (1 by default, at most `limitPerPath`): after a worker crashed, or was stopped to make room for another file. The idle timeout (`limitWorkerIdleTimeout`) does not stop the workers
+a file is kept warm with. They count towards `limit` and `workerLimit`, and requests that wait for a worker come first, so they only take room that nothing else needs: a file with no worker can still make room by stopping an idle warm worker,
+which starts again when there is room. A file whose workers keep crashing is tried again when its backoff is over. The static worker is started with the server
+unless `warmStaticWorker` is `false`.
+
 ### Workers that crash
 
 A worker that stops with an error, or at all within 5 seconds of starting, has crashed. The first crash is answered by starting another worker for the next request, as before.

@@ -61,6 +61,7 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
   }
+  const getLimitPerPath = (indexPath: string) => (typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath);
   const webSocketSlots = createSlotCounter(config.limitWebSocketConnections);
   const routeCache = new TtlCache<{ indexPath: string; isWorker: boolean }>(routeCacheTtl, routeCacheSize);
   const probe = createProbe();
@@ -68,6 +69,15 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const answersMissingPaths = config.staticWorker === DefaultOptions.staticWorker;
   const pathLatency = createPathLatency();
   const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
+  // the worker files are found the way a request finds them, a path that is served by the static worker has nothing to keep warm
+  config.warmPaths.forEach((warmPath) =>
+    resolvePath(rootPath, warmPath.split('/').filter(Boolean), config.index, probe)
+      .then(({ indexPath, isWorker }) => {
+        if (isWorker) workerPool.keepWarm(indexPath, workerOptions, Math.min(config.warmWorkersPerPath, Math.max(getLimitPerPath(indexPath), 1)));
+      })
+      // warming is an optimization, a path that cannot be looked up is started by its first request
+      .catch(() => undefined)
+  );
 
   const findInRoot = async (pathname: string, pathFragments: string[]) => {
     // a path that was resolved lately is trusted until its entry expires, without asking the file system again
@@ -159,7 +169,7 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
       // by the worker file, like the paths of the pool, so every static file, found or not, counts in the one of the static worker (a missing path answered above only in the totals)
       tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
 
-      const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
+      const limitPerPath = getLimitPerPath(indexPath);
       // a request that waits for a worker leaves the line when its client goes away
       const abandoned = new AbortController();
       const abandon = () => abandoned.abort();
