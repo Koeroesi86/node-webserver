@@ -266,7 +266,14 @@ jobs:
             --summary-export=k6-lambda-summary.json \
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             -e MARGIN_MS="$(( 1000 * P95_FACTOR ))" \
-            tools/src/k6/lambda.ts
+            tools/src/k6/lambda.ts || {
+            status=$?
+            # a lambda that crashes must not take the server with it, so the log shows what a failed run did to it
+            echo '::group::The end of the log of the server'
+            tail -n 60 server.log
+            echo '::endgroup::'
+            exit "${status}"
+          }
       - name: Summarize results
         if: always()
         run: |
