@@ -1,6 +1,6 @@
 import net from 'net';
 import { Readable } from 'stream';
-import { Protocols, WORKER_EVENT } from './constants';
+import { ChannelMaxFrameLength, Protocols, WORKER_EVENT } from './constants';
 import { InvokableWorker, RequestBodyEvent, RequestEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WorkerRequestEvent, WSFrameEvent } from './types';
 import createChannel from './utils/createChannel';
 import type { ServerMetrics } from './utils/metrics';
@@ -121,7 +121,7 @@ function sendWsMessage(requestId: string, stream: Stream | undefined, { frame, c
 
   // the acknowledgements find the stream by the request
   streams.set(requestId, stream);
-  channel.send({
+  const sent = channel.send({
     type: WORKER_EVENT.WS_MESSAGE_SEND,
     requestId,
     event: {
@@ -129,8 +129,11 @@ function sendWsMessage(requestId: string, stream: Stream | undefined, { frame, c
       ...(close && { close }),
     },
   });
+  if (!sent && channelSocket.writable) {
+    console.error(new Error(`A websocket message of ${requestId} is bigger than the ${ChannelMaxFrameLength} bytes a message may have.`));
+  }
 
-  return frame === undefined ? Promise.resolve(false) : new Promise<boolean>((resolve) => stream.waiting.push(resolve));
+  return frame === undefined || !sent ? Promise.resolve(false) : new Promise<boolean>((resolve) => stream.waiting.push(resolve));
 }
 
 /** the connection is gone: what the worker waits for will not come */
@@ -217,7 +220,12 @@ function messageListener(message: WorkerInputEvent) {
         streams.set(message.requestId, stream);
       }
 
-      channel.send(e);
+      if (!channel.send(e) && channelSocket.writable) {
+        // too big for a frame: the request fails alone, instead of the channel and with it the other requests of the worker
+        console.error(new Error(`A response of ${message.requestId} is bigger than the ${ChannelMaxFrameLength} bytes a message may have, stream it instead.`));
+        if (e.type === WORKER_EVENT.RESPONSE_EMIT) return Promise.resolve(false);
+        channel.send({ type: WORKER_EVENT.RESPONSE, requestId: message.requestId, event: toMessage(internalServerError) });
+      }
 
       // once the response is complete the server drops the rest of the request body, so the stream has nothing more to give
       if (e.type === WORKER_EVENT.RESPONSE || (e.type === WORKER_EVENT.RESPONSE_EMIT && e.event?.body === null)) {

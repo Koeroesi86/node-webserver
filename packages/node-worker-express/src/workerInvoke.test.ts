@@ -40,6 +40,10 @@ module.exports = async (event, callback) => {
       fs.writeFileSync(path.join(event.rootPath, 'ws-waited'), String(sent));
     }
     if (event.path === '/ws-closes') callback({ sendWsMessage: true, close: { code: 4000, reason: 'bye' } });
+    if (event.path === '/ws-too-big') {
+      const sent = await callback({ sendWsMessage: true, frame: Buffer.alloc(5 * 1024 * 1024) });
+      fs.writeFileSync(path.join(event.rootPath, 'ws-too-big'), String(sent));
+    }
     return;
   }
   if (event.protocol === 'WS') {
@@ -86,6 +90,12 @@ module.exports = async (event, callback) => {
   if (event.path === '/binary') return callback({ statusCode: 200, headers: {}, body: Buffer.from(Array.from({ length: 256 }, (_, value) => value)).toString('base64'), isBase64Encoded: true });
   if (event.path === '/buffer') return callback({ statusCode: 200, headers: {}, body: Buffer.from('árvíztűrő'), isBase64Encoded: true });
   if (event.path === '/big') return callback({ statusCode: 200, headers: {}, body: Buffer.alloc(3 * 1024 * 1024, 7) });
+  if (event.path === '/too-big') return callback({ statusCode: 200, headers: {}, body: Buffer.alloc(5 * 1024 * 1024) });
+  if (event.path === '/too-big-part') {
+    const sent = await callback(part(Buffer.alloc(5 * 1024 * 1024)));
+    fs.writeFileSync(path.join(event.rootPath, 'too-big-part'), String(sent));
+    await callback(part(null));
+  }
   if (event.path === '/stops-when-aborted') {
     let index = 0;
     while (await callback(part('part ' + index++)));
@@ -106,10 +116,12 @@ describe('workerInvoke', () => {
     await fs.mkdir(path.join(folder, 'utils'));
     const compile = (source: string) =>
       ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    // a limit of a frame that a response can go over without half a gigabyte, still above the response of several megabytes
+    const smallerLimit = (source: string) => source.replace(/ChannelMaxFrameLength = [^;]+;/, `ChannelMaxFrameLength = ${4 * 1024 * 1024};`);
     // what the worker process loads, as the build puts it together
     await Promise.all(
       ['workerInvoke', 'constants/index', 'utils/createChannel', 'utils/frames'].map(async (file) =>
-        fs.writeFile(path.join(folder, `${file}.js`), compile(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8')))
+        fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8'))))
       )
     );
     await fs.writeFile(path.join(folder, 'worker.js'), workerSource);
@@ -203,6 +215,35 @@ describe('workerInvoke', () => {
     await until(() => of('a').length === 1);
 
     expect(Buffer.alloc(3 * 1024 * 1024, 7).equals(Buffer.from(of('a')[0].event.body))).toBe(true);
+  });
+
+  it('answers a response too big for the channel with a 500, and goes on with the other requests', async () => {
+    send('a', '/too-big');
+    send('b', '/plain');
+
+    await until(() => of('a').length === 1 && of('b').length === 1);
+
+    expect(of('a')[0]).toMatchObject({ type: WORKER_EVENT.RESPONSE, event: { statusCode: 500 } });
+    expect(of('b')[0].event).toMatchObject({ statusCode: 200, body: Buffer.from('plain') });
+  });
+
+  it('tells a worker that a streamed part too big for the channel was not sent', async () => {
+    send('a', '/too-big-part');
+
+    await until(() => fsSync.existsSync(path.join(folder, 'too-big-part')) && of('a').length === 1);
+
+    expect(fsSync.readFileSync(path.join(folder, 'too-big-part'), 'utf8')).toBe('false');
+    // the end of the response, which the server writes as a truncated one
+    expect(of('a')[0]).toMatchObject({ type: WORKER_EVENT.RESPONSE_EMIT, event: { body: null } });
+  });
+
+  it('tells a worker that a websocket message too big for the channel was not sent', async () => {
+    sendUpgrade('a', '/ws-too-big');
+
+    await until(() => fsSync.existsSync(path.join(folder, 'ws-too-big')));
+
+    expect(fsSync.readFileSync(path.join(folder, 'ws-too-big'), 'utf8')).toBe('false');
+    expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND)).toHaveLength(0);
   });
 
   it('sends nothing else for a plain request, as every message is a write to the channel', async () => {
