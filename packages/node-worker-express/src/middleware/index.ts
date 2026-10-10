@@ -40,6 +40,8 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     throw new Error('No root path defined in configuration!');
   }
   const rootPath = path.resolve(config.root);
+  // before anything is started, so that a route that is not valid leaves no worker pool behind
+  const findRoute = createRouteTable(rootPath, config.routes ?? []);
   const workerPool = new WorkerPool({
     overallLimit: config.limit,
     onExit: config.onExit,
@@ -66,7 +68,6 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const answersMissingPaths = config.staticWorker === DefaultOptions.staticWorker;
   const pathLatency = createPathLatency();
   const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
-  const findRoute = createRouteTable(rootPath, config.routes ?? []);
 
   const findInRoot = async (pathname: string, pathFragments: string[]) => {
     // a path that was resolved lately is trusted until its entry expires, without asking the file system again
