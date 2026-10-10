@@ -16,6 +16,7 @@ import { MiddlewareOptions, RequestEvent, WorkerMiddleware, WorkerOutputEvent } 
 import resolvePath from '../utils/resolvePath';
 import createProbe from '../utils/createProbe';
 import notFoundResponse from '../utils/not-found-response';
+import createRouteTable from '../utils/create-route-table';
 import TtlCache from '../utils/ttlCache';
 import createPathLatency from '../utils/create-path-latency';
 import { getServerMetrics, registerMetricsSource, trackRequest } from '../utils/metrics';
@@ -39,6 +40,8 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     throw new Error('No root path defined in configuration!');
   }
   const rootPath = path.resolve(config.root);
+  // before anything is started, so that a route that is not valid leaves no worker pool behind
+  const findRoute = createRouteTable(rootPath, config.routes ?? []);
   const workerPool = new WorkerPool({
     overallLimit: config.limit,
     onExit: config.onExit,
@@ -66,6 +69,18 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const pathLatency = createPathLatency();
   const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
 
+  const findInRoot = async (pathname: string, pathFragments: string[]) => {
+    // a path that was resolved lately is trusted until its entry expires, without asking the file system again
+    const cached = routeCache.get(pathname);
+    if (cached) return { ...cached, targetExists: true };
+
+    const resolved = await resolvePath(rootPath, pathFragments, config.index, probe);
+    // a path that is not there is not remembered as a route: the probe remembers the missing file for a shorter time, so that a file that is added is found soon
+    if (resolved.isWorker || resolved.targetExists) routeCache.set(pathname, { indexPath: resolved.indexPath, isWorker: resolved.isWorker });
+
+    return resolved;
+  };
+
   const handler: RequestHandler = async (request, response, next) => {
     const { query: queryStringParameters, pathname } = url.parse(request.url, true);
     const tracked = trackRequest(response);
@@ -80,23 +95,23 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
         return;
       }
 
-      // a path that was resolved lately is trusted until its entry expires, without asking the file system again
-      const cached = routeCache.get(pathname);
-      const { indexPath, isWorker, targetExists } = cached
-        ? { ...cached, targetExists: true }
-        : await resolvePath(rootPath, pathFragments, config.index, probe);
+      const route = findRoute(pathname);
+      if (route === undefined && !config.fallthrough) {
+        response.writeHead(404, { 'Content-Type': 'text/plain' });
+        response.end('Not found.');
+        return;
+      }
+
+      const { indexPath, isWorker, targetExists } = route
+        ? { indexPath: route.worker, isWorker: true, targetExists: true }
+        : await findInRoot(pathname, pathFragments);
 
       // A path that is not there and that no worker answers is the 404 of the static worker, which is known here without the round trip to it.
-      // It is not remembered as a route: the probe remembers the missing file for a shorter time, so that a file that is added is found soon.
       if (!isWorker && !targetExists && answersMissingPaths) {
         const { statusCode, headers, body } = notFoundResponse();
         response.writeHead(statusCode, { ...headers, 'Content-Length': Buffer.byteLength(body) });
         response.end(body);
         return;
-      }
-
-      if (!cached && (isWorker || targetExists)) {
-        routeCache.set(pathname, { indexPath, isWorker });
       }
 
       const requestProtocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
@@ -126,6 +141,7 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
         headers: request.headers as Record<string, string>,
         remoteAddress: getClientIp(request),
         rootPath: rootPath,
+        ...(route?.pathParameters && { pathParameters: route.pathParameters }),
         // the body is not part of the event, the worker takes it from a stream while it arrives
         ...(streamsBody && { hasBody: true }),
       };
