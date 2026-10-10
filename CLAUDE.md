@@ -30,6 +30,7 @@ Before saying something is done, run `pnpm lint`, `pnpm fallow`, `pnpm build`, `
 
 - `node-worker` and `node-worker-express` build with rollup, all the others with `tsc -p tsconfig.build.json`; every package builds to `dist/`. Packages depend on each other through `workspace:*`, so a package is tested against the `dist` of the ones it uses: run `pnpm build` after changing a dependency.
 - `pnpm fallow` enforces which package may import which (`boundaries` in `.fallowrc.jsonc`): a new `workspace:*` dependency goes into the rules there too.
+- `.claude/hooks/fallow-gate.sh` (installed with `fallow hooks install --target agent`) runs `fallow audit` before a `git commit` or `git push` of Claude and blocks it on a finding the change introduces. It needs `jq`, and `node` on the PATH (see the pitfall below), otherwise it skips the audit without a word.
 - Jest with ts-jest, `src/**/*.test.ts`. `jest-retry.js` in the root retries a failing test twice because process and socket tests depend on the runner, so a test that only passes on a retry is still a flaky test: fix it. The integration test has its own config (`packages/node-webserver/integration/jest.config.js`).
 - The older packages use camelCase file names (`startServer.ts`, `setupVirtualHosts.ts`); new files follow the kebab-case rule above, and do not rename the existing ones without a reason, as that touches `packages/**` and publishes it.
 - `node >=24` and pnpm 12 (`corepack enable`). Eslint is v8 with prettier 2, run from the root only.
