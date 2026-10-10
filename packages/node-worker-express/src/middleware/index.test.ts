@@ -42,6 +42,7 @@ describe('workerMiddleware', () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'middleware-'));
     await fs.writeFile(path.join(root, 'exampleWorker.js'), '');
     await fs.mkdir(path.join(root, 'plain'));
+    await fs.writeFile(path.join(root, 'plain', 'file.txt'), 'plain');
   });
 
   afterAll(() => fs.rm(root, { recursive: true, force: true }));
@@ -574,7 +575,7 @@ describe('workerMiddleware', () => {
       await start();
       const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
 
-      await send([Buffer.from('hello')], { requestPath: '/plain/missing' });
+      await send([Buffer.from('hello')], { requestPath: '/plain/file.txt' });
 
       expect(FakePool.last.acquire).toHaveBeenCalledWith(
         expect.stringMatching(/staticWorker\.js$/),
@@ -645,11 +646,11 @@ describe('workerMiddleware', () => {
       expect(access.mock.calls.length - afterFirst).toBe(30);
     });
 
-    it('sends the paths that are not a worker to the static worker', async () => {
+    it('sends the files that are not a worker to the static worker', async () => {
       await start();
       answer();
 
-      await fetch(`${baseUrl}/plain/missing`);
+      await fetch(`${baseUrl}/plain/file.txt`);
 
       expect(FakePool.last.acquire).toHaveBeenCalledWith(
         expect.stringMatching(/staticWorker\.js$/),
@@ -657,6 +658,91 @@ describe('workerMiddleware', () => {
         expect.anything(),
         expect.any(AbortSignal)
       );
+    });
+  });
+
+  describe('missing paths', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('answers a missing path that no worker answers with the 404 of the static worker, without a worker', async () => {
+      await start();
+
+      const response = await fetch(`${baseUrl}/plain/missing.html`);
+
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toBe('text/plain');
+      expect(response.headers.get('content-length')).toBe(String('The requested path does not exist.'.length));
+      expect(await response.text()).toBe('The requested path does not exist.');
+      expect(FakePool.last.acquire).not.toHaveBeenCalled();
+    });
+
+    it('answers a missing directory as well', async () => {
+      await start();
+
+      const response = await fetch(`${baseUrl}/plain/missing/`);
+
+      expect(response.status).toBe(404);
+      expect(FakePool.last.acquire).not.toHaveBeenCalled();
+    });
+
+    it('leaves a missing path to a static worker of its own, which may answer it in another way', async () => {
+      await start({ staticWorker: '/static-worker.js' });
+      mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('app') } })
+      );
+
+      const response = await fetch(`${baseUrl}/plain/missing.html`);
+
+      expect(await response.text()).toBe('app');
+      expect(FakePool.last.acquire).toHaveBeenCalledWith('/static-worker.js', expect.anything(), expect.anything(), expect.any(AbortSignal));
+    });
+
+    it('does not ask the file system again for a path that was missing lately, and finds a file that was added once that has expired', async () => {
+      await start();
+      mockLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('added') } })
+      );
+      const access = jest.spyOn(fs, 'access');
+      const now = Date.now();
+      const added = path.join(root, 'plain', 'added.html');
+
+      expect((await fetch(`${baseUrl}/plain/added.html`)).status).toBe(404);
+      const asked = access.mock.calls.length;
+      await fs.writeFile(added, 'added');
+
+      try {
+        expect((await fetch(`${baseUrl}/plain/added.html`)).status).toBe(404);
+        expect(access.mock.calls.length).toBe(asked);
+
+        // the probe remembers its answers for a second
+        jest.spyOn(Date, 'now').mockReturnValue(now + 1500);
+        expect(await (await fetch(`${baseUrl}/plain/added.html`)).text()).toBe('added');
+        expect(access.mock.calls.length).toBeGreaterThan(asked);
+      } finally {
+        await fs.rm(added);
+      }
+    });
+
+    it('reads and drops the body of a request to a missing path', async () => {
+      await start();
+      const connections: net.Socket[] = [];
+      server.on('connection', (socket) => connections.push(socket));
+
+      const status = await new Promise<number>((resolve, reject) => {
+        const request = http.request(`${baseUrl}/plain/missing.html`, { method: 'POST' }, (response) => {
+          response.resume();
+          response.on('end', () => resolve(response.statusCode));
+        });
+        request.on('error', reject);
+        request.end(Buffer.alloc(20 * 1024 * 1024));
+      });
+
+      expect(status).toBe(404);
+      // the whole upload is taken from the connection, which otherwise could not be used for the next request
+      await until(() => connections[0].bytesRead >= 20 * 1024 * 1024);
+      expect(FakePool.last.acquire).not.toHaveBeenCalled();
     });
   });
 
@@ -671,7 +757,7 @@ describe('workerMiddleware', () => {
 
       // a client that sends all of it, as a browser does, where fetch gives up its upload when the answer arrives
       const status = await new Promise<number>((resolve, reject) => {
-        const request = http.request(`${baseUrl}/plain/missing`, { method: 'POST' }, (response) => {
+        const request = http.request(`${baseUrl}/plain/file.txt`, { method: 'POST' }, (response) => {
           response.resume();
           response.on('end', () => resolve(response.statusCode));
         });
@@ -733,6 +819,8 @@ describe('workerMiddleware', () => {
 
       await fetch(`${baseUrl}/`);
       await fetch(`${baseUrl}/`);
+      await fetch(`${baseUrl}/plain/file.txt`);
+      // answered without a worker, so it has no worker file to count under
       await fetch(`${baseUrl}/plain/missing`);
       await new Promise((resolve) => setImmediate(resolve));
 
@@ -1128,7 +1216,7 @@ describe('workerMiddleware', () => {
       await start();
       const leases = mockLeaseAnswering();
 
-      await postTogether('ignored', '/plain/missing');
+      await postTogether('ignored', '/plain/file.txt');
 
       expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('body');
     });
