@@ -6,13 +6,18 @@ interface Entry<V> {
   expiresAt: number;
 }
 
+const bufferLength = (value: unknown) => (Buffer.isBuffer(value) ? value.length : 0);
+
 /**
  * A least recently used cache bounded by entries and by bytes, whichever is hit first. A `Map` keeps the order of insertion,
  * so a hit is inserted again to move it to the end and the first key is the one pushed out.
- * An expired entry is dropped when it is read, so no timer runs in the front process; checking that a value is still true (a `stat`) is left to the caller.
+ * No timer runs in the front process: an expired entry is dropped when it is read, and the ones that expired first are dropped on every `set`.
+ * Checking that a value is still true (a `stat`) is left to the caller.
  */
-const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = () => 0, now = Date.now }: CacheOptions<V>): Cache<V> => {
+const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = bufferLength, now = () => performance.now() }: CacheOptions<V>): Cache<V> => {
   const entries = new Map<string, Entry<V>>();
+  // the entries that expire, in the order they were set, which is the order they expire in while they share the ttl of the cache
+  const expiring = new Map<string, Entry<V>>();
   let bytes = 0;
 
   const remove = (key: string) => {
@@ -20,7 +25,17 @@ const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = () => 0
     if (!entry) return false;
 
     bytes -= entry.bytes;
+    expiring.delete(key);
     return entries.delete(key);
+  };
+
+  // stops at the first entry still valid, so an entry with a longer ttl of its own keeps the ones set after it until they are read or pushed out
+  const dropExpired = () => {
+    const time = now();
+    for (const [key, entry] of expiring) {
+      if (time < entry.expiresAt) return;
+      remove(key);
+    }
   };
 
   const evict = () => {
@@ -47,24 +62,30 @@ const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = () => 0
     },
     set: (key, value, options) => {
       remove(key);
+      dropExpired();
       const entryBytes = sizeOf(value);
-      // a value that could never fit would empty the cache and still be pushed out
-      if (maxEntries < 1 || entryBytes > maxBytes) return;
-
       const entryTtl = options?.ttl ?? ttl;
-      entries.set(key, { value, bytes: entryBytes, expiresAt: entryTtl === undefined ? Infinity : now() + entryTtl });
+      // a value that could never fit would empty the cache and still be pushed out, one that has already expired would push out a valid one
+      if (maxEntries < 1 || entryBytes > maxBytes || (entryTtl !== undefined && entryTtl <= 0)) return;
+
+      const entry = { value, bytes: entryBytes, expiresAt: entryTtl === undefined ? Infinity : now() + entryTtl };
+      entries.set(key, entry);
+      if (entryTtl !== undefined) expiring.set(key, entry);
       bytes += entryBytes;
       evict();
     },
     delete: remove,
     clear: () => {
       entries.clear();
+      expiring.clear();
       bytes = 0;
     },
     get size() {
+      dropExpired();
       return entries.size;
     },
     get bytes() {
+      dropExpired();
       return bytes;
     },
   };

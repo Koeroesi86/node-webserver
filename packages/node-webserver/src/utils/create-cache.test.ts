@@ -65,6 +65,15 @@ describe('createCache', () => {
     expect(cache.bytes).toBe(1);
   });
 
+  it('counts the length of a Buffer, and nothing for other values, when no size is given', () => {
+    const cache = createCache<Buffer | string>({ maxEntries: 10, maxBytes: 10 });
+    cache.set('a', Buffer.alloc(6));
+    cache.set('b', 'a string is not counted');
+    cache.set('c', Buffer.alloc(6));
+
+    expect([cache.get('a'), cache.get('b'), cache.get('c')?.length, cache.bytes]).toEqual([undefined, 'a string is not counted', 6, 6]);
+  });
+
   it('does not keep a value larger than the whole cache, nor push the others out for it', () => {
     const cache = createCache<Buffer>({ maxEntries: 10, maxBytes: 10, sizeOf });
     cache.set('a', Buffer.alloc(5));
@@ -151,6 +160,76 @@ describe('createCache', () => {
     cache.get('a');
 
     expect(cache.bytes).toBe(0);
+  });
+
+  it('does not keep an entry with a ttl of 0 or less, nor push the others out for it', () => {
+    const clock = createClock();
+    const cache = createCache<number>({ maxEntries: 1, now: clock.now });
+    cache.set('a', 1);
+    cache.set('zero', 2, { ttl: 0 });
+    cache.set('negative', 3, { ttl: -5 });
+
+    expect([cache.get('a'), cache.get('zero'), cache.get('negative'), cache.size]).toEqual([1, undefined, undefined, 1]);
+  });
+
+  it('drops the old value of a key that is set with a ttl of 0', () => {
+    const cache = createCache<number>({ maxEntries: 1 });
+    cache.set('a', 1);
+    cache.set('a', 2, { ttl: 0 });
+
+    expect([cache.get('a'), cache.size]).toEqual([undefined, 0]);
+  });
+
+  it('drops expired entries on a set before it pushes out a valid one', () => {
+    const clock = createClock();
+    const cache = createCache<number>({ maxEntries: 2, ttl: 100, now: clock.now });
+    cache.set('expires', 1);
+    clock.advance(50);
+    cache.set('valid', 2);
+    // the read makes the entry that is about to expire the most recently used one
+    cache.get('expires');
+    clock.advance(60);
+    cache.set('new', 3);
+
+    expect(['expires', 'valid', 'new'].map(cache.get)).toEqual([undefined, 2, 3]);
+  });
+
+  it('does not count expired entries in the size and the bytes', () => {
+    const clock = createClock();
+    const cache = createCache<Buffer>({ maxEntries: 3, ttl: 100, now: clock.now });
+    cache.set('a', Buffer.alloc(4));
+    cache.set('b', Buffer.alloc(2), { ttl: 500 });
+    cache.set('c', Buffer.alloc(1), { ttl: 1000 });
+    clock.advance(500);
+
+    expect([cache.size, cache.bytes]).toEqual([1, 1]);
+  });
+
+  it('keeps an entry with no ttl while the ones around it expire', () => {
+    const clock = createClock();
+    const cache = createCache<number>({ maxEntries: 3, now: clock.now });
+    cache.set('a', 1, { ttl: 100 });
+    cache.set('kept', 2);
+    cache.set('b', 3, { ttl: 100 });
+    clock.advance(100);
+
+    expect([cache.size, cache.get('kept')]).toEqual([1, 2]);
+  });
+
+  it('follows the monotonic clock, not the clock of the system, when no clock is given', () => {
+    let monotonic = 0;
+    const performanceNow = jest.spyOn(performance, 'now').mockImplementation(() => monotonic);
+    const dateNow = jest.spyOn(Date, 'now');
+    const cache = createCache<number>({ maxEntries: 1, ttl: 1000 });
+    cache.set('a', 1);
+    dateNow.mockReturnValue(Date.now() + 3600000);
+    const afterSystemClockJump = cache.get('a');
+    monotonic = 1000;
+    const afterTtl = cache.get('a');
+    performanceNow.mockRestore();
+    dateNow.mockRestore();
+
+    expect([afterSystemClockJump, afterTtl]).toEqual([1, undefined]);
   });
 
   it('deletes an entry and clears all of them', () => {
