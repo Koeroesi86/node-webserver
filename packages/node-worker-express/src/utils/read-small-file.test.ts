@@ -56,7 +56,7 @@ describe('readSmallFile', () => {
   it('does not keep a file that changed after it was described', async () => {
     const fileName = await create('changing.txt', 'after the stat');
     // the stats of a shorter file stand for the ones taken before the file grew
-    const { stats } = await create('changing-before.txt', 'before');
+    const stats = await fs.stat(await create('changing-before.txt', 'before'));
     const readFile = spyOnReadFile();
 
     await readSmallFile(fileName, stats);
