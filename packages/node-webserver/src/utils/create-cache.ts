@@ -73,16 +73,19 @@ const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = bufferL
     },
     set: (key, value, options) => {
       checkTtl(options?.ttl);
+      const entryBytes = sizeOf(value);
+      // a NaN would turn the byte limit off for good, as the total stays NaN
+      if (!Number.isFinite(entryBytes) || entryBytes < 0) throw new RangeError(`the size of a value has to be a number of 0 or more, got ${entryBytes}`);
       remove(key);
       dropExpired();
-      const entryBytes = sizeOf(value);
       const entryTtl = options?.ttl ?? ttl;
       // a value that could never fit would empty the cache and still be pushed out, one that has already expired would push out a valid one
       if (maxEntries < 1 || entryBytes > maxBytes || (entryTtl !== undefined && entryTtl <= 0)) return;
 
       const entry = { value, bytes: entryBytes, expiresAt: entryTtl === undefined ? Infinity : now() + entryTtl };
       entries.set(key, entry);
-      if (entryTtl !== undefined) expiring.set(key, entry);
+      // one that never expires would stop the sweep of dropExpired at it
+      if (Number.isFinite(entry.expiresAt)) expiring.set(key, entry);
       bytes += entryBytes;
       evict();
     },

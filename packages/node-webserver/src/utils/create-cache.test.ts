@@ -269,6 +269,42 @@ describe('createCache', () => {
     expect(() => createCache({ maxEntries: 10, maxBytes: Infinity, ttl: Infinity }).set('a', 1, { ttl: 5 })).not.toThrow();
   });
 
+  it('treats a ttl of Infinity as no ttl, so it does not stop the entries after it from being dropped', () => {
+    const clock = createClock();
+    const cache = createCache<number>({ maxEntries: 3, ttl: 100, now: clock.now });
+    cache.set('forever', 1, { ttl: Infinity });
+    cache.set('a', 2);
+    clock.advance(100);
+    cache.set('b', 3);
+
+    expect([cache.size, cache.get('forever'), cache.get('a'), cache.get('b')]).toEqual([2, 1, undefined, 3]);
+  });
+
+  it('refuses a size that would turn the byte limit off or go below nothing, and keeps the old value', () => {
+    const cache = createCache<number>({ maxEntries: 3, maxBytes: 10, sizeOf: (value) => value });
+    cache.set('a', 4);
+
+    expect(() => cache.set('a', NaN)).toThrow(RangeError);
+    expect(() => cache.set('a', -1)).toThrow(RangeError);
+    expect(() => cache.set('a', Infinity)).toThrow(RangeError);
+    expect([cache.get('a'), cache.bytes]).toEqual([4, 4]);
+
+    cache.set('b', 5);
+    cache.set('c', 2);
+
+    expect(['a', 'b', 'c'].map(cache.get)).toEqual([undefined, 5, 2]);
+  });
+
+  it('does not keep the ttl of the entry it replaces', () => {
+    const clock = createClock();
+    const cache = createCache<number>({ maxEntries: 2, ttl: 100, now: clock.now });
+    cache.set('a', 1, { ttl: 5000 });
+    cache.set('a', 2);
+    clock.advance(100);
+
+    expect(cache.get('a')).toBeUndefined();
+  });
+
   it('works when its methods are passed around', () => {
     const { set, get } = createCache<number>({ maxEntries: 1 });
     set('a', 1);
