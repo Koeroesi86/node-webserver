@@ -222,7 +222,7 @@ jobs:
             echo "::warning::The CPU bound run failed its limits (attempt ${attempt} of 2)"
           done
           exit 1
-      # big binary responses, on their own and not part of the comparison with the base, which has no such route
+      # big binary responses against the limit of the pull request; the comparison with the base runs the same scenario on both sides
       - name: Run binary response load test
         timeout-minutes: 5
         if: always()

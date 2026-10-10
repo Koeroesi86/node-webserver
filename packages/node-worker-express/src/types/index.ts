@@ -20,9 +20,10 @@ export type RequestEvent = {
   binaryFrame?: Buffer;
   /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
   hasBody?: boolean;
-  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
-  inlineBody?: string;
 };
+
+/** a request as it travels to the worker: the body travels as raw bytes, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
+export type RequestMessage = RequestEvent & { body?: Buffer };
 
 /**
  * What a worker is called with: the request, the stream to read its body from, and a way to ask for the metrics of the server.
@@ -74,7 +75,12 @@ export type WorkerInputEvent =
       event: ServerMetrics;
     }
   | {
-      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
+      type: WORKER_EVENT.REQUEST;
+      requestId: string;
+      event: RequestMessage;
+    }
+  | {
+      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST | WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
       requestId: string;
       event?: RequestEvent;
     };
@@ -174,4 +180,15 @@ export interface MiddlewareOptions {
   env?: object;
   staticWorker?: string;
   cwd?: string;
+}
+
+export type StreamBody = Readable | AsyncIterable<Buffer | Uint8Array | string>;
+
+export interface StreamResponseOptions {
+  statusCode?: number;
+  headers?: ResponseEvent['headers'];
+  /** how many parts may wait to be written to the client while the next ones are produced. Not limited by default. */
+  window?: number;
+  /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
+  windowBytes?: number;
 }

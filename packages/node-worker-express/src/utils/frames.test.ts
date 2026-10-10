@@ -148,6 +148,29 @@ describe('frames', () => {
       expect(() => decodeInPieces(bytes, 1000)).toThrow('longer than the frame');
     });
 
+    it('takes a frame as long as the limit', () => {
+      const bytes = encoded({ type: 'RESPONSE', requestId: 'a', event: { body: Buffer.alloc(100) } });
+      const received: WireMessage[] = [];
+
+      new FrameDecoder<WireMessage>((message) => received.push(message), bytes.length - 4).push(bytes);
+
+      expect(received).toHaveLength(1);
+    });
+
+    it('throws on the length of a frame above the limit, without waiting for the frame', () => {
+      const bytes = encoded({ type: 'RESPONSE', requestId: 'a', event: { body: Buffer.alloc(100) } });
+      const decoder = new FrameDecoder<WireMessage>(() => {}, bytes.length - 5);
+
+      expect(() => decoder.push(bytes.subarray(0, 4))).toThrow('longer than the');
+    });
+
+    it('limits a frame to 512 MiB by default', () => {
+      const length = Buffer.alloc(4);
+      length.writeUInt32LE(0xffffffff);
+
+      expect(() => new FrameDecoder<WireMessage>(() => {}).push(length)).toThrow(`longer than the ${512 * 1024 * 1024} allowed`);
+    });
+
     it('throws when the metadata is not JSON', () => {
       const bytes = encoded({ type: 'ACK', requestId: 'a' });
       bytes.write('{{{{', 9);

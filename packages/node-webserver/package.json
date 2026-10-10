@@ -32,6 +32,7 @@
     "test": "jest",
     "test:integration": "jest -c integration/jest.config.js",
     "start:load-test": "node dist/scripts/load-test-server.js",
+    "benchmark:virtual-hosts": "node dist/scripts/benchmark-virtual-hosts.js",
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/server.js\""
   },
   "license": "MIT",

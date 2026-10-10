@@ -28,7 +28,7 @@ const args = process.argv.slice(2);
 const exportPath = args.find((argument) => argument.startsWith('--summary-export=')).split('=')[1];
 const env = Object.fromEntries(args.flatMap((argument, index) => (argument === '-e' ? [args[index + 1].split(/=(.*)/s).slice(0, 2)] : [])));
 const script = args[args.length - 1];
-const kind = script.endsWith('cpu.ts') ? 'cpu' : 'main';
+const kind = script.endsWith('cpu.ts') ? 'cpu' : script.endsWith('binary.ts') ? 'binary' : 'main';
 if (!existsSync(script) || process.env.FAKE_K6_FAIL) process.exit(3);
 if (process.env.FAKE_K6_SLEEP) {
   writeFileSync(process.env.FAKE_K6_PID, String(process.pid));
@@ -41,7 +41,7 @@ if (process.env.FAKE_K6_SLEEP) {
     response.on('end', () => {
       const [side, rate] = body.trim().split(' ');
       appendFileSync(process.env.FAKE_K6_LOG, [side, kind, env.DURATION, process.env.PREFIXED].join(' ') + '\\n');
-      const metrics = kind === 'cpu' ? { 'http_req_duration{route:cpu}': { 'p(95)': 12 } } : { http_reqs: { rate: Number(rate) } };
+      const metrics = kind === 'main' ? { http_reqs: { rate: Number(rate) } } : { ['http_req_duration{route:' + kind + '}']: { 'p(95)': 12 } };
       writeFileSync(exportPath, JSON.stringify({ metrics }));
     });
   });

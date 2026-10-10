@@ -13,11 +13,19 @@ export interface CpuSummaries {
   headCpu?: K6Summary[];
 }
 
+/** the runs of binary.ts, big binary responses from a worker */
+export interface BinarySummaries {
+  baseBinary?: K6Summary[];
+  headBinary?: K6Summary[];
+}
+
 export interface SummaryPaths {
   base: string[];
   head: string[];
   baseCpu?: string[];
   headCpu?: string[];
+  baseBinary?: string[];
+  headBinary?: string[];
 }
 
 export interface ComparisonResult {
@@ -33,6 +41,7 @@ export interface ComparisonOptions {
   rounds: number;
   duration: string;
   cpuDuration: string;
+  binaryDuration: string;
   resultsDirectory: string;
   portHttp: string;
   portHttps: string;
