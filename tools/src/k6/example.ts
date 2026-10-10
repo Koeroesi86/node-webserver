@@ -43,7 +43,8 @@ type Response = RefinedResponse<ResponseType | undefined>;
 
 interface Route {
   method: string;
-  url: string;
+  /** a function makes the url anew for every request */
+  url: string | (() => string);
   host?: string;
   headers?: Record<string, string>;
   body?: string | ArrayBuffer;
@@ -147,6 +148,15 @@ const routes: Record<string, Route> = {
   },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
   notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => bodyIncludes(r, 'does not exist'), maxP95: 40 },
+  // a path that was never asked for before, as a scan of a site is, so nothing that was remembered about an earlier one helps
+  notFoundUnique: {
+    method: 'GET',
+    url: () => `${baseUrl}/static/missing-${__VU}-${__ITER}.html`,
+    status: 404,
+    every: 5,
+    validate: (r) => bodyIncludes(r, 'does not exist'),
+    maxP95: 40,
+  },
   ...(httpsPort && {
     secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => bodyIncludes(r, 'It works!'), maxP95: 20 },
   }),
@@ -189,7 +199,8 @@ export const options = {
 export default function () {
   Object.entries(routes)
     .filter(([, { every = 1 }]) => __ITER % every === 0)
-    .forEach(([route, { method, url, host, headers, body, binary, status, validate }]) => {
+    .forEach(([route, { method, url: routeUrl, host, headers, body, binary, status, validate }]) => {
+      const url = typeof routeUrl === 'function' ? routeUrl() : routeUrl;
       const response = http.request(method, url, body, {
         headers: { Host: host || (url.startsWith('https') ? secureHostname : hostname), ...(body && { 'Content-Type': 'application/json' }), ...headers },
         tags: { route },

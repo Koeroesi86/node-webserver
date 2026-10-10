@@ -43,6 +43,14 @@ export const cpuSummary = ({ p95 = 12, dropped, checks = 1 }: CpuSummaryOptions 
     ...(dropped === undefined ? {} : { dropped_iterations: { count: dropped } }),
   },
 });
+/** a summary of binary.ts: the p95 of the route and whether the checks passed */
+export const binarySummary = ({ p95 = 20, checks = 1 }: { p95?: number; checks?: number } = {}): K6Summary => ({
+  metrics: {
+    'http_req_duration{route:binary}': { 'p(95)': p95 },
+    'checks{route:binary}': { value: checks },
+  },
+});
+export const binaryRuns = (count: number, options?: { p95?: number; checks?: number }) => Array.from({ length: count }, () => binarySummary(options));
 export const cpuRuns = (count: number, options?: CpuSummaryOptions) => Array.from({ length: count }, () => cpuSummary(options));
 
 export const runs = (...options: SummaryOptions[]) => options.map((option) => summary(option));

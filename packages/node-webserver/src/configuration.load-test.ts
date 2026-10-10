@@ -65,7 +65,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
   server.options && process.env.WORKERS_PER_PATH ? { ...server, options: { ...server.options, limitPerPath: Number(process.env.WORKERS_PER_PATH) } } : server;
 
 /**
- * Example configuration without per-request access logs and on unprivileged ports,
+ * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
  * The logger reads its levels from NODE_WEBSERVER_CONFIG, so this module has to be selected through it, load-test-env does that.
  *
@@ -74,13 +74,14 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests.
  * WORKERS_PER_PATH overrides the number of workers started per path.
+ * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {
   ...exampleConfiguration,
   logLevels: {
     system: true,
-    info: false,
-    success: false,
+    info: process.env.ACCESS_LOGS === '1',
+    success: process.env.ACCESS_LOGS === '1',
     error: true,
     warning: true,
   },

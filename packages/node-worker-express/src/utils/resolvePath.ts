@@ -51,7 +51,10 @@ async function resolvePath(rootPath: string, pathFragments: string[], indexFiles
     }
   }
 
-  return { indexPath, isWorker, pathExists, stats };
+  // the walk stops at the first path that exists, which is the requested one only when nothing had to be left off
+  const targetExists = pathExists && currentPathFragments.length === pathFragments.length;
+
+  return { indexPath, isWorker, pathExists, targetExists, stats };
 }
 
 export default resolvePath;

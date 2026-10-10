@@ -29,6 +29,13 @@ export enum WORKER_EVENT {
 /** the static worker sends files up to this size in one part, bigger ones are streamed so they do not have to fit into the memory */
 export const StaticStreamThreshold = 1024 * 1024;
 
+/**
+ * The largest frame of the channel between the server and a worker, in bytes, which a message and its body have to fit in.
+ * A length above it is taken for garbage and closes the channel, instead of buffering up to the 4 GiB a length can say.
+ * Bodies up to about 400 MB were all the JSON of the IPC before the socket pair could carry as base64, so no response that worked then is refused.
+ */
+export const ChannelMaxFrameLength = 512 * 1024 * 1024;
+
 /** how many parts of a streamed request body may be on their way to the worker before it takes one */
 export const RequestBodyWindow = 4;
 
@@ -68,6 +75,15 @@ export const WebSocketCloseCode = {
   tooBig: 1009,
 } as const;
 
+/** the upper bounds of the buckets the latency of requests is counted in, in milliseconds. One more bucket takes what is slower than the last. */
+export const LatencyBucketsMs: readonly number[] = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
+
+/** how many worker files of a worker server get a latency histogram of their own, the ones after share one, so the metrics cannot grow without a limit */
+export const LatencyPathLimit = 100;
+
+/** the name of the histogram the worker files above `LatencyPathLimit` share */
+export const LatencyOtherPaths = '(other)';
+
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
 export enum Protocols {
@@ -100,6 +116,6 @@ export const DefaultOptions: MiddlewareOptions = {
   },
   index: [],
   env: {},
-  staticWorker: path.resolve(__dirname, './staticWorker.js'),
+  staticWorker: path.resolve(__dirname, '../staticWorker.js'),
   cwd: process.cwd(),
 };

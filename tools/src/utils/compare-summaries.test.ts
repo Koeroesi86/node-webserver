@@ -1,4 +1,4 @@
-import { cpuRuns, cpuSummary, runs, same } from '../test-helpers/summaries';
+import { binaryRuns, binarySummary, cpuRuns, cpuSummary, runs, same } from '../test-helpers/summaries';
 import type { K6Summary } from '../types/k6-summary';
 import { compareSummaries } from './compare-summaries';
 
@@ -184,6 +184,51 @@ describe('compareSummaries', () => {
 
     it('uses the medians, so one bad run does not decide', () => {
       expect(compareCpu(cpuRuns(3), [cpuSummary(), cpuSummary(), cpuSummary({ p95: 300 })]).regressions).toEqual([]);
+    });
+  });
+
+  describe('binary run', () => {
+    const compareBinary = (base: K6Summary[], head: K6Summary[]) => compareSummaries(same(), same(), {}, { baseBinary: base, headBinary: head });
+
+    it('is not shown when there are no summaries of it', () => {
+      expect(compareSummaries(same(), same()).markdown).not.toContain('binary');
+    });
+
+    it('finds no regression with the same results', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3), binaryRuns(3));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 binary responses (ms) | 20.0 | 20.0 | +0.0% | ✅ |');
+    });
+
+    it('is a regression when the p95 is more than 50% and 5 ms higher', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3, { p95: 20 }), binaryRuns(3, { p95: 40 }));
+
+      expect(regressions).toEqual([expect.stringContaining('big binary responses')]);
+      expect(markdown).toContain('❌');
+    });
+
+    it('is not when it is 40% higher, or higher by less than 5 ms', () => {
+      expect(compareBinary(binaryRuns(3, { p95: 20 }), binaryRuns(3, { p95: 28 })).regressions).toEqual([]);
+      expect(compareBinary(binaryRuns(3, { p95: 3 }), binaryRuns(3, { p95: 7 })).regressions).toEqual([]);
+    });
+
+    it('shows a gain without judging it', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3, { p95: 27.5 }), binaryRuns(3, { p95: 11.1 }));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 binary responses (ms) | 27.5 | 11.1 | −59.6% | ✅ |');
+    });
+
+    it('is not judged when the base cannot serve it', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3, { p95: 2, checks: 0 }), binaryRuns(3, { p95: 40 }));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 binary responses (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
+    });
+
+    it('uses the medians, so one bad run does not decide', () => {
+      expect(compareBinary(binaryRuns(3), [binarySummary(), binarySummary(), binarySummary({ p95: 300 })]).regressions).toEqual([]);
     });
   });
 

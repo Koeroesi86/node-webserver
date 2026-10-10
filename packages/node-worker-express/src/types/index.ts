@@ -20,9 +20,12 @@ export type RequestEvent = {
   binaryFrame?: Buffer;
   /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
   hasBody?: boolean;
-  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
+  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. Only a worker gets it, encoded when read. */
   inlineBody?: string;
 };
+
+/** a request as it travels to the worker: the body travels as raw bytes, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
+export type RequestMessage = RequestEvent & { body?: Buffer };
 
 /**
  * What a worker is called with: the request, the stream to read its body from, and a way to ask for the metrics of the server.
@@ -34,6 +37,24 @@ export type WorkerRequestEvent = RequestEvent & {
   /** a snapshot of the server: uptime, memory, event loop delay, requests, worker pools and what else registered itself */
   getMetrics: () => Promise<ServerMetrics>;
 };
+
+/** how long requests took, from the request to the close of its response, since the server started */
+export type LatencySnapshot = {
+  count: number;
+  sumMs: number;
+  maxMs: number;
+  /** the upper bound of the bucket the percentile falls into, or `maxMs` above the last bucket. Zero without requests. */
+  p50: number;
+  p90: number;
+  p99: number;
+  /** the number of requests per bucket, by its upper bound in milliseconds, and `+Inf` for the slower ones. Not cumulative. */
+  buckets: Record<string, number>;
+};
+
+export interface LatencyHistogram {
+  record: (durationMs: number) => void;
+  read: () => LatencySnapshot;
+}
 
 /** a part of a streamed request body as it travels to the worker, `null` ends it */
 export type RequestBodyEvent = { body: Buffer | null };
@@ -56,7 +77,12 @@ export type WorkerInputEvent =
       event: ServerMetrics;
     }
   | {
-      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
+      type: WORKER_EVENT.REQUEST;
+      requestId: string;
+      event: RequestMessage;
+    }
+  | {
+      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST | WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
       requestId: string;
       event?: RequestEvent;
     };
@@ -154,6 +180,21 @@ export interface MiddlewareOptions {
   onForbiddenPath?: (request: Request, response: Response) => unknown;
   index?: string[];
   env?: object;
+  /**
+   * the worker file for the paths that no worker answers. With the default one, a path that does not exist is answered with 404 by the middleware itself, without a worker:
+   * another one is asked for those too, as it may answer them in its own way.
+   */
   staticWorker?: string;
   cwd?: string;
+}
+
+export type StreamBody = Readable | AsyncIterable<Buffer | Uint8Array | string>;
+
+export interface StreamResponseOptions {
+  statusCode?: number;
+  headers?: ResponseEvent['headers'];
+  /** how many parts may wait to be written to the client while the next ones are produced. Not limited by default. */
+  window?: number;
+  /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
+  windowBytes?: number;
 }

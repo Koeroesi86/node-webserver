@@ -5,6 +5,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | Tool | What it does | Run |
 | --- | --- | --- |
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
+| [Channel benchmark](#channel-benchmark) | the channel between the server and a worker on its own: messages and bytes per second, the old IPC against the socket pair | `node tools/dist/scripts/channel-bench.js` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
 ### Layout
@@ -13,7 +14,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`. They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
@@ -32,6 +33,13 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 | `NPM_REGISTRY_URL` | the registry to compare with, defaults to https://registry.npmjs.org |
 | `VERSION_DRY_RUN` | only print the plan without changing any file |
 | `PUBLISH_ALL` | publish every package regardless of the changes |
+
+## Channel benchmark
+
+`node tools/dist/scripts/channel-bench.js [ipc|socket|both] [scale]` (needs `pnpm build`) measures the channel between the server and a worker without HTTP, which the load test cannot do: the number does not depend on Express, the runner or k6.
+A child process echoes every message, the parent keeps a number of them in flight (1 or 64, 16 and 4 for the bigger bodies) and measures messages per second, megabytes of body per second, its own CPU time per message and the latency, for requests without a body and with bodies of 4 KiB, 64 KiB and 1 MiB.
+`socket` is the `createChannel` of `node-worker-express`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
+Pin it like the load test to compare runs, for example `taskset -c 0-2 node tools/dist/scripts/channel-bench.js`; on 3 cores the socket was 2-10 times faster with a body from 4 KiB and not faster without one.
 
 ## Load tests
 
@@ -102,7 +110,7 @@ and `health.localhost`, whose worker answers `/health` and `/metrics` from the m
 
 ### Big binary responses
 
-`binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms.
+`binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms. The comparison with the base runs it too, see below.
 It runs on its own after the CPU bound one, and is left out of the comparison with the base: a base without the route would answer it with fast errors, and look better for it.
 To see the difference to another build, give that build the route (a worker with the same name) and run the script against both servers.
 
@@ -111,7 +119,7 @@ To see the difference to another build, give that build the route (a worker with
 `websocket.ts` works the flow control of websockets (`examples/websocket-flow/exampleWorker.js`, `web.localhost/websocket-flow/exampleWorker.js`) with 5 + 5 users and one that samples the memory of the server through `health.localhost/metrics`:
 a **fast producer** sends 400 messages of 32 KiB (text and binary) in a burst to a worker that takes 2 ms for each, and has to get every one back, whole and in order; a **slow consumer** reads 200 messages of 64 KiB, one every 5 ms,
 from a worker that sends them as fast as the client takes them, and has to get all of them in order and the close of the worker. The memory the server holds outside of the heap (where the messages wait) may not exceed 100 MiB at any time
-(`ws_flow_server_external_mib`, `MAX_EXTERNAL_MIB`): it peaked at 50-70 MiB with the flow control, and at 175-195 MiB with the window towards the worker taken out. Like `binary.ts` it runs on its own and is left out of the comparison with the base.
+(`ws_flow_server_external_mib`, `MAX_EXTERNAL_MIB`): it peaked at 50-70 MiB with the flow control, and at 175-195 MiB with the window towards the worker taken out. It runs on its own and is left out of the comparison with the base (`binary.ts` is compared, see below).
 
 ```sh
 k6 run tools/src/k6/websocket.ts
@@ -135,6 +143,7 @@ k6 run tools/src/k6/cpu.ts
 | --- | --- | --- | --- |
 | server | `PORT_HTTP`, `PORT_HTTPS` | 8080, 8443 | ports of the server |
 | server | `WORKERS_PER_PATH` | CPU cores | workers started per path, 1 reproduces the single worker bottleneck |
+| server | `ACCESS_LOGS` | not set | `1` turns the access logs on (the `info` and `success` levels), to measure the logger on the path of every request |
 | k6 | `BASE_URL` | `http://localhost:8080` | |
 | k6 | `HTTPS_PORT` | not set | enables the HTTPS and secure websocket routes |
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
@@ -168,6 +177,7 @@ Both sides run the load test of the pull request against their own server, so th
 - **the CPU bound run** (`cpu.ts`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
   and tighter limits hold: a p95 more than 30% and 5 milliseconds higher fails (`MAX_CPU_P95_INCREASE`, 0.3), and so does a build that drops requests where the base does not. A base without the CPU bound worker is listed with n/a and not judged.
   The duration is the fifth argument of `compare-with-base.js`.
+- **the binary run** (`binary.ts`, with 10 users, after the CPU bound run of every round; its duration, 10 seconds, is the sixth argument of `compare-with-base.js`) is compared as well: its p95 is judged like a route (50% and 5 milliseconds higher fails), a gain only shows in the row. A base without the route answers with errors, which fail the checks of the scenario, and is listed with n/a and not judged,
 - **routes served by one side only**: the warm-up also records the status each side answers per endpoint. When they differ (for example a 404 on the base for a route the pull request added), the summary lists them under "Not served alike". It does not fail: a pull request may add a route, but a scenario that works a route for one side only skews the numbers, so it belongs in a script of its own (like `binary.ts`) and not in `example.ts`,
 - **runs**: the third argument of `compare-with-base.js`. The workflow uses 3 on Ubuntu and 5 on macOS and Windows (`comparison-rounds`), where the same side varied by a factor of 3 between runs and the median needs more of them.
 
@@ -177,6 +187,10 @@ for the pull request that adds the load test, and while the base cannot be built
 ```sh
 SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s
 ```
+
+`SERVER_ENV` (`NAME=value NAME=value`) is added to the environment of both servers, `MAIN_ONLY=1` leaves out the CPU bound and the binary runs, and `RESULTS_DIRECTORY` (default `compare-results`) is where the results go.
+On Ubuntu the workflow runs the comparison a second time with `SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` (`compare-results-access-logs/`), so that the logger shows in the numbers. It is informational, does not fail the job, and only runs when the base knows `ACCESS_LOGS`,
+as a base that does not would run without access logs and the difference would not be about the logger.
 
 The results are in `compare-results/`, the exit code is 1 on a regression. Each run also shows the processor of the runner and how much of the time it was held back by its host (steal time) in the job summary, which explains runs that are slow for no reason of the code.
 

@@ -40,6 +40,7 @@ jobs:
           # cpu-rate: requests per second for the CPU bound worker, cpu-max-dropped: how many of its requests k6 may fail to start (of 3000 in a run)
           # comparison-limits: the limits of the comparison with the base (see tools/README.md) that differ from the defaults. The identical code measured up to 40% apart on these systems.
           # comparison-rounds: runs of each side, the median of which is compared. The systems with the large spread between runs of the same side get more of them.
+          # access-logs-comparison: also compares the base with the pull request with the access logs on (informational), where the logger shows in the numbers. One system is enough for that.
           # p95-factor: multiplies the p95 allowed for every route, where everything is slower and shared runners are noisier.
           # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
           - os: ubuntu-latest
@@ -51,6 +52,7 @@ jobs:
             comparison-limits: ''
             comparison-informational: false
             comparison-rounds: 3
+            access-logs-comparison: true
             p95-factor: 1
           - os: windows-latest
             requests-per-core: 100
@@ -61,6 +63,7 @@ jobs:
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
             comparison-informational: true
             comparison-rounds: 5
+            access-logs-comparison: false
             p95-factor: 2
           - os: macos-latest
             requests-per-core: 100
@@ -71,6 +74,7 @@ jobs:
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
             comparison-informational: true
             comparison-rounds: 5
+            access-logs-comparison: false
             p95-factor: 2
     defaults:
       run:
@@ -127,6 +131,10 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           echo 'ready=true' >> "$GITHUB_OUTPUT"
+          # a base without the setting would run without access logs, and the comparison would not be about the logger
+          if grep -q ACCESS_LOGS packages/node-webserver/src/configuration.load-test.ts; then
+            echo 'access-logs=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Runner resources and cores for the server and k6
         run: |
           cores=$(node -p "require('os').availableParallelism()")
@@ -222,7 +230,7 @@ jobs:
             echo "::warning::The CPU bound run failed its limits (attempt ${attempt} of 2)"
           done
           exit 1
-      # big binary responses, on their own and not part of the comparison with the base, which has no such route
+      # big binary responses against the limit of the pull request; the comparison with the base runs the same scenario on both sides
       - name: Run binary response load test
         timeout-minutes: 5
         if: always()
@@ -245,7 +253,14 @@ jobs:
           node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
         if: always()
-        run: kill "$(cat server.pid)" || echo 'The server had already stopped.'
+        run: |
+          # on Windows kill ends the server only, and its workers and lambdas would stay through the comparison with the base. taskkill ends them all,
+          # it needs the Windows pid of the process, which Git Bash keeps next to its own
+          if [ "${RUNNER_OS}" = 'Windows' ]; then
+            taskkill //PID "$(cat "/proc/$(cat server.pid)/winpid")" //T //F || echo 'The server had already stopped.'
+          else
+            kill "$(cat server.pid)" || echo 'The server had already stopped.'
+          fi
       # one server at a time, the one above is stopped, and the cores of the runner are the same for both sides
       - name: Compare with the base
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
@@ -260,6 +275,27 @@ jobs:
           env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . "${COMPARISON_ROUNDS}" 15s > compare-summary.md || status=$?
           cat compare-summary.md
           cat compare-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "${status}"
+      # the load test server logs the requests with ACCESS_LOGS=1, the cost of which is the logger. Only the main scenario, as the others do not go through more of it.
+      - name: Compare with the base with the access logs on
+        if: always() && github.event_name == 'pull_request' && matrix.access-logs-comparison && steps.base.outputs.access-logs == 'true'
+        timeout-minutes: 10
+        # informational: the access logs are what this shows, and the limits above are calibrated without them
+        continue-on-error: true
+        env:
+          SERVER_ENV: ACCESS_LOGS=1
+          MAIN_ONLY: '1'
+          RESULTS_DIRECTORY: compare-results-access-logs
+        run: |
+          status=0
+          # shellcheck disable=SC2086
+          env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . "${COMPARISON_ROUNDS}" 15s > compare-summary-access-logs.md || status=$?
+          cat compare-summary-access-logs.md
+          {
+            echo '## With the access logs on'
+            echo
+            cat compare-summary-access-logs.md
+          } >> "$GITHUB_STEP_SUMMARY"
           exit "${status}"
       - name: Note that there is nothing to compare with
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready != 'true'
@@ -278,4 +314,5 @@ jobs:
             runner-before.json
             runner-after.json
             compare-results/
+            compare-results-access-logs/
           if-no-files-found: ignore
