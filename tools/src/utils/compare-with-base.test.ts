@@ -52,7 +52,7 @@ describe('compareWithBase', () => {
     expect(result.passed).toBe(true);
     expect(result.markdown).toContain('✅ no regression');
     expect(result.markdown).toContain('| Throughput (req/s) | 4000 (4000-4000) | 4000 (4000-4000) | +0.0% | ✅ |');
-    expect(result.markdown).toContain('| p95 CPU bound (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+    expect(result.markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
     expect(result.markdown).toContain('| p95 binary responses (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
     expect(k6Calls()).toEqual([
       'base main 2s yes',

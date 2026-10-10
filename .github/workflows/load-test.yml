@@ -35,7 +35,8 @@ jobs:
         include:
           # requests per second and core of the server that the throughput floor asks for. Linux is calibrated with the cores split between the server and k6,
           # the other systems cannot do that, so the server shares its cores with k6 there.
-          # cpu-max-p95-ms is the p95 allowed for the CPU bound worker, which shares its cores with k6 there too
+          # cpu-max-p95-ms is the p95 allowed for the CPU bound worker, which shares its cores with k6 there too. It only catches a collapse, about 3 times the slower
+          # Linux runners (24-37 ms, the faster ones 9-14 ms): a slowdown of the code is for the comparison with the base to find, which measures both on the same machine.
           # p95-overrides: the p95 allowed for routes (and `ws_connecting`, the time to connect a websocket) instead of their own, in the form of `route=ms,route=ms`. Lambdas are processes, which Windows is slow to start.
           # cpu-rate: requests per second for the CPU bound worker, cpu-max-dropped: how many of its requests k6 may fail to start (of 3000 in a run)
           # comparison-limits: the limits of the comparison with the base (see tools/README.md) that differ from the defaults. The identical code measured up to 40% apart on these systems.
@@ -45,7 +46,7 @@ jobs:
           # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
           - os: ubuntu-latest
             requests-per-core: 250
-            cpu-max-p95-ms: 50
+            cpu-max-p95-ms: 100
             cpu-rate: 150
             cpu-max-dropped: 0
             p95-overrides: ''

@@ -141,7 +141,7 @@ describe('compareSummaries', () => {
       const { regressions, markdown } = compareCpu(cpuRuns(3), cpuRuns(3));
 
       expect(regressions).toEqual([]);
-      expect(markdown).toContain('| p95 CPU bound (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+      expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
       expect(markdown).toContain('| CPU bound dropped requests | 0 | 0 | n/a | ✅ |');
     });
 
@@ -179,11 +179,23 @@ describe('compareSummaries', () => {
       const { regressions, markdown } = compareCpu(cpuRuns(3, { p95: 2, checks: 0 }), cpuRuns(3, { p95: 40, dropped: 10 }));
 
       expect(regressions).toEqual([]);
-      expect(markdown).toContain('| p95 CPU bound (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
+      expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
     });
 
-    it('uses the medians, so one bad run does not decide', () => {
+    it('uses the lowest p95 of each side, as slow runs are the machine and not the build', () => {
       expect(compareCpu(cpuRuns(3), [cpuSummary(), cpuSummary(), cpuSummary({ p95: 300 })]).regressions).toEqual([]);
+      // a run on GitHub had medians of 43 and 73 ms with the same server on both sides, which one fast run of the pull request passes now
+      expect(compareCpu(cpuRuns(3, { p95: 43 }), [cpuSummary({ p95: 40 }), cpuSummary({ p95: 73 }), cpuSummary({ p95: 80 })]).regressions).toEqual([]);
+    });
+
+    it('is a regression when every run of the pull request is slower than the fastest of the base', () => {
+      const { regressions, markdown } = compareCpu(
+        [cpuSummary({ p95: 12 }), cpuSummary({ p95: 30 }), cpuSummary({ p95: 14 })],
+        [cpuSummary({ p95: 20 }), cpuSummary({ p95: 22 }), cpuSummary({ p95: 40 })]
+      );
+
+      expect(regressions).toEqual([expect.stringContaining('12.0 ms to 20.0 ms')]);
+      expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 20.0 | +66.7% | ❌ |');
     });
   });
 
