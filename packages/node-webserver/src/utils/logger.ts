@@ -1,6 +1,6 @@
 import moment from 'moment';
 import { resolve } from 'path';
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, write, writeSync } from 'fs';
+import { constants, existsSync, fstatSync, mkdirSync, openSync, write, writeSync } from 'fs';
 import { formatWithOptions } from 'util';
 import type { Configuration, LogLevels } from '../types';
 
@@ -42,9 +42,8 @@ function getLogFile(level: keyof LogLevels) {
   if (cached || !fileLogPath) return cached;
 
   const path = resolve(fileLogPath, `./${startedAt.valueOf()}.${level}.log`);
-  // created first and opened again, as only a file that is not in append mode honours the position of a write
-  closeSync(openSync(path, 'a'));
-  const fd = openSync(path, 'r+');
+  // opened once, for reading and writing and created when it is missing: only a file that is not in append mode honours the position of a write
+  const fd = openSync(path, constants.O_RDWR | constants.O_CREAT);
   const file: LogFile = { fd, offset: fstatSync(fd).size };
   logFiles.set(level, file);
   return file;

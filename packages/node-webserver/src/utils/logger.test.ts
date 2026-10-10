@@ -54,7 +54,7 @@ describe('logger', () => {
     };
     jest.doMock('fs', () => ({
       ...fs,
-      closeSync: jest.fn(),
+      constants: jest.requireActual('fs').constants,
       fstatSync: (fd: number) => ({ size: (disk.get(paths.get(fd) as string) as Buffer).length }),
       mkdirSync: jest.fn(),
       existsSync: jest.fn(() => true),
@@ -104,7 +104,7 @@ describe('logger', () => {
     jest.advanceTimersByTime(100);
 
     const files = fs.openSync.mock.calls.map(([file]) => file);
-    expect(files.map((file) => path.basename(file).split('.')[1]).sort()).toEqual(['error', 'error', 'info', 'info']);
+    expect(files.map((file) => path.basename(file).split('.')[1]).sort()).toEqual(['error', 'info']);
     expect(files.every((file) => path.dirname(file) === logFolder)).toBe(true);
   });
 
@@ -118,8 +118,7 @@ describe('logger', () => {
     jest.advanceTimersByTime(100);
     finishWrites();
 
-    // created, then opened for the positions
-    expect(fs.openSync).toHaveBeenCalledTimes(2);
+    expect(fs.openSync).toHaveBeenCalledTimes(1);
     expect(fs.write).toHaveBeenCalledTimes(2);
   });
 
