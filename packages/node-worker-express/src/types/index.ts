@@ -147,6 +147,22 @@ export type InvokableWorker = (event: WorkerRequestEvent, callback: ResponseCall
  */
 export type WorkerMiddleware = RequestHandler & { close: (timeout?: number) => Promise<void> };
 
+/** what a route of a static table is matched by: a path as it is, or a pattern for the whole path */
+export type RouteSelector =
+  | {
+      /** the path as it is, which is looked up in a map */
+      path: string;
+    }
+  | {
+      /**
+       * a regular expression that the whole path (without the query) has to match, it is anchored at both ends. Named groups are handed on as `pathParameters`.
+       * It runs on the front process for every request that gets to it, so it is trusted configuration: avoid patterns that backtrack, like nested repetitions.
+       */
+      pattern: string;
+      /** of the regular expression: `i`, `s`, `u` or `v` */
+      flags?: string;
+    };
+
 /**
  * A route of the static table: a request whose path matches it goes to `worker`, without looking for a worker in the files under the root.
  * The worker is always the file named here, never a path made from the request.

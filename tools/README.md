@@ -176,6 +176,16 @@ Like `binary.ts` it runs on its own and is left out of the comparison with the b
 k6 run tools/src/k6/routes.ts
 ```
 
+### Table of routes of lambdas
+
+`lambda-routes.ts` asks for the same handler of one file (`examples/lambda-routes/exampleLambda.js`) in two ways, with 4 users and an id that was not asked for before in every request: `routed` through the table of routes of `lambda-routes.localhost`, where `/items/<id>` is the 401st of 402 routes
+(200 paths and 200 patterns come before it), and `single` as the only lambda of `lambda-single.localhost`, which has no table. `orders` asks `lambda-routes.localhost/orders`, another handler of the file in a pool of its own. The three have a p95 of at most 50 ms (`MAX_P95_MS`),
+and `routed` and `single` side by side in the summary show whether matching the table costs anything noticeable next to the invocation. Like `routes.ts` it runs on its own and is left out of the comparison with the base, which has no table of routes.
+
+```sh
+k6 run tools/src/k6/lambda-routes.ts
+```
+
 ### CPU bound worker
 
 `cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow
