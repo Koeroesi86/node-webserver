@@ -61,7 +61,7 @@ describe('warmUpServer', () => {
     await warmUpServer(port, undefined, { ...options, requests: 1 });
 
     expect(new Set(requests.map(({ host }) => host))).toEqual(
-      new Set(['web.localhost', 'lambda.localhost', 'compressed.localhost', 'upload.localhost', 'health.localhost'])
+      new Set(['web.localhost', 'lambda.localhost', 'compressed.localhost', 'upload.localhost', 'health.localhost', 'proxied.localhost'])
     );
     expect(requests.find(({ host }) => host === 'upload.localhost')).toMatchObject({ method: 'POST', body: 'warm-up' });
     await stop();

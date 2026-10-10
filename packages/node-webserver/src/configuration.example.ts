@@ -28,7 +28,7 @@ const configuration = {
       protocol: 'http',
       // key: resolve(__dirname, './.certificates/localhost/privkey1.pem'),
       // cert: resolve(__dirname, './.certificates/localhost/cert1.pem'),
-      type: 'worker', // 'child'|'lambda'|'worker'
+      type: 'worker', // 'child'|'lambda'|'proxy'|'worker'
       options: {
         root: resolve(PACKAGE_ROOT, 'examples'),
         index: ['exampleWorker.js'],

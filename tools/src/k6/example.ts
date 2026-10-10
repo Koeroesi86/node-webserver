@@ -10,6 +10,7 @@ const lambdaHostname = 'lambda.localhost';
 const compressedHostname = 'compressed.localhost';
 const uploadHostname = 'upload.localhost';
 const healthHostname = 'health.localhost';
+const proxiedHostname = 'proxied.localhost';
 // the https and secure websocket routes are only tested when the server runs with a certificate, see README.md
 const httpsPort = __ENV.HTTPS_PORT;
 const secureHostname = 'secure.localhost';
@@ -145,6 +146,16 @@ const routes: Record<string, Route> = {
       Number(r.json('uptimeSeconds')) > 0 &&
       r.json('sources.lambdas') !== undefined,
     maxP95: 50,
+  },
+  // a proxy server in front of a static file server: the cost of passing a request on to an application that runs on its own
+  proxied: {
+    method: 'GET',
+    url: `${baseUrl}/index.html`,
+    host: proxiedHostname,
+    status: 200,
+    every: 2,
+    validate: (r) => bodyIncludes(r, 'It works!'),
+    maxP95: 20,
   },
   // every request to a missing file is logged as an error, so it is only a small share of the traffic
   notFound: { method: 'GET', url: `${baseUrl}/static/missing.html`, status: 404, every: 5, validate: (r) => bodyIncludes(r, 'does not exist'), maxP95: 40 },

@@ -1,4 +1,7 @@
 import { gunzipSync } from 'zlib';
+import http from 'http';
+import net from 'net';
+import { once } from 'events';
 import { startServer } from './helpers/start-server';
 import type { RunningServer } from './helpers/start-server';
 import { connectWebSocket } from './helpers/websocket-client';
@@ -181,6 +184,74 @@ describe('the server', () => {
       const reply = await server.get('child.localhost', '/', { method: 'POST', body: 'ő proxied' });
 
       expect(reply.json()).toMatchObject({ method: 'POST', body: 'ő proxied' });
+    });
+  });
+
+  describe('of the type proxy', () => {
+    const controlPath = '/.well-known/node-webserver/proxy';
+    const control = (method: string, body?: object, headers: http.OutgoingHttpHeaders = {}) =>
+      server.get('proxy.localhost', controlPath, {
+        method,
+        body: body && JSON.stringify(body),
+        headers: { Authorization: 'Bearer integration-token', 'X-Forwarded-Proto': 'https', ...headers },
+      });
+    let upstream: http.Server;
+    let upstreamPort: number;
+
+    beforeAll(async () => {
+      // an application that knows nothing of the server in front of it, and echoes a websocket
+      upstream = http.createServer((request, response) => {
+        response.writeHead(200, { 'Content-Type': 'application/json', Server: 'upstream' });
+        response.end(JSON.stringify({ url: request.url, host: request.headers.host, forwardedFor: request.headers['x-forwarded-for'] }));
+      });
+      upstream.on('upgrade', (request: http.IncomingMessage, socket: net.Socket) => {
+        socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+        socket.pipe(socket);
+      });
+      upstream.listen(0, '127.0.0.1');
+      await once(upstream, 'listening');
+      const address = upstream.address();
+      upstreamPort = address && typeof address === 'object' ? address.port : 0;
+    });
+
+    afterAll(async () => {
+      upstream.closeAllConnections();
+      await new Promise((resolve) => upstream.close(resolve));
+    });
+
+    it('answers 502 when the target cannot be reached', async () => {
+      expect((await server.get('proxy-down.localhost')).status).toBe(502);
+    });
+
+    it('answers 503 before a target is registered, and refuses a registration without the token or over plain http', async () => {
+      expect((await server.get('proxy.localhost')).status).toBe(503);
+      expect((await control('PUT', { port: upstreamPort }, { Authorization: 'Bearer wrong' })).status).toBe(401);
+      expect((await control('PUT', { port: upstreamPort }, { 'X-Forwarded-Proto': 'http' })).status).toBe(403);
+    });
+
+    it('passes the requests on to the target the application registered, websockets too', async () => {
+      const registered = await control('PUT', { port: upstreamPort });
+      const reply = await server.get('proxy.localhost', '/some/path?q=1', { headers: { 'X-Forwarded-For': '1.2.3.4' } });
+
+      expect(registered.json()).toMatchObject({ target: `http://127.0.0.1:${upstreamPort}/` });
+      expect(reply.status).toBe(200);
+      // the front server trusts the loopback address in these tests, so the chain is kept and its peer added
+      expect(reply.json()).toEqual({ url: '/some/path?q=1', host: 'proxy.localhost', forwardedFor: '1.2.3.4, 127.0.0.1' });
+
+      const socket = net.connect(server.port, '127.0.0.1');
+      let received = '';
+      const echoed = new Promise<void>((resolve) =>
+        socket.on('data', (data: Buffer) => {
+          received += data.toString('utf8');
+          if (received.endsWith('\r\n\r\n')) socket.write('ping');
+          if (received.endsWith('ping')) resolve();
+        })
+      );
+      socket.write('GET / HTTP/1.1\r\nHost: proxy.localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+      await echoed;
+      socket.destroy();
+
+      expect(received).toMatch(/^HTTP\/1.1 101 Switching Protocols\r\n/);
     });
   });
 });

@@ -6,12 +6,15 @@ import type { LogLevels } from '../types';
 // the host header is read from the parsed headers, request.get() lowercases the name and looks at the special cases of express for every call
 const fullUrl = (request: Request) => `${request.protocol}://${request.headers.host}${request.originalUrl}`;
 
+const redactedHeaders = ['authorization', 'proxy-authorization'];
+
 const serialiseHeaders = (request: Request) =>
   JSON.stringify(
     Object.fromEntries(
       Object.keys(request.headers)
         .sort()
-        .map((key) => [key, request.headers[key]])
+        // credentials, like the token of the control path of a proxy, are never logged
+        .map((key) => [key, redactedHeaders.includes(key) ? '[redacted]' : request.headers[key]])
     )
   );
 

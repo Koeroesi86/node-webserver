@@ -15,6 +15,7 @@ One Node.js server sits in front and acts as a lightweight, cheap proxy to other
 | `worker` | a pool of Node processes per worker file, which answer requests with a function (`event`, `callback`), also by streaming the response and reading the request body as a stream |
 | `lambda` | AWS Lambda style handlers, each in a process of its own |
 | `child` | any other application, started as a child process and proxied to |
+| `proxy` | an application that runs on its own, at a fixed address or at one it registers itself, like a dyndns update |
 
 The front server stays a single process on purpose. It does as little as possible for every request, and the work, the memory and the isolation live in the processes behind it: a worker that crashes or leaks takes only itself down,
 and CPU heavy handlers spread over the cores through their own pools. What this means for the code:

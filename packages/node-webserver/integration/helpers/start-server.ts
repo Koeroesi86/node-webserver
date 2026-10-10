@@ -32,9 +32,9 @@ const isListening = (port: number) =>
 
 /** starts the built server with the servers of the fixtures in a process of its own, and resolves once it accepts connections */
 export const startServer = async (): Promise<RunningServer> => {
-  const [port, httpsPort, childPortFrom] = await Promise.all([getFreePort(), getFreePort(), getFreePort()]);
+  const [port, httpsPort, childPortFrom, closedPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
   const child = spawn(process.execPath, [resolve(__dirname, '../fixtures/run-server.js')], {
-    env: { ...process.env, PORT_HTTP: `${port}`, PORT_HTTPS: `${httpsPort}`, PORT_CHILD_FROM: `${childPortFrom}` },
+    env: { ...process.env, PORT_HTTP: `${port}`, PORT_HTTPS: `${httpsPort}`, PORT_CHILD_FROM: `${childPortFrom}`, PORT_CLOSED: `${closedPort}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
