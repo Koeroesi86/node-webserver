@@ -57,6 +57,20 @@ describe('accessLogsMiddleware', () => {
       );
     });
 
+    it('builds the url once for the two lines of a request', () => {
+      const request = createRequest();
+      const protocol = jest.fn(() => 'http');
+      Object.defineProperty(request, 'protocol', { get: protocol });
+      const response = createResponse(200);
+
+      accessLogsMiddleware({ alias: 'http' })(request, response, jest.fn());
+      jest.runAllTimers();
+      response.emit('finish');
+
+      expect(mockedLogger.success).toHaveBeenCalledTimes(2);
+      expect(protocol).toHaveBeenCalledTimes(1);
+    });
+
     it('logs a response below 400 as a success, with its size', () => {
       run(200);
 

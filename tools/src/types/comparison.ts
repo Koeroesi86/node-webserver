@@ -47,6 +47,10 @@ export interface ComparisonOptions {
   portHttps: string;
   serverPrefix: string[];
   k6Prefix: string[];
+  /** variables for the servers of both sides, on top of the environment: a setting that the base has to know as well to be compared with */
+  serverEnvironment?: Record<string, string>;
+  /** only example.ts is run, not the CPU bound and the binary scenarios: for a setting that is about what every request goes through */
+  mainOnly?: boolean;
 }
 
 export interface ComparisonDetails extends ComparisonResult {

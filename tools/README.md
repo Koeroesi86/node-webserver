@@ -143,6 +143,7 @@ k6 run tools/src/k6/cpu.ts
 | --- | --- | --- | --- |
 | server | `PORT_HTTP`, `PORT_HTTPS` | 8080, 8443 | ports of the server |
 | server | `WORKERS_PER_PATH` | CPU cores | workers started per path, 1 reproduces the single worker bottleneck |
+| server | `ACCESS_LOGS` | not set | `1` turns the access logs on (the `info` and `success` levels), to measure the logger on the path of every request |
 | k6 | `BASE_URL` | `http://localhost:8080` | |
 | k6 | `HTTPS_PORT` | not set | enables the HTTPS and secure websocket routes |
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
@@ -186,6 +187,10 @@ for the pull request that adds the load test, and while the base cannot be built
 ```sh
 SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s
 ```
+
+`SERVER_ENV` (`NAME=value NAME=value`) is added to the environment of both servers, `MAIN_ONLY=1` leaves out the CPU bound and the binary runs, and `RESULTS_DIRECTORY` (default `compare-results`) is where the results go.
+On Ubuntu the workflow runs the comparison a second time with `SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` (`compare-results-access-logs/`), so that the logger shows in the numbers. It is informational, does not fail the job, and only runs when the base knows `ACCESS_LOGS`,
+as a base that does not would run without access logs and the difference would not be about the logger.
 
 The results are in `compare-results/`, the exit code is 1 on a regression. Each run also shows the processor of the runner and how much of the time it was held back by its host (steal time) in the job summary, which explains runs that are slow for no reason of the code.
 

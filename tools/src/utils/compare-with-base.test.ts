@@ -70,6 +70,17 @@ describe('compareWithBase', () => {
     ]);
   }, 30000);
 
+  it('runs only the main scenario for a comparison of the main one, and gives both servers the settings', async () => {
+    const [base, head] = [checkout('base', 4000), checkout('head', 4000)];
+    const result = await compareWithBase(options(base, head, { rounds: 1, mainOnly: true, serverEnvironment: { FAKE_SETTING: 'on' } }));
+
+    expect(k6Calls().map((call) => call.trim())).toEqual(['base main 2s', 'head main 2s']);
+    expect(readFileSync(join(base, 'setting.txt'), 'utf8')).toBe('on');
+    expect(readFileSync(join(head, 'setting.txt'), 'utf8')).toBe('on');
+    expect(result.passed).toBe(true);
+    expect(result.markdown).not.toContain('CPU bound');
+  }, 30000);
+
   it('warms the server up before k6 measures, with the endpoints that start workers', async () => {
     const [base, head] = [checkout('base', 4000), checkout('head', 4000)];
     await compareWithBase(options(base, head, { rounds: 1 }));
