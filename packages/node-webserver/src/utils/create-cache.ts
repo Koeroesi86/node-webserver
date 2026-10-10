@@ -8,6 +8,11 @@ interface Entry<V> {
 
 const bufferLength = (value: unknown) => (Buffer.isBuffer(value) ? value.length : 0);
 
+// a NaN ttl would never expire
+const checkTtl = (ttl: number | undefined) => {
+  if (Number.isNaN(ttl)) throw new RangeError('the ttl of the cache has to be a number');
+};
+
 /**
  * A least recently used cache bounded by entries and by bytes, whichever is hit first. A `Map` keeps the order of insertion,
  * so a hit is inserted again to move it to the end and the first key is the one pushed out.
@@ -15,6 +20,12 @@ const bufferLength = (value: unknown) => (Buffer.isBuffer(value) ? value.length 
  * Checking that a value is still true (a `stat`) is left to the caller.
  */
 const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = bufferLength, now = () => performance.now() }: CacheOptions<V>): Cache<V> => {
+  // a NaN limit compares false and would turn the limit off
+  if (!Number.isInteger(maxEntries) || maxEntries < 0)
+    throw new RangeError(`the maxEntries of the cache has to be a whole number of 0 or more, got ${maxEntries}`);
+  if (Number.isNaN(maxBytes) || maxBytes < 0) throw new RangeError(`the maxBytes of the cache has to be 0 or more, got ${maxBytes}`);
+  checkTtl(ttl);
+
   const entries = new Map<string, Entry<V>>();
   // the entries that expire, in the order they were set, which is the order they expire in while they share the ttl of the cache
   const expiring = new Map<string, Entry<V>>();
@@ -61,6 +72,7 @@ const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = bufferL
       return entry.value;
     },
     set: (key, value, options) => {
+      checkTtl(options?.ttl);
       remove(key);
       dropExpired();
       const entryBytes = sizeOf(value);

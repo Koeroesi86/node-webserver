@@ -245,6 +245,30 @@ describe('createCache', () => {
     expect([cache.size, cache.bytes, cache.get('b')]).toEqual([0, 0, undefined]);
   });
 
+  it('refuses limits that would not limit anything', () => {
+    expect(() => createCache({ maxEntries: NaN })).toThrow(RangeError);
+    expect(() => createCache({ maxEntries: Infinity })).toThrow(RangeError);
+    expect(() => createCache({ maxEntries: 1.5 })).toThrow(RangeError);
+    expect(() => createCache({ maxEntries: -1 })).toThrow(RangeError);
+    expect(() => createCache({ maxEntries: 1, maxBytes: NaN })).toThrow(RangeError);
+    expect(() => createCache({ maxEntries: 1, maxBytes: -1 })).toThrow(RangeError);
+  });
+
+  it('refuses a ttl that would never expire', () => {
+    expect(() => createCache({ maxEntries: 1, ttl: NaN })).toThrow(RangeError);
+
+    const cache = createCache<number>({ maxEntries: 1 });
+    cache.set('a', 1);
+
+    expect(() => cache.set('a', 2, { ttl: NaN })).toThrow(RangeError);
+    expect(cache.get('a')).toBe(1);
+  });
+
+  it('takes the limits and ttls that are valid', () => {
+    expect(() => createCache({ maxEntries: 0, maxBytes: 0, ttl: 0 })).not.toThrow();
+    expect(() => createCache({ maxEntries: 10, maxBytes: Infinity, ttl: Infinity }).set('a', 1, { ttl: 5 })).not.toThrow();
+  });
+
   it('works when its methods are passed around', () => {
     const { set, get } = createCache<number>({ maxEntries: 1 });
     set('a', 1);

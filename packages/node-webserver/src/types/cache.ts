@@ -1,5 +1,5 @@
 export interface CacheOptions<V> {
-  /** the most entries the cache keeps */
+  /** the most entries the cache keeps, a whole number */
   maxEntries: number;
   /** the most bytes the values may take together, counted with `sizeOf`, no limit when left out */
   maxBytes?: number;
