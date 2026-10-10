@@ -4,6 +4,7 @@ import zlib from 'zlib';
 import { middleware } from '@koeroesi86/node-worker-express';
 import setupVirtualHosts from './setupVirtualHosts';
 import type { Express } from 'express';
+import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { ServerInstance } from '../types';
 
 const text = 'It works! '.repeat(500);
@@ -125,5 +126,20 @@ describe('setupVirtualHosts', () => {
     });
 
     expect(middleware).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'own-name' }));
+  });
+
+  it('hands every worker server the same budget, so that their workers count together', () => {
+    const workerBudget: WorkerBudget = { limit: 2, join: jest.fn(), hasRoom: jest.fn(), findIdleWorker: jest.fn(), wakeUp: jest.fn(), getStats: jest.fn() };
+    jest.mocked(middleware).mockClear();
+
+    setupVirtualHosts(
+      [instance({ hostname: 'one.localhost' }), instance({ hostname: 'two.localhost' })],
+      express(),
+      express(),
+      { portHttp: 80, portHttps: 443 },
+      workerBudget
+    );
+
+    expect(jest.mocked(middleware).mock.calls.map(([options]) => options.workerBudget)).toEqual([workerBudget, workerBudget]);
   });
 });

@@ -104,6 +104,8 @@ export interface Configuration {
   keepAliveTimeout?: number;
   /** the number of open connections per server after which new ones are dropped, 0 for no limit. Defaults to 10000. */
   maxConnections?: number;
+  /** how many worker processes the worker servers may run together, 0 for no limit. When it is reached, an idle worker is stopped to make room for the first worker of a path. Defaults to 0. */
+  workerLimit?: number;
   portLookup?: PortLookup;
   /** set to false to disable */
   statsDomain: string | false;

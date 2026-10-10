@@ -4,6 +4,7 @@ import WorkerPool from './workerPool';
 import WorkerAbandonedError from './workerAbandonedError';
 import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
+import createWorkerBudget from './create-worker-budget';
 import type { WorkerLease } from './workerPool';
 
 jest.mock('@koeroesi86/node-worker', () => {
@@ -130,13 +131,213 @@ describe('WorkerPool', () => {
     expect(FakeWorker.instances[0].terminate).toHaveBeenCalled();
   });
 
-  it('never takes the last worker of a path away', async () => {
+  it('never takes the last worker of a path away while the path has requests', async () => {
     const pool = createPool({ overallLimit: 2 });
-    (await acquireAll(pool, pathA, 1, 1))[0].release();
-    (await acquireAll(pool, pathB, 1, 1))[0].release();
+    await pool.acquire(pathA, {}, 1);
+    await pool.acquire(pathB, {}, 1);
 
     await expect(pool.acquire('/root/c/exampleWorker.js', {}, 1)).rejects.toThrow(/No worker became available/);
     expect(pool.getWorkerCount()).toBe(2);
+  });
+
+  describe('making room for the first worker of a path', () => {
+    const pathC = '/root/c/exampleWorker.js';
+
+    beforeEach(() => {
+      jest.useFakeTimers({ now: 1000000, doNotFake: ['setImmediate', 'nextTick'] });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    /** a request for the path that is finished at the given time, so that its worker is idle since then */
+    const use = async (pool: WorkerPool, workerPath: string, at: number) => {
+      jest.setSystemTime(at);
+      const lease = await pool.acquire(workerPath, {}, 1);
+      lease.release();
+      return lease.worker;
+    };
+
+    it('takes the last worker of a path that has no requests, the one used longest ago', async () => {
+      const pool = createPool({ overallLimit: 2 });
+      const second = await use(pool, pathB, 1000);
+      const first = await use(pool, pathA, 2000);
+
+      const lease = await pool.acquire(pathC, {}, 1);
+
+      expect(second.terminate).toHaveBeenCalled();
+      expect(first.terminate).not.toHaveBeenCalled();
+      expect(pool.getStats().paths).toEqual({ [pathA]: { workers: 1, active: 0 }, [pathC]: { workers: 1, active: 1 } });
+      expect(pool.getStats().evicted).toEqual({ idle: 0, forRoom: 1 });
+      lease.release();
+    });
+
+    it('takes a second worker of a path before the last worker of another, even one used longer ago', async () => {
+      const pool = createPool({ overallLimit: 3 });
+      const last = await use(pool, pathB, 1000);
+      jest.setSystemTime(2000);
+      const [first, second] = await acquireAll(pool, pathA, 2, 2);
+      first.release();
+      second.release();
+
+      await pool.acquire(pathC, {}, 1);
+
+      expect(last.terminate).not.toHaveBeenCalled();
+      const stopped = FakeWorker.instances.filter((worker: { terminate: jest.Mock }) => worker.terminate.mock.calls.length > 0);
+      expect(stopped).toHaveLength(1);
+      expect([first.worker, second.worker]).toContain(stopped[0]);
+      expect(pool.getWorkerCountForPath(pathA)).toBe(1);
+    });
+
+    it('does not take a worker that has a request', async () => {
+      const pool = createPool({ overallLimit: 2, acquireTimeout: 1000 });
+      const busy = await pool.acquire(pathA, {}, 1);
+      const idle = await use(pool, pathB, 2000);
+
+      await pool.acquire(pathC, {}, 1);
+
+      expect(idle.terminate).toHaveBeenCalled();
+      expect(busy.worker.terminate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a budget shared with other pools', () => {
+    const pathC = '/root/c/exampleWorker.js';
+    const settled = (promise: Promise<unknown>) =>
+      Promise.race([
+        promise.then(
+          () => 'resolved',
+          () => 'rejected'
+        ),
+        new Promise((resolve) => setImmediate(() => resolve('waiting'))),
+      ]);
+
+    it('keeps the workers of all the pools under its limit', async () => {
+      const budget = createWorkerBudget(2);
+      const pools = [createPool({ budget }), createPool({ budget })];
+      await acquireAll(pools[0], pathA, 2, 2);
+
+      await expect(pools[1].acquire(pathB, {}, 1)).rejects.toThrow(/No worker became available/);
+      expect(budget.getStats()).toEqual({ limit: 2, workers: 2 });
+    });
+
+    it('stops an idle worker of another pool to make room', async () => {
+      const budget = createWorkerBudget(2);
+      const pools = [createPool({ budget }), createPool({ budget })];
+      const [idle] = await acquireAll(pools[0], pathA, 2, 2);
+      idle.release();
+
+      await pools[1].acquire(pathB, {}, 1);
+
+      expect(idle.worker.terminate).toHaveBeenCalled();
+      expect(pools[0].getStats().evicted).toEqual({ idle: 0, forRoom: 1 });
+      expect(budget.getStats()).toEqual({ limit: 2, workers: 2 });
+    });
+
+    it('serves a request that waits in one pool as soon as a worker of another pool is idle', async () => {
+      const budget = createWorkerBudget(2);
+      const pools = [createPool({ budget, acquireTimeout: 1000 }), createPool({ budget, acquireTimeout: 1000 })];
+      const [first] = await acquireAll(pools[0], pathA, 2, 2);
+      const waiting = pools[1].acquire(pathC, {}, 1);
+      expect(await settled(waiting)).toBe('waiting');
+
+      first.release();
+
+      expect(await settled(waiting)).toBe('resolved');
+    });
+
+    it('does not warm beyond its limit', () => {
+      const budget = createWorkerBudget(1);
+      const pools = [createPool({ budget }), createPool({ budget })];
+
+      pools[0].warm(pathA, {}, 1);
+      pools[1].warm(pathB, {}, 1);
+
+      expect(FakeWorker.instances).toHaveLength(1);
+    });
+  });
+
+  describe('idle workers', () => {
+    const idleTimeout = 60000;
+
+    beforeEach(() => {
+      jest.useFakeTimers({ now: 1000000, doNotFake: ['setImmediate', 'nextTick'] });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('are stopped once they had no request for the idle timeout, and the path is forgotten', async () => {
+      const pool = createPool({ idleTimeout });
+      (await pool.acquire(pathA, {}, 1)).release();
+
+      jest.advanceTimersByTime(idleTimeout - 1);
+      expect(FakeWorker.instances[0].terminate).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+
+      expect(FakeWorker.instances[0].terminate).toHaveBeenCalled();
+      expect(pool.getStats()).toMatchObject({ workers: 0, paths: {}, evicted: { idle: 1, forRoom: 0 } });
+    });
+
+    it('are timed from the end of their last request', async () => {
+      const pool = createPool({ idleTimeout });
+      (await pool.acquire(pathA, {}, 1)).release();
+
+      jest.advanceTimersByTime(idleTimeout - 1);
+      (await pool.acquire(pathA, {}, 1)).release();
+      jest.advanceTimersByTime(idleTimeout - 1);
+
+      expect(FakeWorker.instances[0].terminate).not.toHaveBeenCalled();
+    });
+
+    it('are not stopped while they have a request, however long it takes', async () => {
+      const pool = createPool({ idleTimeout });
+      const lease = await pool.acquire(pathA, {}, 1);
+
+      jest.advanceTimersByTime(idleTimeout * 3);
+      expect(FakeWorker.instances[0].terminate).not.toHaveBeenCalled();
+      lease.release();
+      jest.advanceTimersByTime(idleTimeout);
+
+      expect(FakeWorker.instances[0].terminate).toHaveBeenCalled();
+    });
+
+    it('are stopped also when they never had a request', () => {
+      const pool = createPool({ idleTimeout });
+      pool.warm(pathA, {});
+
+      jest.advanceTimersByTime(idleTimeout);
+
+      expect(FakeWorker.instances[0].terminate).toHaveBeenCalled();
+    });
+
+    it('are kept with an idle timeout of 0', async () => {
+      const pool = createPool();
+      (await pool.acquire(pathA, {}, 1)).release();
+
+      jest.advanceTimersByTime(idleTimeout * 100);
+
+      expect(FakeWorker.instances[0].terminate).not.toHaveBeenCalled();
+    });
+
+    it('hand a request that arrives while one is being stopped a new worker, and the one that stops is no crash', async () => {
+      const pool = createPool({ idleTimeout, restartBackoff: { minUptime: 5000, base: 100, max: 400 } });
+      (await pool.acquire(pathA, {}, 1)).release();
+      const stopping = FakeWorker.instances[0];
+      // the process takes its time to close, as a real one does
+      stopping.terminate.mockImplementation(() => {});
+      jest.advanceTimersByTime(idleTimeout);
+
+      const lease = await pool.acquire(pathA, {}, 1);
+      stopping.exit(0);
+
+      expect(lease.worker).not.toBe(stopping);
+      expect(FakeWorker.instances).toHaveLength(2);
+      expect(pool.getStats()).toMatchObject({ workers: 1, failing: {}, paths: { [pathA]: { workers: 1, active: 1 } } });
+      lease.release();
+    });
   });
 
   it('delivers the messages of a worker to the request they belong to only', async () => {
@@ -292,16 +493,15 @@ describe('WorkerPool', () => {
   describe('getStats', () => {
     it('counts the workers, the requests they handle and the ones that wait, per path', async () => {
       const pool = createPool({ overallLimit: 3 });
-      const leases = await acquireAll(pool, pathA, 2, 3);
-      (await acquireAll(pool, pathB, 1, 1))[0].release();
+      const leases = [...(await acquireAll(pool, pathA, 2, 3)), await pool.acquire(pathB, {}, 1)];
 
       const waiting = pool.acquire('/root/c/exampleWorker.js', {}, 1).catch(() => undefined);
       await new Promise((resolve) => setTimeout(resolve, 10));
       const stats = pool.getStats();
       await waiting;
 
-      expect(stats).toMatchObject({ workers: 3, active: 3, waiting: 1 });
-      expect(stats.paths).toEqual({ [pathA]: { workers: 2, active: 3 }, [pathB]: { workers: 1, active: 0 } });
+      expect(stats).toMatchObject({ workers: 3, active: 4, waiting: 1 });
+      expect(stats.paths).toEqual({ [pathA]: { workers: 2, active: 3 }, [pathB]: { workers: 1, active: 1 } });
       leases.forEach((lease) => lease.release());
     });
 
@@ -321,6 +521,7 @@ describe('WorkerPool', () => {
         waiting: 0,
         refused: { queueFull: 0, timedOut: 0 },
         abandoned: 0,
+        evicted: { idle: 0, forRoom: 0 },
         failing: {},
         paths: {},
       });

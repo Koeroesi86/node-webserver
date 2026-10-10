@@ -147,6 +147,14 @@ Failures are answered the way API Gateway answers them, with a JSON object with 
 or exits during the request give 502 `{"message":"Internal server error"}`, the error goes to the log. A handler that takes longer than `timeout` gives 504 `{"message":"Endpoint request timed out"}`, and a full line 503 `{"message":"Service Unavailable"}`.
 Known limits, tracked in #38: one request per lambda at a time (like AWS, but without scaling out), a lambda stops 15 minutes after it started, the body of a request is not passed, and `async` handlers are not supported (call the callback).
 
+### Idle workers and the limit for all servers
+
+A worker that has had no request for `limitWorkerIdleTimeout` (5 minutes by default, 0 to keep them) is stopped, and the next request for its file starts one again, so that files that were asked for once do not keep a process each.
+`workerLimit` in the top level of the configuration (0 by default, for no limit) is the number of worker processes that all the worker servers may run together, next to the `limit` of each server.
+When either is used up and a file has no worker, an idle worker is stopped to make room for it: a second worker of a file before the last one, and the one that has been idle longest first.
+The last worker of a file is only taken while it has no request, so a busy file cannot starve the others. `evicted` in the metrics of a worker pool counts the workers stopped for being idle (`idle`) and to make room (`forRoom`),
+and the `workers` metrics show the processes of all the servers against `workerLimit`.
+
 ### Workers that crash
 
 A worker that stops with an error, or at all within 5 seconds of starting, has crashed. The first crash is answered by starting another worker for the next request, as before.

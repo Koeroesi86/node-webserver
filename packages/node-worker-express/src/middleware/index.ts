@@ -46,6 +46,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
     maxQueue: config.limitQueue,
     onStdout: config.onStdout,
     onStderr: config.onStderr,
+    idleTimeout: config.limitWorkerIdleTimeout,
+    budget: config.workerBudget,
   });
   // a function, as copying the environment is costly and only needed when a worker is started, not for every request
   const workerOptions = () => ({

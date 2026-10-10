@@ -143,9 +143,14 @@ export interface MiddlewareOptions {
   root: string;
   /** names the worker pool in the metrics, as `workers:<name>`. Defaults to the root folder. */
   name?: string;
+  /** how many workers this server may run for all its paths together, 0 for no limit. When it is reached, an idle worker is stopped to make room for the first worker of a path. */
   limit?: number;
   /** workers started per path, requests are spread over them. Defaults to the available CPU cores, 0 or 1 keeps a single worker. */
   limitPerPath?: number | ((path: string) => number);
+  /** a worker that has not had a request for this long is stopped, in milliseconds, the next request for its path starts one again. 0 keeps idle workers running. Defaults to 300000. */
+  limitWorkerIdleTimeout?: number;
+  /** a limit on the workers of this server together with the other servers that are given the same budget (`createWorkerBudget`), on top of `limit` */
+  workerBudget?: WorkerBudget;
   /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
   warmStaticWorker?: boolean;
   /**
@@ -197,4 +202,35 @@ export interface StreamResponseOptions {
   window?: number;
   /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
   windowBytes?: number;
+}
+
+/** an idle worker that a pool can stop to make room for another one */
+export interface IdleWorker {
+  /** the path has other workers, so stopping this one leaves the path with one */
+  spare: boolean;
+  /** when the worker finished its last request, or started when it had none, as `Date.now()` */
+  lastUsed: number;
+  stop: () => void;
+}
+
+/** a pool of workers as a budget sees it */
+export interface WorkerBudgetMember {
+  getWorkerCount: () => number;
+  /** the idle worker the pool gives up first, undefined when all of its workers are busy */
+  findIdleWorker: () => IdleWorker | undefined;
+  /** the requests that wait for a worker in the pool look again whether they can get one */
+  wakeUp: () => void;
+}
+
+/** A limit on the workers of several pools together, so that the processes of many servers and paths stay bounded. Made by `createWorkerBudget`. */
+export interface WorkerBudget {
+  /** how many workers the pools may run together, 0 for no limit */
+  readonly limit: number;
+  join: (member: WorkerBudgetMember) => void;
+  hasRoom: () => boolean;
+  /** the idle worker of all the pools that is given up first */
+  findIdleWorker: () => IdleWorker | undefined;
+  /** a worker stopped or became idle, the requests that wait in the other pools may get one now */
+  wakeUp: (except?: WorkerBudgetMember) => void;
+  getStats: () => { limit: number; workers: number };
 }

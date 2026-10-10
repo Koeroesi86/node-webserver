@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from 'express';
 import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
+import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import getURL from './getURL';
 import virtualHostRouter from './virtual-host-router';
 import compressionMiddleware from '../middlewares/compression';
@@ -10,7 +11,7 @@ import logger from './logger';
 import type { Configuration, ServerInstance } from '../types';
 import type { VirtualHost } from '../types/virtual-host';
 
-function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
+function getWorkerMiddleware(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   const { options } = instance;
 
   if (!options) {
@@ -19,6 +20,7 @@ function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
 
   return workerMiddleware({
     name: instance.hostname,
+    workerBudget,
     ...options,
     onStdout(data) {
       logger.info(`[${getDate()}] ${data.toString().trim()}`);
@@ -35,7 +37,7 @@ function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
   });
 }
 
-function getMiddleware(instance: ServerInstance): RequestHandler {
+function getMiddleware(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   if (instance.type === 'child') {
     return proxyMiddleware(instance);
   }
@@ -43,7 +45,7 @@ function getMiddleware(instance: ServerInstance): RequestHandler {
     return lambdaMiddleware(instance);
   }
   if (instance.type === 'worker') {
-    return getWorkerMiddleware(instance);
+    return getWorkerMiddleware(instance, workerBudget);
   }
   return (req, res, next) => {
     next();
@@ -56,14 +58,21 @@ const compose =
   (request, response, next) =>
     first(request, response, (error?: unknown) => (error ? next(error) : second(request, response, next)));
 
-function getHandler(instance: ServerInstance): RequestHandler {
+function getHandler(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   const { compression } = instance;
-  const middleware = getMiddleware(instance);
+  const middleware = getMiddleware(instance, workerBudget);
 
   return compression ? compose(compressionMiddleware(compression === true ? {} : compression), middleware) : middleware;
 }
 
-function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
+/** the worker servers share `workerBudget`, so that their processes together stay under its limit */
+function setupVirtualHosts(
+  instances: ServerInstance[],
+  httpApp: Express,
+  httpsApp: Express,
+  Configuration: Partial<Configuration>,
+  workerBudget?: WorkerBudget
+) {
   const { portHttp, portHttps } = Configuration;
   const ports = { http: portHttp, https: portHttps };
   const hosts: Record<keyof typeof ports, VirtualHost[]> = { http: [], https: [] };
@@ -76,7 +85,7 @@ function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsA
       return;
     }
 
-    hosts[protocol].push({ hostname, handler: getHandler(instance) });
+    hosts[protocol].push({ hostname, handler: getHandler(instance, workerBudget) });
     instance.url = getURL(protocol, hostname, ports[protocol]);
     logger.system(`[${getDate()}] Server started for ${instance.url}`);
   });

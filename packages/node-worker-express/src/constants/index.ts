@@ -95,6 +95,7 @@ export const DefaultOptions: MiddlewareOptions = {
   root: '',
   limit: 0,
   limitPerPath: os.availableParallelism(),
+  limitWorkerIdleTimeout: 5 * 60 * 1000,
   warmStaticWorker: true,
   limitRequestBody: 0,
   inlineRequestBody: 64 * 1024,
