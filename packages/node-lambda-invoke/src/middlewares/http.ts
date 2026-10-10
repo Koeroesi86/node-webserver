@@ -22,8 +22,14 @@ import writeError from '../utils/write-error';
 import type ResponseEvent from '../classes/ResponseEvent';
 import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
 
-/** the middleware, and `close`, which stops its lambdas once they answered, for a server that is not used any more */
-export type HttpMiddleware = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & { close: () => void };
+/**
+ * the middleware, `handle`, which answers a request with `pathParameters` for the event (for a caller that routes requests to several middlewares and knows more about the path than the lambda),
+ * and `close`, which stops its lambdas once they answered, for a server that is not used any more
+ */
+export type HttpMiddleware = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & {
+  handle: (request: IncomingMessage, response: ServerResponse, pathParameters?: Record<string, string>) => void;
+  close: () => void;
+};
 
 /** the drivers that were started: starting one empties its storage, which a middleware that is created later must not do to the requests of the others */
 const startedDrivers = new Set<StorageDriverConstructor>();
@@ -62,7 +68,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
   if (!storagePath) {
-    return Object.assign((req: IncomingMessage, res: ServerResponse, next?: () => void) => next?.(), { close: () => {} });
+    return Object.assign((req: IncomingMessage, res: ServerResponse, next?: () => void) => next?.(), { handle: () => {}, close: () => {} });
   }
 
   const StorageDriver: StorageDriverConstructor = require(storagePath);
@@ -83,7 +89,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     logger,
     communication: currentCommunication,
   });
-  const middleware = (request: IncomingMessage, response: ServerResponse) => {
+  const handle = (request: IncomingMessage, response: ServerResponse, pathParameters?: Record<string, string>) => {
     const requestId = randomUUID();
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
@@ -98,7 +104,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     const handleRequest = async () => {
       // read before a lambda is taken, so that a slow upload does not hold one
       const body = await readRequestBody(request, limitRequestBody);
-      const requestEvent = createRequestEvent(request, requestId, body);
+      const requestEvent = createRequestEvent(request, requestId, body, pathParameters);
       const lambdaInstance = await lambdaPool.getLambda(clientGone.signal);
 
       if (clientGone.signal.aborted) {
@@ -143,7 +149,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
       .finally(() => response.off('close', onClose));
   };
 
-  return Object.assign(middleware, { close: () => lambdaPool.close() });
+  return Object.assign((request: IncomingMessage, response: ServerResponse) => handle(request, response), { handle, close: () => lambdaPool.close() });
 }
 
 export default createHttpMiddleware;

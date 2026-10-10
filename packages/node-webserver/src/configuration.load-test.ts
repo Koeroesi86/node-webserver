@@ -7,6 +7,8 @@ import exampleConfiguration from './configuration.example';
 const certificateFolder = resolve(PACKAGE_ROOT, '.certificates/localhost');
 const key = resolve(certificateFolder, 'privkey.pem');
 const cert = resolve(certificateFolder, 'cert.pem');
+/** how many routes of each kind come before the one that the load test asks for, so that a request goes through all of them */
+const routesBefore = 200;
 const lambdaServer: ServerInstance = {
   hostname: 'lambda.localhost',
   protocol: 'http',
@@ -36,6 +38,27 @@ const lambdaFileServer: ServerInstance = {
   protocol: 'http',
   type: 'lambda',
   lambdaOptions: { lambda: failuresLambda, handler: 'handler', communication: 'file', limit: 2 },
+};
+const lambdaRoutesFile = resolve(PACKAGE_ROOT, 'examples/lambda-routes/exampleLambda.js');
+// the same lambda with a table of routes (`/items/<id>` is the last of 401, and `/orders` another handler of the file) and without one, which the lambda routes scenario compares
+const lambdaRoutesServer: ServerInstance = {
+  hostname: 'lambda-routes.localhost',
+  protocol: 'http',
+  type: 'lambda',
+  lambdaOptions: {
+    routes: [
+      ...Array.from({ length: routesBefore }, (_, index) => ({ path: `/page/${index}`, lambda: lambdaRoutesFile, handler: 'item' })),
+      ...Array.from({ length: routesBefore }, (_, index) => ({ pattern: `/section-${index}/(?<id>[0-9]+)`, lambda: lambdaRoutesFile, handler: 'item' })),
+      { pattern: '/items/(?<id>[0-9]+)', lambda: lambdaRoutesFile, handler: 'item' },
+      { path: '/orders', lambda: lambdaRoutesFile, handler: 'orders' },
+    ],
+  },
+};
+const lambdaSingleServer: ServerInstance = {
+  hostname: 'lambda-single.localhost',
+  protocol: 'http',
+  type: 'lambda',
+  lambdaOptions: { lambda: lambdaRoutesFile, handler: 'item' },
 };
 const compressedServer: ServerInstance = {
   hostname: 'compressed.localhost',
@@ -84,8 +107,6 @@ const proxiedServer: ServerInstance = {
   type: 'proxy',
   proxyOptions: { target: `http://127.0.0.1:${upstreamPort}` },
 };
-/** how many routes of each kind come before the one that the load test asks for, so that a request goes through all of them */
-const routesBefore = 200;
 const routesServer: ServerInstance = {
   hostname: 'routes.localhost',
   protocol: 'http',
@@ -127,6 +148,8 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  *
  * `lambda-crash.localhost`, `lambda-overload.localhost` and `lambda-file.localhost` serve `examples/lambda-failures/exampleLambda.js` for the lambda scenario (`lambda.ts`):
  * a lambda that crashes, more requests than lambdas, and the `file` communication.
+ * `lambda-routes.localhost` and `lambda-single.localhost` serve `examples/lambda-routes/exampleLambda.js` for the lambda routes scenario (`lambda-routes.ts`): the first through a table of 402 routes,
+ * where `/items/<id>` is the 401st and `/orders` is another handler of the file, and the second as a single lambda.
  * `compressed.localhost` serves the example worker with compression on.
  * `upload.localhost` serves a worker that reads the request body as a stream.
  * `proxied.localhost` is a proxy server in front of a static file server on PORT_UPSTREAM (8081), which the server starts as a child.
@@ -151,6 +174,8 @@ const configuration = {
     lambdaCrashServer,
     lambdaOverloadServer,
     lambdaFileServer,
+    lambdaRoutesServer,
+    lambdaSingleServer,
     compressedServer,
     uploadServer,
     healthServer,

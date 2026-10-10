@@ -17,7 +17,7 @@ const encodeBody = (body: Buffer | undefined) => {
 };
 
 /** the event that API Gateway passes to a lambda for a request (proxy integration, payload format 1.0) */
-const createRequestEvent = (request: IncomingMessage, requestId: string, body?: Buffer): RequestEvent => {
+const createRequestEvent = (request: IncomingMessage, requestId: string, body?: Buffer, routeParameters?: Record<string, string>): RequestEvent => {
   const url = request.url ?? '/';
   const queryStart = url.indexOf('?');
   const path = (queryStart === -1 ? url : url.slice(0, queryStart)) || '/';
@@ -35,7 +35,8 @@ const createRequestEvent = (request: IncomingMessage, requestId: string, body?: 
     multiValueHeaders,
     queryStringParameters: single,
     multiValueQueryStringParameters: multi,
-    pathParameters: proxy === '' ? null : { proxy },
+    // the captures of a route are what the route is about, the rest of the path is only the proxy resource when nothing named it
+    pathParameters: routeParameters ?? (proxy === '' ? null : { proxy }),
     stageVariables: null,
     requestContext: {
       accountId: '000000000000',

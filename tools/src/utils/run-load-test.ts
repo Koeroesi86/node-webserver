@@ -72,8 +72,9 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
     const handshakes = secure ? await scenario('tls.ts', ['-e', `HTTPS_PORT=${portHttps}`]) : 0;
     const lambda = await scenario('lambda.ts', []);
     const routes = await scenario('routes.ts', []);
+    const lambdaRoutes = await scenario('lambda-routes.ts', []);
 
-    return [example, cpu, binary, handshakes, lambda, routes].every((code) => code === 0) ? 0 : 1;
+    return [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes].every((code) => code === 0) ? 0 : 1;
   } finally {
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);
