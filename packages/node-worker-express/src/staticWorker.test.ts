@@ -92,6 +92,18 @@ describe('staticWorker', () => {
     readFile.mockRestore();
   });
 
+  it('serves the new content of a small file that changed between two requests', async () => {
+    const file = path.join(root, 'changing.txt');
+    await fs.writeFile(file, 'before');
+    expect(bodyOf(await request('/changing.txt'))).toBe('before');
+
+    await fs.writeFile(file, 'after the change');
+    const response = await request('/changing.txt');
+
+    expect(bodyOf(response)).toBe('after the change');
+    expect(response.headers['Content-Length']).toBe('16');
+  });
+
   describe('conditional requests', () => {
     it('answers 304 without a body for the ETag it sent', async () => {
       const { headers } = await request('/index.html');
