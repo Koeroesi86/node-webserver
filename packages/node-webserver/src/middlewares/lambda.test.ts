@@ -87,8 +87,10 @@ describe('lambdaMiddleware', () => {
       Object.assign(response, { writeHead: jest.fn(), end: jest.fn() });
       return response;
     };
+    // the library gets the path with slashes, also on Windows
+    const slashes = (file: string) => file.replace(/\\/g, '/');
     const middlewareOf = (lambdaPath: string, handlerKey: string) => {
-      const found = created.find(({ options }) => options.lambdaPath === lambdaPath && options.handlerKey === handlerKey);
+      const found = created.find(({ options }) => options.lambdaPath === slashes(lambdaPath) && options.handlerKey === handlerKey);
       if (!found) throw new Error(`no middleware for ${lambdaPath}#${handlerKey}`);
       return found.middleware;
     };
@@ -152,8 +154,8 @@ describe('lambdaMiddleware', () => {
       );
 
       expect(created.map(({ options }) => [options.lambdaPath, options.limit, options.acquireTimeout])).toEqual([
-        [orders, 4, 500],
-        [items, 1, 500],
+        [slashes(orders), 4, 500],
+        [slashes(items), 1, 500],
       ]);
     });
 
