@@ -2,7 +2,6 @@ import express from 'express';
 import type { Express, RequestHandler } from 'express';
 import http from 'http';
 import https from 'https';
-import path from 'path';
 import type { SecureContext } from 'tls';
 import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
@@ -13,6 +12,7 @@ import addExitListeners from './exitHandler';
 import configureServer from './configureServer';
 import debounce from './debounce';
 import getDate from './getDate';
+import getWatchedFiles from './get-watched-files';
 import loadInstances from './load-instances';
 import logger from './logger';
 import setupStatsHandler from './setupStatsHandler';
@@ -27,13 +27,6 @@ httpApp.disable('x-powered-by');
 httpsApp.disable('x-powered-by');
 
 const listen = (server: http.Server | https.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
-
-/** the files a change of which changes the servers: the ones they were loaded from, the ones that do not exist yet, and their certificates */
-const getWatchedFiles = (servers: Configuration['servers'], loaded: LoadedInstance[]) => [
-  ...servers.filter((source): source is string => typeof source === 'string').map((source) => path.resolve(source)),
-  ...loaded.flatMap(({ files }) => files),
-  ...loaded.flatMap(({ instance: { key, cert, ca } }) => [key, cert, ca].filter((file): file is string => typeof file === 'string')),
-];
 
 const startServer = async (configuration: Partial<Configuration>): Promise<{ httpApp: Express; httpsApp: Express; reload: () => void }> => {
   const hydratedConfiguration: Configuration = {

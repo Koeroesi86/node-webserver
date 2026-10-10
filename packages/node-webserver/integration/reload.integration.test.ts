@@ -1,34 +1,15 @@
 import { once } from 'events';
 import fs from 'fs';
 import http from 'http';
-import os from 'os';
-import path from 'path';
+import { createReloadedFolder, until as untilHolds } from './helpers/reloaded-folder';
 import { startServer } from './helpers/start-server';
 import type { RunningServer } from './helpers/start-server';
 
-/** how long the server may take to see a change of a file and load the servers again */
-const reloadTimeout = 10000;
-
 describe('the server, when the file of a server changes', () => {
-  let folder: string;
+  const { file, writeServer, writeHostname, remove } = createReloadedFolder();
   let server: RunningServer;
-  // the file is given to the server through a link to its folder, which node loads modules from by their real path (the temporary folder of macOS is such a link)
-  const file = () => path.join(folder, 'link', 'server.js');
-  const writeHostname = (hostname: string) => fs.writeFileSync(path.join(folder, 'link', 'hostname.js'), `module.exports = '${hostname}';`);
-  // the host name comes from a module the file loads, which has to be loaded again as well
-  const writeServer = (definition: object = { type: 'worker', options: { root: path.resolve(__dirname, 'fixtures/worker'), index: ['worker.js'] } }) =>
-    fs.writeFileSync(file(), `module.exports = { hostname: require('./hostname'), protocol: 'http', ...${JSON.stringify(definition)} };`);
 
-  /** waits until the condition holds, as the change is seen by the server some time after the file is written. The output of the server tells why when it does not. */
-  const until = async (condition: () => Promise<boolean> | boolean) => {
-    const deadline = Date.now() + reloadTimeout;
-    while (!(await condition()) && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    if (!(await condition())) {
-      throw new Error(`The condition did not hold within ${reloadTimeout}ms. The output of the server:\n${server.output()}`);
-    }
-  };
+  const until = (condition: () => Promise<boolean> | boolean) => untilHolds(server, condition);
   const status = async (host: string) => (await server.get(host)).status;
   /** the tests do not depend on each other, as a test that fails is run again after the others: each one starts from a server of its own host name */
   const serve = async (hostname: string) => {
@@ -38,17 +19,14 @@ describe('the server, when the file of a server changes', () => {
   };
 
   beforeAll(async () => {
-    folder = fs.mkdtempSync(path.join(os.tmpdir(), 'reload-'));
-    fs.mkdirSync(path.join(folder, 'real'));
-    fs.symlinkSync(path.join(folder, 'real'), path.join(folder, 'link'), 'junction');
     writeServer();
     writeHostname('first.localhost');
-    server = await startServer({ RELOADED_SERVER: file() });
+    server = await startServer({ RELOADED_SERVER: file });
   });
 
   afterAll(async () => {
     await server.stop();
-    fs.rmSync(folder, { recursive: true, force: true });
+    remove();
   });
 
   it('serves the changed server, without a restart', async () => {
@@ -65,7 +43,7 @@ describe('the server, when the file of a server changes', () => {
   it('keeps the running server when the file is broken', async () => {
     await serve('third.localhost');
 
-    fs.writeFileSync(file(), 'module.exports = {');
+    fs.writeFileSync(file, 'module.exports = {');
 
     await until(() => server.output().includes('The servers were not loaded again'));
     expect(await status('third.localhost')).toBe(200);
@@ -74,7 +52,7 @@ describe('the server, when the file of a server changes', () => {
   it('stops serving a server whose file was removed, and loads it anew with the modules it loads when it comes back', async () => {
     await serve('fourth.localhost');
 
-    fs.rmSync(file());
+    fs.rmSync(file);
 
     await until(async () => (await status('fourth.localhost')) === 404);
 
