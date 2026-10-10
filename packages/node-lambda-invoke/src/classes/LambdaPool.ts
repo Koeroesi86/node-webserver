@@ -79,6 +79,8 @@ class LambdaPool {
   /** lambdas that were asked for but have not announced themselves yet, they count against the limit as well */
   starting = 0;
   abandoned = 0;
+  /** set once the server does not use the pool any more */
+  private closed = false;
 
   constructor({
     lambdaPath,
@@ -172,6 +174,8 @@ class LambdaPool {
       // taken by the request that asked for it, before anything else can pick it from the registry
       instance.busy = true;
       instance.createdAt = Date.now();
+      // a request that still came to a closed pool gets a lambda of its own, which stops once it answered
+      instance.retiring = this.closed;
       // a lambda that has had its time is stopped when it is free, a request that runs on it is let finish
       const drainTimer = setTimeout(() => {
         instance.retiring = true;
@@ -189,6 +193,7 @@ class LambdaPool {
         // a lambda that is gone must not be handed out, nor count against the limit, and its place goes to the first request in line
         this.instances.delete(id);
         this.drain();
+        this.forgetIfClosed();
       });
 
       return instance;
@@ -196,7 +201,23 @@ class LambdaPool {
       this.starting -= 1;
       // a lambda that failed to start gives its place back
       this.drain();
+      this.forgetIfClosed();
     }
+  }
+
+  /** stops the lambdas once they answered the requests they took, for a server that is not used any more */
+  close() {
+    this.closed = true;
+    this.instances.forEach((instance) => {
+      instance.retiring = true;
+      this.stopIfRetired(instance);
+    });
+    this.forgetIfClosed();
+  }
+
+  /** a closed pool leaves the stats once its last lambda stopped */
+  private forgetIfClosed() {
+    if (this.closed && this.count === 0) pools.delete(this);
   }
 
   /** asks an idle lambda that has had its time to stop, and makes it when it does not */

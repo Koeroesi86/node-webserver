@@ -15,6 +15,17 @@ describe('createWorkerBudget', () => {
     expect(budget.getStats()).toEqual({ limit: 3, workers: 3 });
   });
 
+  it('stops counting a member that left', () => {
+    const budget = createWorkerBudget(2);
+    const leaving = member(1);
+    budget.join(member(1));
+    budget.join(leaving);
+    budget.leave(leaving);
+
+    expect(budget.hasRoom()).toBe(true);
+    expect(budget.getStats()).toEqual({ limit: 2, workers: 1 });
+  });
+
   it('always has room with a limit of 0', () => {
     const budget = createWorkerBudget();
     budget.join(member(1000));

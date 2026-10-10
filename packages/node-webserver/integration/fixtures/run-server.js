@@ -7,7 +7,11 @@ const configuration = require('./server-configuration');
 
 findPorts(configuration.portLookup)
   .then(() => startServer(configuration))
-  .then(() => console.log('The server is up.'))
+  .then(({ reload }) => {
+    // the tests load the servers again this way, as a signal cannot be sent on every platform
+    process.on('message', (message) => message === 'reload' && reload());
+    console.log('The server is up.');
+  })
   .catch((error) => {
     console.error(error);
     process.exit(1);

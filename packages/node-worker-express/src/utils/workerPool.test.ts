@@ -459,6 +459,73 @@ describe('WorkerPool', () => {
     });
   });
 
+  describe('dispose', () => {
+    it('stops the idle workers at once, and resolves once they stopped', async () => {
+      const pool = createPool();
+      (await acquireAll(pool, pathA, 1, 1))[0].release();
+      (await acquireAll(pool, pathB, 1, 1))[0].release();
+
+      await pool.dispose(1000);
+
+      expect(FakeWorker.instances.map((worker) => worker.terminate.mock.calls.length)).toEqual([1, 1]);
+      expect(pool.getWorkerCount()).toBe(0);
+    });
+
+    it('stops a busy worker once it answered its requests', async () => {
+      const pool = createPool();
+      const [lease] = await acquireAll(pool, pathA, 1, 1);
+      const disposed = jest.fn();
+
+      pool.dispose(1000).then(disposed);
+      await Promise.resolve();
+      expect(FakeWorker.instances[0].terminate).not.toHaveBeenCalled();
+      lease.release();
+      await Promise.resolve();
+
+      expect(FakeWorker.instances[0].terminate).toHaveBeenCalledTimes(1);
+      expect(disposed).toHaveBeenCalled();
+    });
+
+    it('stops a busy worker after the timeout', async () => {
+      jest.useFakeTimers();
+      try {
+        const pool = createPool();
+        await acquireAll(pool, pathA, 1, 1);
+
+        const disposed = pool.dispose(1000);
+        jest.advanceTimersByTime(1000);
+        await disposed;
+
+        expect(FakeWorker.instances[0].terminate).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('leaves its budget once its workers stopped', async () => {
+      const budget = createWorkerBudget(1);
+      const pool = createPool({ budget });
+      (await acquireAll(pool, pathA, 1, 1))[0].release();
+      const leave = jest.spyOn(budget, 'leave');
+
+      await pool.dispose(1000);
+
+      expect(leave).toHaveBeenCalledWith(pool);
+    });
+
+    it('serves a request that still comes with a worker of its own, not with one that is being stopped', async () => {
+      const pool = createPool();
+      const [busy] = await acquireAll(pool, pathA, 1, 1);
+      FakeWorker.instances[0].terminate.mockImplementation(() => {});
+      pool.dispose(1000);
+      busy.release();
+
+      const lease = await pool.acquire(pathA, {}, 1);
+
+      expect(lease.worker).toBe(FakeWorker.instances[1]);
+    });
+  });
+
   describe('warm', () => {
     it('starts a worker that the first request gets, without starting another one', async () => {
       const pool = createPool();

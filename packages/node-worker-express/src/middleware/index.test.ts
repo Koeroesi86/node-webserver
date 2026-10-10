@@ -20,6 +20,7 @@ jest.mock('../utils/workerPool', () => {
     static last: FakePool;
     acquire = jest.fn();
     warm = jest.fn();
+    dispose = jest.fn(async () => {});
     getStats = () => ({ workers: 2, active: 1, waiting: 0, paths: {} });
 
     constructor(readonly params: { onStdout?: () => void; onStderr?: () => void; maxQueue?: number; acquireTimeout?: number }) {
@@ -47,7 +48,7 @@ describe('workerMiddleware', () => {
 
   afterAll(() => fs.rm(root, { recursive: true, force: true }));
 
-  afterEach(() => new Promise((resolve) => server.close(resolve)));
+  afterEach(() => new Promise((resolve) => (server ? server.close(resolve) : resolve(undefined))));
 
   const until = async (condition: () => boolean) => {
     for (let waited = 0; !condition() && waited < 3000; waited += 5) {
@@ -1510,5 +1511,17 @@ describe('workerMiddleware', () => {
       expect(serverSockets[0].timeout).toBe(0);
       setTimeoutOfSocket.mockRestore();
     });
+  });
+
+  it('stops its workers and leaves the metrics when it is closed', async () => {
+    const middleware = workerMiddleware({ root, name: 'closed.localhost' });
+    const pool = FakePool.last;
+
+    expect(getServerMetrics().sources['workers:closed.localhost']).toBeDefined();
+
+    await middleware.close(1000);
+
+    expect(pool.dispose).toHaveBeenCalledWith(1000);
+    expect(getServerMetrics().sources['workers:closed.localhost']).toBeUndefined();
   });
 });

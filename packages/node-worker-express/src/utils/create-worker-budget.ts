@@ -11,6 +11,9 @@ const createWorkerBudget = (limit = 0): WorkerBudget => {
     join: (member) => {
       members.add(member);
     },
+    leave: (member) => {
+      members.delete(member);
+    },
     hasRoom: () => limit <= 0 || getWorkerCount() < limit,
     findIdleWorker: () => pickIdleWorker(Array.from(members).map((member) => member.findIdleWorker())),
     wakeUp: (except) => members.forEach((member) => member !== except && member.wakeUp()),

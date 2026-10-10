@@ -1,5 +1,5 @@
 import { WORKER_EVENT } from '../constants';
-import { Request, Response } from 'express';
+import { Request, RequestHandler, Response } from 'express';
 import type { Readable } from 'stream';
 import type { ServerMetrics } from '../utils/metrics';
 
@@ -139,6 +139,12 @@ export type ResponseCallback = (e: ResponseEvent) => unknown;
 /** The function a worker file exports. */
 export type InvokableWorker = (event: WorkerRequestEvent, callback: ResponseCallback) => unknown;
 
+/**
+ * The middleware, and `close`, for a middleware that is not used any more: it stops the workers once they answered the requests they took, or all of them after `timeout` milliseconds
+ * (0 by default), and resolves once they stopped.
+ */
+export type WorkerMiddleware = RequestHandler & { close: (timeout?: number) => Promise<void> };
+
 export interface MiddlewareOptions {
   root: string;
   /** names the worker pool in the metrics, as `workers:<name>`. Defaults to the root folder. */
@@ -227,6 +233,8 @@ export interface WorkerBudget {
   /** how many workers the pools may run together, 0 for no limit */
   readonly limit: number;
   join: (member: WorkerBudgetMember) => void;
+  /** a pool that is disposed of stops counting */
+  leave: (member: WorkerBudgetMember) => void;
   hasRoom: () => boolean;
   /** the idle worker of all the pools that is given up first */
   findIdleWorker: () => IdleWorker | undefined;

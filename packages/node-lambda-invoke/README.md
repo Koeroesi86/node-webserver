@@ -49,6 +49,8 @@ http
   );
 ```
 
+`close()` on the middleware stops its lambdas, the idle ones at once and the busy ones once they answered, for a middleware that is not used any more. A request that still comes gets a lambda that stops after it.
+The storage driver of a communication is started (which empties what it stored) by the first middleware that uses it, not by the ones created after it.
 
 ## Running locally
 

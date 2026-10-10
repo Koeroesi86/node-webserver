@@ -41,11 +41,12 @@ const restore = ({ persistPath, secure, ca }: StoreOptions): ProxyTarget | undef
 
 /**
  * The target of a proxy server that changes while the server runs: requests read it as it is when they start, so the ones in flight finish on the target they
- * started on, and the connections to an old target close once they are idle.
+ * started on, and the connections to an old target close once they are idle. `seed` is the target of the server this one replaces, which wins over the file.
  */
-const createTargetStore = (options: StoreOptions): TargetStore => {
+const createTargetStore = (options: StoreOptions, seed?: ProxyTarget): TargetStore => {
   const { persistPath, secure, ca } = options;
-  let current = restore(options);
+  // with connections of its own, as the options of the connections can be others now
+  let current = seed && !isExpired(seed) ? { ...createProxyTarget(seed.url, { secure, ca }, seed.expiresAt), setAt: seed.setAt } : restore(options);
   // one write after the other, so that the file ends with the last target
   let saving = Promise.resolve();
 
@@ -62,6 +63,9 @@ const createTargetStore = (options: StoreOptions): TargetStore => {
     if (current && current.agent !== next?.agent) retireAgent(current.agent);
     current = next;
   };
+
+  // a file named only now gets the target that was handed over
+  if (seed) save();
 
   return {
     get: () => {
@@ -82,6 +86,9 @@ const createTargetStore = (options: StoreOptions): TargetStore => {
       save();
     },
     saved: () => saving,
+    close: () => {
+      if (current) retireAgent(current.agent);
+    },
   };
 };
 

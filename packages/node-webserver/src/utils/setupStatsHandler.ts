@@ -55,22 +55,23 @@ function refreshInstanceStats(instance: ServerInstance) {
   }
 }
 
-function refreshStats(instances: ServerInstance[], refreshInterval = 10000) {
+/** the servers are asked for every time, as they change when the configuration is loaded again */
+function refreshStats(getInstances: () => ServerInstance[], refreshInterval = 10000) {
   pidUsage(process.pid)
     .then((stats) => {
       usages.overall = stats;
     })
     .catch((err) => console.error(err));
 
-  instances.forEach(refreshInstanceStats);
+  getInstances().forEach(refreshInstanceStats);
 
-  setTimeout(() => refreshStats(instances, refreshInterval), refreshInterval);
+  setTimeout(() => refreshStats(getInstances, refreshInterval), refreshInterval);
 }
 
-function setupStatsHandler(instances: ServerInstance[], httpApp: Express, Configuration: Partial<Configuration>) {
+function setupStatsHandler(getInstances: () => ServerInstance[], httpApp: Express, Configuration: Partial<Configuration>) {
   const { portHttp, statsDomain, statsRefreshInterval } = Configuration;
   if (statsDomain) {
-    refreshStats(instances, statsRefreshInterval);
+    refreshStats(getInstances, statsRefreshInterval);
 
     httpApp.set('json spaces', 4);
     httpApp.use(

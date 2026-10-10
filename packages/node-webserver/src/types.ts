@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'child_process';
+import type { RequestHandler } from 'express';
 import type { Agent } from 'http';
 import type { SecureContext } from 'tls';
 import type HttpProxy from 'http-proxy';
@@ -175,6 +176,30 @@ export interface Configuration {
   statsRefreshInterval: number;
   /** server definitions, or paths to modules exporting one */
   servers: Array<string | ServerInstance>;
+  /** load the servers given as paths again when their files, or the certificates they point to, change. Defaults to true. */
+  watchServers?: boolean;
+  /** load the servers again on SIGHUP, instead of stopping. Defaults to false. */
+  reloadOnSighup?: boolean;
+}
+
+/** what answers the requests of a server */
+export interface InstanceHandler {
+  handler: RequestHandler;
+  /** stops what the server started once it answered the requests it took, or after `timeout` milliseconds, and resolves once it did */
+  close: (timeout: number) => Promise<void>;
+  /** the target that was registered with a `proxy` server, which the server that replaces it takes over */
+  registeredTarget?: () => ProxyTarget | undefined;
+}
+
+/** a server of the configuration as it runs */
+export interface LoadedInstance extends InstanceHandler {
+  /** the entry of `servers` it comes from */
+  source: string | ServerInstance;
+  instance: ServerInstance;
+  /** the files it was loaded from, the module and the ones it loaded, empty for a server defined in the configuration itself */
+  files: string[];
+  /** of the content of the files, to tell whether they changed */
+  fingerprint?: string;
 }
 
 export interface StorageDriver {
@@ -191,6 +216,8 @@ export interface TargetStore {
   unset: () => void;
   /** resolves once what was changed is in the file it is kept in */
   saved: () => Promise<void>;
+  /** closes the connections to the target once the requests on them are answered, for a server that is not used any more */
+  close: () => void;
 }
 
 export interface ProxyRequestOptions {

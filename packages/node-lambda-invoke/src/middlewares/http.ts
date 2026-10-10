@@ -22,7 +22,11 @@ import writeError from '../utils/write-error';
 import type ResponseEvent from '../classes/ResponseEvent';
 import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
 
-export type HttpMiddleware = (request: IncomingMessage, response: ServerResponse, next?: () => void) => void;
+/** the middleware, and `close`, which stops its lambdas once they answered, for a server that is not used any more */
+export type HttpMiddleware = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & { close: () => void };
+
+/** the drivers that were started: starting one empties its storage, which a middleware that is created later must not do to the requests of the others */
+const startedDrivers = new Set<StorageDriverConstructor>();
 
 const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
   if (!isValidResponse(responseEvent)) {
@@ -58,13 +62,14 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
   if (!storagePath) {
-    return (req, res, next) => {
-      next?.();
-    };
+    return Object.assign((req: IncomingMessage, res: ServerResponse, next?: () => void) => next?.(), { close: () => {} });
   }
 
   const StorageDriver: StorageDriverConstructor = require(storagePath);
-  if (StorageDriver.start) StorageDriver.start();
+  if (StorageDriver.start && !startedDrivers.has(StorageDriver)) {
+    startedDrivers.add(StorageDriver);
+    StorageDriver.start();
+  }
   sweepLambdaFolders();
   const lambdaPool = new LambdaPool({
     lambdaPath,
@@ -78,7 +83,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     logger,
     communication: currentCommunication,
   });
-  return (request, response) => {
+  const middleware = (request: IncomingMessage, response: ServerResponse) => {
     const requestId = randomUUID();
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
@@ -137,6 +142,8 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
       })
       .finally(() => response.off('close', onClose));
   };
+
+  return Object.assign(middleware, { close: () => lambdaPool.close() });
 }
 
 export default createHttpMiddleware;

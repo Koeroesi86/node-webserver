@@ -153,6 +153,38 @@ class WorkerPool implements WorkerBudgetMember {
     this.workers.forEach((current) => current.forEach(this.stop));
   };
 
+  /** set while the pool is disposed of, called once its last worker stopped */
+  private onDisposed?: () => void;
+
+  /**
+   * Stops the workers once they have answered the requests they took, or all of them after the timeout, and forgets the pool, for a server that is not used any more.
+   * Requests that still come are served, by a worker that is stopped after them. Resolves once the workers stopped.
+   */
+  dispose = (timeout = 0) =>
+    new Promise<void>((resolve) => {
+      const timer = setTimeout(this.onClose, timeout);
+      // the server may stop before, which stops the workers anyway
+      timer.unref();
+      this.onDisposed = () => {
+        clearTimeout(timer);
+        pools.splice(pools.indexOf(this), 1);
+        this.budget.leave(this);
+        resolve();
+      };
+      this.stopIdleWorkers();
+      this.checkDisposed();
+    });
+
+  private stopIdleWorkers = () =>
+    this.workers.forEach((current) => current.forEach((worker) => !this.stopping.has(worker) && this.getLoad(worker) === 0 && this.stop(worker)));
+
+  private checkDisposed = () => {
+    if (this.getWorkerCount() > 0) return;
+
+    this.onDisposed?.();
+    this.onDisposed = undefined;
+  };
+
   getWorkerCountForPath = (p) => {
     return this.workers.get(p)?.size ?? 0;
   };
@@ -294,6 +326,7 @@ class WorkerPool implements WorkerBudgetMember {
       // there is room for another worker now, and the requests that wait may get one, also in the other pools of the budget
       this.wakeUp();
       this.budget.wakeUp(this);
+      this.checkDisposed();
     });
 
     workersForPath.set(id, instance);
@@ -302,7 +335,10 @@ class WorkerPool implements WorkerBudgetMember {
   };
 
   private tryGetWorker = (workerPath: string, options: SpawnOptions, limit: number): Worker | undefined => {
-    const candidates = Array.from(this.workers.get(workerPath)?.values() ?? []).filter((worker) => worker.instance.exitCode === null);
+    // a worker that is being stopped takes no more requests
+    const candidates = Array.from(this.workers.get(workerPath)?.values() ?? []).filter(
+      (worker) => worker.instance.exitCode === null && !this.stopping.has(worker)
+    );
     const leastLoaded = candidates.length > 0 ? this.pickLeastLoaded(workerPath, candidates) : undefined;
 
     if (leastLoaded !== undefined && this.getLoad(leastLoaded) === 0) {
@@ -358,6 +394,8 @@ class WorkerPool implements WorkerBudgetMember {
         // a worker has room again, for the request that has waited longest, and an idle one can make room in the other pools of the budget
         this.wakeUp();
         this.budget.wakeUp(this);
+        // a pool that is disposed of keeps a worker only for as long as it has requests
+        if (this.onDisposed) this.stopIdleWorkers();
       },
     };
   };

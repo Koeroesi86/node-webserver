@@ -27,7 +27,7 @@ describe('addExitListeners', () => {
     const order: string[] = [];
     jest.mocked(logger.flush).mockImplementation(() => order.push('flush'));
     kill.mockImplementation(() => order.push('kill') > 0);
-    addExitListeners([]);
+    addExitListeners(() => []);
 
     listeners.SIGTERM('SIGTERM');
 
@@ -37,7 +37,7 @@ describe('addExitListeners', () => {
 
   it('stops the children of the servers', () => {
     const child = { kill: jest.fn() };
-    addExitListeners([{ hostname: 'a', protocol: 'http', child }] as unknown as Parameters<typeof addExitListeners>[0]);
+    addExitListeners((() => [{ hostname: 'a', protocol: 'http', child }]) as unknown as Parameters<typeof addExitListeners>[0]);
 
     listeners.SIGINT('SIGINT');
 
@@ -45,7 +45,7 @@ describe('addExitListeners', () => {
   });
 
   it('does not raise a signal when the process is exiting anyway', () => {
-    addExitListeners([]);
+    addExitListeners(() => []);
 
     listeners.exit(0);
 
@@ -54,10 +54,35 @@ describe('addExitListeners', () => {
   });
 
   it('raises SIGINT after an uncaught exception', () => {
-    addExitListeners([]);
+    addExitListeners(() => []);
 
     listeners.uncaughtException(new Error('boom'));
 
     expect(kill).toHaveBeenCalledWith(process.pid, 'SIGINT');
+  });
+
+  it('stops on SIGHUP by default', () => {
+    addExitListeners(() => []);
+
+    expect(listeners.SIGHUP).toBeDefined();
+  });
+
+  it('leaves SIGHUP alone when the server loads the configuration again on it', () => {
+    addExitListeners(() => [], { exitOnHangUp: false });
+
+    expect(listeners.SIGHUP).toBeUndefined();
+  });
+
+  it('stops the children of the servers there are when the process stops, not of the ones there were at the start', () => {
+    const before = { kill: jest.fn() };
+    const after = { kill: jest.fn() };
+    let children = [before];
+    addExitListeners((() => children.map((child) => ({ hostname: 'a', protocol: 'http', child }))) as unknown as Parameters<typeof addExitListeners>[0]);
+    children = [after];
+
+    listeners.SIGTERM('SIGTERM');
+
+    expect(before.kill).not.toHaveBeenCalled();
+    expect(after.kill).toHaveBeenCalledWith('SIGTERM');
   });
 });
