@@ -102,7 +102,7 @@ and `health.localhost`, whose worker answers `/health` and `/metrics` from the m
 
 ### Big binary responses
 
-`binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms.
+`binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms. The comparison with the base runs it too, see below.
 It runs on its own after the CPU bound one, and is left out of the comparison with the base: a base without the route would answer it with fast errors, and look better for it.
 To see the difference to another build, give that build the route (a worker with the same name) and run the script against both servers.
 
@@ -111,7 +111,7 @@ To see the difference to another build, give that build the route (a worker with
 `websocket.ts` works the flow control of websockets (`examples/websocket-flow/exampleWorker.js`, `web.localhost/websocket-flow/exampleWorker.js`) with 5 + 5 users and one that samples the memory of the server through `health.localhost/metrics`:
 a **fast producer** sends 400 messages of 32 KiB (text and binary) in a burst to a worker that takes 2 ms for each, and has to get every one back, whole and in order; a **slow consumer** reads 200 messages of 64 KiB, one every 5 ms,
 from a worker that sends them as fast as the client takes them, and has to get all of them in order and the close of the worker. The memory the server holds outside of the heap (where the messages wait) may not exceed 100 MiB at any time
-(`ws_flow_server_external_mib`, `MAX_EXTERNAL_MIB`): it peaked at 50-70 MiB with the flow control, and at 175-195 MiB with the window towards the worker taken out. Like `binary.ts` it runs on its own and is left out of the comparison with the base.
+(`ws_flow_server_external_mib`, `MAX_EXTERNAL_MIB`): it peaked at 50-70 MiB with the flow control, and at 175-195 MiB with the window towards the worker taken out. It runs on its own and is left out of the comparison with the base (`binary.ts` is compared, see below).
 
 ```sh
 k6 run tools/src/k6/websocket.ts
@@ -168,6 +168,7 @@ Both sides run the load test of the pull request against their own server, so th
 - **the CPU bound run** (`cpu.ts`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
   and tighter limits hold: a p95 more than 30% and 5 milliseconds higher fails (`MAX_CPU_P95_INCREASE`, 0.3), and so does a build that drops requests where the base does not. A base without the CPU bound worker is listed with n/a and not judged.
   The duration is the fifth argument of `compare-with-base.js`.
+- **the binary run** (`binary.ts`, with 10 users, after the CPU bound run of every round; its duration, 10 seconds, is the sixth argument of `compare-with-base.js`) is compared as well: its p95 is judged like a route (50% and 5 milliseconds higher fails), a gain only shows in the row. A base without the route answers with errors, which fail the checks of the scenario, and is listed with n/a and not judged,
 - **routes served by one side only**: the warm-up also records the status each side answers per endpoint. When they differ (for example a 404 on the base for a route the pull request added), the summary lists them under "Not served alike". It does not fail: a pull request may add a route, but a scenario that works a route for one side only skews the numbers, so it belongs in a script of its own (like `binary.ts`) and not in `example.ts`,
 - **runs**: the third argument of `compare-with-base.js`. The workflow uses 3 on Ubuntu and 5 on macOS and Windows (`comparison-rounds`), where the same side varied by a factor of 3 between runs and the median needs more of them.
 

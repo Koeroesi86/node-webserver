@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { cpuSummary, summary } from '../test-helpers/summaries';
+import { binarySummary, cpuSummary, summary } from '../test-helpers/summaries';
 import type { K6Summary } from '../types/k6-summary';
 
 describe('compare script', () => {
@@ -62,6 +62,16 @@ describe('compare script', () => {
     const result = run([...args, '--base-cpu', fast, '--head-cpu', slow]);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('CPU bound');
+  });
+
+  it('judges the binary runs after --base-binary and --head-binary', () => {
+    const args = ['--base', write('d-b.json', summary()), '--head', write('d-h.json', summary())];
+    const [fast, slow] = [write('bin-b.json', binarySummary({ p95: 20 })), write('bin-h.json', binarySummary({ p95: 60 }))];
+
+    expect(run([...args, '--base-binary', fast, '--head-binary', fast]).status).toBe(0);
+    const result = run([...args, '--base-binary', fast, '--head-binary', slow]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('binary responses');
   });
 
   it('fails and says so when a side has no summary', () => {

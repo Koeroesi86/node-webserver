@@ -3,6 +3,7 @@ export const defaultPortHttps = '8443';
 export const defaultRounds = 3;
 export const defaultDuration = '15s';
 export const defaultCpuDuration = '10s';
+export const defaultBinaryDuration = '10s';
 
 /** the server is polled this many times, this many milliseconds apart, until it answers */
 export const serverReadyAttempts = 60;
