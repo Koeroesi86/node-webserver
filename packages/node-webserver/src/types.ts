@@ -50,6 +50,8 @@ export interface LambdaOptions {
   startTimeout?: number;
   /** how long the handler may take to answer before the lambda is stopped and the request is answered with 504, in milliseconds. Defaults to 900000 (15 minutes). */
   timeout?: number;
+  /** the largest body of a request in bytes, larger ones are answered with 413, 0 for no limit. Defaults to 6291456 (6 MiB), the payload limit of AWS. */
+  limitRequestBody?: number;
   /** variables of the environment of the lambdas, which get only a few of the server (`PATH`, `HOME`, `TZ`, ...) */
   env?: Record<string, string>;
 }

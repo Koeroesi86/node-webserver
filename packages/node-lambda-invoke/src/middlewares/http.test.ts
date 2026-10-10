@@ -19,6 +19,7 @@ exports.handler = (event, context, callback) => {
   if (event.path === '/never') return;
   if (event.path === '/no-status') return callback(null, {});
   if (event.path === '/object-body') return callback(null, { statusCode: 200, body: { an: 'object' } });
+  if (event.path === '/event') return callback(null, { statusCode: 200, body: JSON.stringify(event) });
   if (event.path === '/env') return callback(null, { statusCode: 200, body: JSON.stringify(process.env) });
   if (event.path.startsWith('/slow')) return setTimeout(respond, 100);
   if (event.path === '/hold') return setTimeout(respond, 400);
@@ -297,6 +298,81 @@ describe('httpMiddleware', () => {
     } finally {
       delete process.env.SECRET_OF_THE_SERVER;
     }
+  });
+
+  describe('request', () => {
+    /** a request with the exact header names given, which fetch does not keep */
+    const send = (options: http.RequestOptions, body?: Buffer | string) =>
+      new Promise<{ status: number; text: string }>((resolve, reject) => {
+        const request = http.request(`${baseUrl}${options.path ?? '/event'}`, { method: 'GET', ...options }, (response) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk) => chunks.push(chunk));
+          response.on('end', () => resolve({ status: response.statusCode ?? 0, text: Buffer.concat(chunks).toString() }));
+        });
+        request.on('error', reject);
+        request.end(body);
+      });
+
+    it('gives the lambda the body of the request', async () => {
+      await start();
+
+      const { text } = await send({ method: 'POST' }, 'hello');
+
+      expect(JSON.parse(text)).toMatchObject({ httpMethod: 'POST', body: 'hello', isBase64Encoded: false });
+    });
+
+    it('passes a body that is not valid UTF-8 as base64', async () => {
+      await start();
+
+      const { text } = await send({ method: 'PUT' }, Buffer.from([0, 1, 2, 255]));
+
+      expect(JSON.parse(text)).toMatchObject({ body: Buffer.from([0, 1, 2, 255]).toString('base64'), isBase64Encoded: true });
+    });
+
+    it('has a null body and null parameters when the request has none', async () => {
+      await start();
+
+      const { text } = await send({});
+
+      expect(JSON.parse(text)).toMatchObject({ body: null, queryStringParameters: null, multiValueQueryStringParameters: null, isBase64Encoded: false });
+    });
+
+    it('passes the query and the headers the way API Gateway does', async () => {
+      await start();
+
+      const { text } = await send({ path: '/event?a=1&a=2&b=3', headers: { 'X-Custom-Header': ['one', 'two'] } });
+
+      expect(JSON.parse(text)).toMatchObject({
+        queryStringParameters: { a: '2', b: '3' },
+        multiValueQueryStringParameters: { a: ['1', '2'], b: ['3'] },
+        headers: { 'X-Custom-Header': 'two' },
+        multiValueHeaders: { 'X-Custom-Header': ['one', 'two'] },
+      });
+    });
+
+    it('answers 413 to a body over the limit, also when it is not announced, and keeps serving', async () => {
+      await start({ limitRequestBody: 10 });
+
+      const announced = await send({ method: 'POST' }, 'x'.repeat(100));
+      const chunked = await send({ method: 'POST', headers: { 'Transfer-Encoding': 'chunked' } }, 'x'.repeat(100));
+      const next = await send({ method: 'POST' }, 'small');
+
+      expect([announced.status, chunked.status, next.status]).toEqual([413, 413, 200]);
+      expect(JSON.parse(announced.text)).toEqual({ message: 'Request Entity Too Large' });
+    });
+
+    it('does not hold a lambda while the body is still coming in', async () => {
+      await start({ limit: 1, acquireTimeout: 100 });
+      const slowUpload = http.request(`${baseUrl}/event`, { method: 'POST', headers: { 'Content-Length': '10' } });
+      slowUpload.on('error', () => undefined);
+      slowUpload.write('12345');
+
+      try {
+        expect((await send({ path: '/hello' })).status).toBe(200);
+      } finally {
+        slowUpload.destroy();
+      }
+    });
   });
 
   describe('limit', () => {

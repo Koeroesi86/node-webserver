@@ -28,9 +28,28 @@ export interface HttpMiddlewareOptions {
   startTimeout?: number;
   /** how long the handler may take to answer, in milliseconds, before the lambda is stopped and the request is answered with 504. Defaults to 900000 (15 minutes). */
   timeout?: number;
+  /** the largest body of a request in bytes, larger ones are answered with 413, 0 for no limit. Defaults to 6291456 (6 MiB), the payload limit of AWS. */
+  limitRequestBody?: number;
   /** variables added to the environment of the lambdas, which only get a few of the server (`PATH`, `HOME`, `TZ`, ...) */
   env?: Record<string, string>;
   communication?: Communication;
+}
+
+/** what API Gateway tells a lambda about the request */
+export interface RequestContext {
+  accountId: string;
+  apiId: string;
+  stage: string;
+  /** the id of the invocation, which is also the `awsRequestId` of the context */
+  requestId: string;
+  resourcePath: string;
+  httpMethod: string;
+  path: string;
+  protocol: string;
+  requestTime: string;
+  requestTimeEpoch: number;
+  domainName: string;
+  identity: { sourceIp: string; userAgent: string };
 }
 
 /** an event emitted by a lambda worker */

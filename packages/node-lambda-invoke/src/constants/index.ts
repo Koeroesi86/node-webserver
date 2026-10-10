@@ -58,3 +58,8 @@ export const MESSAGE_INTERNAL_SERVER_ERROR = 'Internal server error';
 export const MESSAGE_ENDPOINT_TIMED_OUT = 'Endpoint request timed out';
 
 export const MESSAGE_SERVICE_UNAVAILABLE = 'Service Unavailable';
+
+export const MESSAGE_PAYLOAD_TOO_LARGE = 'Request Entity Too Large';
+
+/** the largest payload of a synchronous invocation of AWS, in bytes */
+export const DEFAULT_LIMIT_REQUEST_BODY = 6 * 1024 * 1024;
