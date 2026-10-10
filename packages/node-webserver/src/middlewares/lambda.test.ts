@@ -39,9 +39,17 @@ describe('lambdaMiddleware', () => {
   });
 
   it('passes the timeouts, the limit of the body and the environment on', () => {
-    lambdaMiddleware(instance({ lambda: '/lambdas/a.js', startTimeout: 2000, timeout: 30000, limitRequestBody: 1024, env: { TABLE: 'users' } }));
+    lambdaMiddleware(
+      instance({ lambda: '/lambdas/a.js', startTimeout: 2000, timeout: 30000, limitRequestBody: 1024, restrictFileSystem: false, env: { TABLE: 'users' } })
+    );
 
-    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ startTimeout: 2000, timeout: 30000, limitRequestBody: 1024, env: { TABLE: 'users' } });
+    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({
+      startTimeout: 2000,
+      timeout: 30000,
+      limitRequestBody: 1024,
+      restrictFileSystem: false,
+      env: { TABLE: 'users' },
+    });
   });
 
   it('leaves the limit to the default of the library when there is none', () => {

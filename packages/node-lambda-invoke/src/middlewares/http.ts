@@ -17,6 +17,7 @@ import createResponseHeaders from '../utils/create-response-headers';
 import invokeLambda from '../utils/invoke-lambda';
 import isValidResponse from '../utils/is-valid-response';
 import readRequestBody from '../utils/read-request-body';
+import sweepLambdaFolders from '../utils/sweep-lambda-folders';
 import writeError from '../utils/write-error';
 import type ResponseEvent from '../classes/ResponseEvent';
 import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
@@ -51,11 +52,11 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     timeout = DEFAULT_TIMEOUT,
     limitRequestBody = DEFAULT_LIMIT_REQUEST_BODY,
     env,
+    restrictFileSystem,
     communication = {},
   } = options;
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
-  // TODO: tmp folders
   if (!storagePath) {
     return (req, res, next) => {
       next?.();
@@ -64,7 +65,19 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
 
   const StorageDriver: StorageDriverConstructor = require(storagePath);
   if (StorageDriver.start) StorageDriver.start();
-  const lambdaPool = new LambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, env, logger, communication: currentCommunication });
+  sweepLambdaFolders();
+  const lambdaPool = new LambdaPool({
+    lambdaPath,
+    handlerKey,
+    limit,
+    acquireTimeout,
+    startTimeout,
+    timeout,
+    restrictFileSystem,
+    env,
+    logger,
+    communication: currentCommunication,
+  });
   return (request, response) => {
     const requestId = randomUUID();
 
@@ -88,7 +101,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
         return;
       }
 
-      const storage = new StorageDriver(requestId, lambdaInstance);
+      const storage = new StorageDriver(requestId, lambdaInstance, lambdaInstance.storageFolder);
       const outcome = await invokeLambda(lambdaInstance, requestId, requestEvent, timeout);
 
       if (outcome.type === 'response') writeResponse(response, outcome.responseEvent);

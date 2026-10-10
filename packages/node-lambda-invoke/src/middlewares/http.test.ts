@@ -1,4 +1,5 @@
 import childProcess, { ChildProcess, fork } from 'child_process';
+import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import http from 'http';
 import os from 'os';
@@ -8,8 +9,8 @@ import type { HttpMiddlewareOptions } from '../types';
 
 /** the lambdas of the tests, selected by the path of the request */
 const lambdaSource = `
-// the pool keeps its lambdas running, so every one of them reports itself to be stopped after the tests
-require('fs').appendFileSync(process.env.PID_FILE, process.pid + '\\n');
+// the pool keeps its lambdas running, so every one of them reports itself to be stopped after the tests, when it is allowed to write there
+try { require('fs').appendFileSync(process.env.PID_FILE, process.pid + '\\n'); } catch {}
 
 exports.handler = (event, context, callback) => {
   const respond = () => callback(null, { statusCode: 200, headers: { 'x-pid': String(process.pid) }, body: 'echo ' + event.path });
@@ -19,6 +20,23 @@ exports.handler = (event, context, callback) => {
   if (event.path === '/never') return;
   if (event.path === '/no-status') return callback(null, {});
   if (event.path === '/object-body') return callback(null, { statusCode: 200, body: { an: 'object' } });
+  if (event.path === '/tmpdir') return callback(null, { statusCode: 200, body: require('os').tmpdir() });
+  if (event.path === '/write-tmp') {
+    require('fs').writeFileSync(require('os').tmpdir() + '/note', 'kept');
+    return callback(null, { statusCode: 200, body: 'written' });
+  }
+  if (event.path === '/read-tmp') {
+    const note = require('fs').existsSync(require('os').tmpdir() + '/note') ? require('fs').readFileSync(require('os').tmpdir() + '/note', 'utf8') : 'none';
+    return callback(null, { statusCode: 200, body: note });
+  }
+  if (event.path === '/write-code') {
+    try {
+      require('fs').writeFileSync(__dirname + '/forbidden', 'x');
+      return callback(null, { statusCode: 200, body: 'written' });
+    } catch (error) {
+      return callback(null, { statusCode: 200, body: 'denied ' + error.code });
+    }
+  }
   if (event.path === '/event') return callback(null, { statusCode: 200, body: JSON.stringify(event) });
   if (event.path === '/env') return callback(null, { statusCode: 200, body: JSON.stringify(process.env) });
   if (event.path.startsWith('/slow')) return setTimeout(respond, 100);
@@ -46,7 +64,7 @@ exports.other = (event, context, callback) => callback(null, { statusCode: 200, 
 /** an ES module that loads asynchronously, which AWS allows */
 const esmSource = `
 import { appendFileSync } from 'node:fs';
-appendFileSync(process.env.PID_FILE, process.pid + '\\n');
+try { appendFileSync(process.env.PID_FILE, process.pid + '\\n'); } catch {}
 await Promise.resolve();
 export const handler = async (event) => ({ statusCode: 200, body: 'esm ' + event.path });
 `;
@@ -242,7 +260,8 @@ describe('httpMiddleware', () => {
   });
 
   it('answers 502 and stops a lambda that does not start in time', async () => {
-    await start({ lambdaPath: path.join(build, 'hanging.js'), startTimeout: 300 });
+    // it has to be able to write its process id to the file, to be found afterwards
+    await start({ lambdaPath: path.join(build, 'hanging.js'), startTimeout: 300, restrictFileSystem: false });
 
     const response = await fetch(`${baseUrl}/`);
 
@@ -314,6 +333,68 @@ describe('httpMiddleware', () => {
     } finally {
       delete process.env.SECRET_OF_THE_SERVER;
     }
+  });
+
+  describe('storage', () => {
+    const waitUntil = async (condition: () => boolean) => {
+      for (let waited = 0; !condition() && waited < 5000; waited += 20) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    };
+
+    it('gives every lambda a /tmp of its own, which stays while the lambda runs', async () => {
+      await start({ limit: 1 });
+
+      await fetch(`${baseUrl}/write-tmp`);
+      const kept = await (await fetch(`${baseUrl}/read-tmp`)).text();
+      const tmpdir = await (await fetch(`${baseUrl}/tmpdir`)).text();
+
+      expect(kept).toBe('kept');
+      expect(path.basename(path.dirname(tmpdir))).toMatch(new RegExp(`^node-lambda-${process.pid}-`));
+      expect(path.basename(tmpdir)).toBe('tmp');
+    });
+
+    it('does not share /tmp between lambdas', async () => {
+      await start({ limit: 0 });
+
+      const folders = await Promise.all([1, 2, 3].map(async () => (await fetch(`${baseUrl}/slow/tmpdir`)).headers.get('x-pid')));
+      await fetch(`${baseUrl}/write-tmp`);
+      const reads = await Promise.all([1, 2, 3].map(async () => (await fetch(`${baseUrl}/slow/read-tmp`)).text()));
+
+      expect(new Set(folders).size).toBe(3);
+      expect(reads.filter((text) => text === 'echo /slow/read-tmp')).toHaveLength(3);
+    });
+
+    it('removes the folder of a lambda when it exits', async () => {
+      await start({ limit: 1 });
+      const tmpdir = await (await fetch(`${baseUrl}/tmpdir`)).text();
+      expect(existsSync(tmpdir)).toBe(true);
+
+      await fetch(`${baseUrl}/exit`);
+      await waitUntil(() => !existsSync(tmpdir));
+
+      expect(existsSync(tmpdir)).toBe(false);
+    });
+
+    it('lets a lambda write nowhere but in its own folder, like the code of a function on AWS', async () => {
+      await start();
+
+      expect(await (await fetch(`${baseUrl}/write-code`)).text()).toBe('denied ERR_ACCESS_DENIED');
+    });
+
+    it('lets a lambda write anywhere when the file system is not restricted', async () => {
+      await start({ restrictFileSystem: false });
+
+      expect(await (await fetch(`${baseUrl}/write-code`)).text()).toBe('written');
+    });
+
+    it('keeps the requests and responses of the file communication in a folder of the lambda, and answers', async () => {
+      await start({ communication: { type: 'file' } });
+
+      const response = await fetch(`${baseUrl}/hello`);
+
+      expect(await response.text()).toBe('echo /hello');
+    });
   });
 
   describe('handlers', () => {
@@ -533,7 +614,8 @@ describe('httpMiddleware', () => {
     });
 
     it('has no limit when it is 0', async () => {
-      await start({ limit: 0 });
+      // the lambdas meet in a file next to the code, which they are not allowed to write to otherwise
+      await start({ limit: 0, restrictFileSystem: false });
 
       const { pids } = await pidsOf(8, '/gather/8');
 

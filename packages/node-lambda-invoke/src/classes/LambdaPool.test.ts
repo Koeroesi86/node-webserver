@@ -1,5 +1,6 @@
 import type { EventEmitter } from 'events';
 import LambdaPool, { LambdaRequestAbandonedError, LambdaUnavailableError } from './LambdaPool';
+import { DRAIN_AFTER, STOP_GRACE } from '../constants';
 import type Lambda from './Lambda';
 
 /** lambdas that start, or fail to, when the test says so, instead of processes */
@@ -33,14 +34,14 @@ jest.mock('./Lambda', () => {
       this.off(event, listener);
     }
 
-    terminate() {}
+    terminate = jest.fn();
   }
 
   return { __esModule: true, default: FakeLambda };
 });
 
 interface FakeLambdas {
-  default: { instances: EventEmitter[]; exitOnStart: boolean };
+  default: { instances: (EventEmitter & { terminate: jest.Mock; retiring: boolean })[]; exitOnStart: boolean };
 }
 
 const fake = () => jest.requireMock<FakeLambdas>('./Lambda').default;
@@ -206,5 +207,72 @@ describe('LambdaPool', () => {
 
     expect(requests.filter(({ done }) => done)).toHaveLength(4);
     expect(fake().instances).toHaveLength(2);
+  });
+
+  describe('lifespan', () => {
+    it('stops a lambda that is idle when it has had its time, and does not hand it out any more', async () => {
+      const pool = create({ limit: 0 });
+      const first = await pool.getLambda();
+      free(first);
+
+      jest.advanceTimersByTime(DRAIN_AFTER);
+
+      expect(fake().instances[0].terminate).toHaveBeenCalledWith('SIGTERM');
+      expect(fake().instances[0].retiring).toBe(true);
+
+      const next = await pool.getLambda();
+
+      expect(next).not.toBe(first);
+    });
+
+    it('lets a request that runs finish, and stops the lambda when it is free', async () => {
+      const pool = create();
+      const first = await pool.getLambda();
+
+      jest.advanceTimersByTime(DRAIN_AFTER);
+
+      expect(fake().instances[0].terminate).not.toHaveBeenCalled();
+
+      free(first);
+
+      expect(fake().instances[0].terminate).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('starts a new lambda for the request that waits once the old one is gone', async () => {
+      const pool = create();
+      const first = await pool.getLambda();
+      free(first);
+      jest.advanceTimersByTime(DRAIN_AFTER);
+      const waiting = track(pool.getLambda());
+      await settled();
+
+      // the old one still counts, it is a process until it exits
+      expect(waiting.done).toBe(false);
+
+      fake().instances[0].emit('close', 0);
+      await settled();
+
+      expect(waiting.value).toBe(fake().instances[1]);
+    });
+
+    it('kills a lambda that does not stop when it is asked to', async () => {
+      const pool = create();
+      free(await pool.getLambda());
+
+      jest.advanceTimersByTime(DRAIN_AFTER);
+      jest.advanceTimersByTime(STOP_GRACE);
+
+      expect(fake().instances[0].terminate.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']]);
+    });
+
+    it('does not touch a lambda that exited before its time', async () => {
+      const pool = create();
+      free(await pool.getLambda());
+      fake().instances[0].emit('close', 0);
+
+      jest.advanceTimersByTime(DRAIN_AFTER + STOP_GRACE);
+
+      expect(fake().instances[0].terminate).not.toHaveBeenCalled();
+    });
   });
 });

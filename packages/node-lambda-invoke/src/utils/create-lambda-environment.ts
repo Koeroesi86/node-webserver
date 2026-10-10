@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname } from 'path';
-import { ALLOWED_ENV, ENV_COMMUNICATION, ENV_HANDLER, ENV_PATH } from '../constants';
+import { ALLOWED_ENV, ENV_COMMUNICATION, ENV_HANDLER, ENV_MAX_LIFETIME, ENV_PATH, ENV_STORAGE_FOLDER, LIFESPAN } from '../constants';
 import type { Communication } from '../types';
 
 /**
  * The environment of a lambda process: the allowed variables of the server, the ones AWS sets for a function, then the ones of the options.
- * The variables of the runtime come last, so that nothing can replace them.
+ * The variables of the runtime come last, so that nothing can replace them, except the folders for temporary files, which the options may point elsewhere.
  */
-const createLambdaEnvironment = (lambdaPath: string, handlerKey: string, communication: Communication, env: Record<string, string> = {}): NodeJS.ProcessEnv => {
+const createLambdaEnvironment = (
+  lambdaPath: string,
+  handlerKey: string,
+  communication: Communication,
+  env: Record<string, string> = {},
+  { tmpFolder, storageFolder, maxLifetime = LIFESPAN }: { tmpFolder?: string; storageFolder?: string; maxLifetime?: number } = {}
+): NodeJS.ProcessEnv => {
   const functionName = basename(lambdaPath, extname(lambdaPath));
 
   return {
@@ -20,10 +26,14 @@ const createLambdaEnvironment = (lambdaPath: string, handlerKey: string, communi
     AWS_EXECUTION_ENV: `AWS_Lambda_nodejs${process.versions.node.split('.')[0]}.x`,
     LAMBDA_TASK_ROOT: dirname(lambdaPath),
     _HANDLER: `${functionName}.${handlerKey}`,
+    // the only place a lambda can write to, os.tmpdir() reads these
+    ...(tmpFolder !== undefined && { TMPDIR: tmpFolder, TMP: tmpFolder, TEMP: tmpFolder }),
     ...env,
     [ENV_PATH]: lambdaPath,
     [ENV_HANDLER]: handlerKey,
     [ENV_COMMUNICATION]: JSON.stringify(communication),
+    [ENV_MAX_LIFETIME]: `${maxLifetime}`,
+    ...(storageFolder !== undefined && { [ENV_STORAGE_FOLDER]: storageFolder }),
   };
 };
 

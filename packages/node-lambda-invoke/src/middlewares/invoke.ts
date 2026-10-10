@@ -1,6 +1,17 @@
 import { resolve } from 'path';
 import { pathToFileURL } from 'url';
-import { EVENT_STARTED, EVENT_REQUEST, EVENT_RESPONSE, ENV_COMMUNICATION, ENV_HANDLER, ENV_PATH, DEFAULT_TIMEOUT } from '../constants';
+import {
+  EVENT_STARTED,
+  EVENT_REQUEST,
+  EVENT_RESPONSE,
+  ENV_COMMUNICATION,
+  ENV_HANDLER,
+  ENV_MAX_LIFETIME,
+  ENV_PATH,
+  ENV_STORAGE_FOLDER,
+  DEFAULT_TIMEOUT,
+  LIFESPAN,
+} from '../constants';
 import { getRegisteredPath } from '../registry';
 import createContext from '../utils/create-context';
 import findHandler from '../utils/find-handler';
@@ -8,17 +19,24 @@ import runHandler from '../utils/run-handler';
 import sendToParent from '../utils/sendToParent';
 import type { Communication, LambdaEvent, StorageDriverConstructor } from '../types';
 
-const { [ENV_PATH]: lambdaPath = './testLambda.js', [ENV_HANDLER]: handlerKey = 'handler', [ENV_COMMUNICATION]: communicationJson = '{}' } = process.env;
+const {
+  [ENV_PATH]: lambdaPath = './testLambda.js',
+  [ENV_HANDLER]: handlerKey = 'handler',
+  [ENV_COMMUNICATION]: communicationJson = '{}',
+  [ENV_STORAGE_FOLDER]: storageFolder,
+  [ENV_MAX_LIFETIME]: maxLifetime = `${LIFESPAN}`,
+} = process.env;
 
+// a safety net: the server stops a lambda when it is time, this is for when it does not, for example because it hangs
 setTimeout(() => {
   process.exit(0);
-}, 15 * 60 * 1000); // setting to default 15 minutes AWS timeout 15 * 60 * 1000
+}, Number(maxLifetime));
 
 function messageListener(event: LambdaEvent, handler: ReturnType<typeof findHandler> & object, Storage: StorageDriverConstructor) {
   if (event.type !== EVENT_REQUEST || event.id === undefined) return;
 
   const { id, deadline = Date.now() + DEFAULT_TIMEOUT } = event;
-  const storage = new Storage(id, process);
+  const storage = new Storage(id, process, storageFolder);
 
   Promise.resolve()
     .then(() => storage.getRequest())

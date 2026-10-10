@@ -22,6 +22,24 @@ export const ENV_HANDLER = 'NODE_LAMBDA_HANDLER';
 
 export const ENV_COMMUNICATION = 'NODE_LAMBDA_COMMUNICATION';
 
+/** the folder the `file` communication keeps the requests and responses of a lambda in */
+export const ENV_STORAGE_FOLDER = 'NODE_LAMBDA_STORAGE_FOLDER';
+
+/** how long a lambda process lives at the longest, a safety net for when the server does not stop it */
+export const ENV_MAX_LIFETIME = 'NODE_LAMBDA_MAX_LIFETIME';
+
+/** the folders of the lambda processes are named like this, followed by the process id of the server that started them */
+export const LAMBDA_FOLDER_PREFIX = 'node-lambda-';
+
+/** a lambda is stopped after this long, AWS has no fixed clock but a function does not run for ever */
+export const LIFESPAN = 15 * 60 * 1000;
+
+/** a lambda is not handed out any more after this long, and stopped when it is idle, so that it is not killed halfway through a request */
+export const DRAIN_AFTER = 14.5 * 60 * 1000;
+
+/** how long a lambda gets to stop after it was asked to, in milliseconds */
+export const STOP_GRACE = 5000;
+
 /** the variables of the server that a lambda gets as well: what node and the system need to run it, nothing of the server itself */
 export const ALLOWED_ENV = [
   'PATH',

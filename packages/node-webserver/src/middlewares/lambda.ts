@@ -16,6 +16,7 @@ const lambdaMiddleware = (instance: ServerInstance): RequestHandler => {
     startTimeout: config?.startTimeout,
     timeout: config?.timeout,
     limitRequestBody: config?.limitRequestBody,
+    restrictFileSystem: config?.restrictFileSystem,
     env: config?.env,
   });
 };

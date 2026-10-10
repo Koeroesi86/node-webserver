@@ -30,6 +30,11 @@ export interface HttpMiddlewareOptions {
   timeout?: number;
   /** the largest body of a request in bytes, larger ones are answered with 413, 0 for no limit. Defaults to 6291456 (6 MiB), the payload limit of AWS. */
   limitRequestBody?: number;
+  /**
+   * Whether a lambda can only write to its own folders (its `/tmp`, see `os.tmpdir()`, and the folder of the `file` communication) and not to the rest of the file system, as on AWS. Defaults to true.
+   * Needs a node that has the permission model.
+   */
+  restrictFileSystem?: boolean;
   /** variables added to the environment of the lambdas, which only get a few of the server (`PATH`, `HOME`, `TZ`, ...) */
   env?: Record<string, string>;
   communication?: Communication;
@@ -95,6 +100,7 @@ export interface Storage {
 }
 
 export interface StorageDriverConstructor {
-  new (id: string, instance: StorageInstance): Storage;
+  /** `folder` is the folder of the lambda for the files of a storage, there is one for the `file` communication */
+  new (id: string, instance: StorageInstance, folder?: string): Storage;
   start?: () => void;
 }
