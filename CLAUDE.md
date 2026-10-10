@@ -16,9 +16,6 @@ pnpm load-test          # k6 against the example server, needs k6 or Docker
 
 Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm test:integration`, plus the load test when the request path, workers, logging or proxying changed. Say which of them you did not run.
 
-Before opening a pull request, open it with the `open-pr` skill (it runs `verify-change` for what is missing). When the request path, workers, logging or proxying changed, also compare with the base locally, as CI does (`tools/README.md`, "Comparison with the base"):
-`SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s`, with `../base` a built worktree of `master` (`git worktree add ../base master`). It needs k6, and `SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` repeats the access logs pass. Say under **Not verified** when it did not run.
-
 ## Layout
 
 | Folder | What it is |
