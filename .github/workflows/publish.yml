@@ -117,7 +117,8 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - name: Publish packages
         timeout-minutes: 10
+        # the `./` is needed: npm reads `tarballs/name.tgz` as the GitHub repository `tarballs/name.tgz` and tries to clone it
         run: |
-          for file in tarballs/*.tgz; do
+          for file in ./tarballs/*.tgz; do
             npm publish "${file}" --access public --provenance
           done
