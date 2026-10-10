@@ -25,11 +25,42 @@
     "unused-types": "error",
     "unused-dependencies": "error",
     "unused-dev-dependencies": "error",
+    // a suppression comment says why, and goes when what it hides is gone
+    "stale-suppressions": "error",
+    "require-suppression-reason": "error",
     // warnings: there are findings from before the check, they are reported and fixed with the code they are in
     "complexity-cyclomatic": "warn",
     "complexity-cognitive": "warn",
     "complexity-crap": "warn"
   },
-  // 3.98 % when the check was added, so duplication can not grow past 5 %
-  "duplicates": { "threshold": 5 }
+  // the packages may only import the ones they depend on (the `workspace:*` dependencies), tools none of them
+  "boundaries": {
+    "zones": [
+      { "name": "node-worker", "patterns": ["packages/node-worker/**"] },
+      { "name": "node-worker-express", "patterns": ["packages/node-worker-express/**"] },
+      { "name": "node-lambda-invoke", "patterns": ["packages/node-lambda-invoke/**"] },
+      { "name": "node-webserver", "patterns": ["packages/node-webserver/**"] },
+      { "name": "node-webserver-cli", "patterns": ["packages/node-webserver-cli/**"] },
+      { "name": "node-webserver-service", "patterns": ["packages/node-webserver-service/**"] },
+      { "name": "tools", "patterns": ["tools/**"] }
+    ],
+    // a zone without a rule may import anything, so the ones that import no other package have an empty one
+    "rules": [
+      { "from": "node-worker", "allow": [] },
+      { "from": "node-lambda-invoke", "allow": [] },
+      { "from": "tools", "allow": [] },
+      { "from": "node-worker-express", "allow": ["node-worker"] },
+      { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke"] },
+      { "from": "node-webserver-cli", "allow": ["node-webserver"] },
+      { "from": "node-webserver-service", "allow": ["node-webserver"] }
+    ]
+  },
+  // proves who uses an export of a package, which the syntactic pass can only guess
+  "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "packages/node-webserver-service/tsconfig.json", "tools/tsconfig.json"] },
+  "duplicates": {
+    // the same parseArgv in the three entry packages: they are published on their own and share no package, so it stays a copy
+    "ignoredClones": ["dup:b6c38f85:3"],
+    // the rest was 2.7 % when the check was added, so duplication can not grow past 3 %
+    "threshold": 3
+  }
 }
