@@ -287,6 +287,7 @@ TLS ends in the front process, on the thread that serves every other request too
 
 - **Session resumption** is on without any setting: a client that comes back resumes its session with a ticket, which skips the expensive part of the handshake. The keys of the tickets are made when the server starts, so a restart makes clients do full handshakes again.
 - Clients that keep their connections (`keepAliveTimeout`, below) need no new handshakes at all.
+- The cipher settings of `https.createServer` (`honorCipherOrder`, the order of the suites, `ecdhCurve`) made no measurable difference to the number of handshakes, so there is nothing to tune there. Only limiting the server to TLS 1.2 made them cheaper (about 15% more per second), which costs the clients that use TLS 1.3 their faster handshake: not worth it.
 - Where many new connections are expected, end TLS in a reverse proxy or CDN in front of the server and let it talk plain HTTP to the server.
 
 ### Connections

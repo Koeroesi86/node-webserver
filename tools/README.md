@@ -129,7 +129,8 @@ With the server on 3 cores and k6 on the fourth, three runs each (`taskset`, as 
 | RSA 2048 (what the load test makes) | 670-720 | 8.5-9.0 ms / 12.5-13.4 ms | 5.5-5.9 ms / 8.5-9.6 ms |
 | ECDSA P-256 | 970-1030 | 5.4-5.7 ms / 9.4-10.1 ms | 4.0-4.2 ms / 8.3-9.4 ms |
 
-The handshakes take the event loop that serves every other request, so the plain requests are slower while they run, by less with an ECDSA certificate. The key exchange group made no difference (`X25519:P-256` instead of the default, which offers `X25519MLKEM768` first).
+The handshakes take the event loop that serves every other request, so the plain requests are slower while they run, by less with an ECDSA certificate. Nothing in the cipher settings moved it either. Three runs of 10 seconds each, handshakes per second (RSA 2048 / ECDSA P-256): default 710-770 / 980-1000, `honorCipherOrder` 720-740 / 1000-1090, `TLS_AES_128_GCM_SHA256` first 760-780 / 990-1120,
+`TLS_CHACHA20_POLY1305_SHA256` first 750-760 / 950-1060, `ecdhCurve: 'X25519'` instead of the default `X25519MLKEM768` 720-770 / 1020-1040. The runs of one setting differ by as much as the settings do. Only `maxVersion: 'TLSv1.2'` stood out, with 820-890 / 1110-1190.
 
 ```sh
 k6 run -e HTTPS_PORT=8443 tools/src/k6/tls.ts
