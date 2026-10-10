@@ -43,6 +43,10 @@ jobs:
       - name: Lint
         timeout-minutes: 5
         run: pnpm lint
+      # unused files, exports and dependencies, and duplication, which eslint does not see across the packages
+      - name: Unused code
+        timeout-minutes: 5
+        run: pnpm fallow
       - name: Unit tests
         timeout-minutes: 10
         run: pnpm test

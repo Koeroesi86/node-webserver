@@ -1,6 +1,6 @@
 import os from 'os';
 import path from 'path';
-import { MiddlewareOptions } from '../types';
+import type { MiddlewareOptions } from '../types';
 
 export enum WORKER_EVENT {
   REQUEST = 'WORKER_REQUEST',

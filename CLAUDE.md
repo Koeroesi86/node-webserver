@@ -9,12 +9,13 @@ A pnpm workspace: a web server that hosts workers, lambdas and proxied apps by v
 pnpm install --frozen-lockfile
 pnpm build              # every package, in dependency order; the scripts and the tests of other packages run the compiled dist
 pnpm lint               # eslint with prettier, `--ext .ts`
+pnpm fallow             # unused files, exports and dependencies (errors), duplication and complexity, configured in `.fallowrc.jsonc`
 pnpm test               # unit tests
 pnpm test:integration   # starts the built server with one server of every type
 pnpm load-test          # k6 against the example server, needs k6 or Docker
 ```
 
-Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm test:integration`, plus the load test when the request path, workers, logging or proxying changed. Say which of them you did not run.
+Before saying something is done, run `pnpm lint`, `pnpm fallow`, `pnpm build`, `pnpm test` and `pnpm test:integration`, plus the load test when the request path, workers, logging or proxying changed. Say which of them you did not run.
 
 ## Layout
 

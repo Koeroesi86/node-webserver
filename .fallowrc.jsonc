@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  // nothing imports these, they are started by node, a user, the pipeline or a child process
+  "entry": [
+    "jest-retry.js",
+    // the entries of the packages and what the examples and the integration test start
+    "packages/*/src/scripts/**",
+    "packages/*/examples/**",
+    "packages/*/example/**",
+    "packages/*/src/example/**",
+    "packages/node-webserver/integration/**",
+    // forked per lambda and per worker by their path, so no import leads to them
+    "packages/node-lambda-invoke/src/middlewares/invoke.ts",
+    "packages/node-worker-express/src/workerInvoke.ts",
+    // run by the pipeline and by k6
+    "tools/src/scripts/**",
+    "tools/src/k6/**"
+  ],
+  // the exports of the published packages are used by their users, not by the repository
+  "publicPackages": ["@koeroesi86/*"],
+  "rules": {
+    // errors: dead code stops the build
+    "unused-files": "error",
+    "unused-exports": "error",
+    "unused-types": "error",
+    "unused-dependencies": "error",
+    "unused-dev-dependencies": "error",
+    // warnings: there are findings from before the check, they are reported and fixed with the code they are in
+    "complexity-cyclomatic": "warn",
+    "complexity-cognitive": "warn",
+    "complexity-crap": "warn"
+  },
+  // 3.98 % when the check was added, so duplication can not grow past 5 %
+  "duplicates": { "threshold": 5 }
+}

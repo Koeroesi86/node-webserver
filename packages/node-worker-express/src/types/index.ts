@@ -1,4 +1,4 @@
-import { WORKER_EVENT } from '../constants';
+import type { WORKER_EVENT } from '../constants';
 import { Request, RequestHandler, Response } from 'express';
 import type { Readable } from 'stream';
 import type { ServerMetrics } from '../utils/metrics';
