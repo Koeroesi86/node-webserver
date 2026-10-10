@@ -51,9 +51,10 @@ class FileStorage {
     return readFile(this.requestPath, 'utf8').then((data) => serializer.deserialize<RequestEvent>(data));
   }
 
-  // both the lambda and the middleware destroy the storage of a request, so the files may be gone already, which is not an error
-  destroy(): Promise<[void, void]> {
-    return Promise.all([rm(this.responsePath, { force: true }), rm(this.requestPath, { force: true })]);
+  // both the lambda and the middleware destroy the storage of a request, so the files may be gone already, which is not an error. Neither is a file that cannot be removed:
+  // the folder goes with the lambda, and Windows refuses (EPERM) to remove a file that the other side is removing at that moment. A failure here would be an unhandled rejection, which ends the server.
+  destroy(): Promise<void> {
+    return Promise.allSettled([rm(this.responsePath, { force: true }), rm(this.requestPath, { force: true })]).then(() => undefined);
   }
 }
 

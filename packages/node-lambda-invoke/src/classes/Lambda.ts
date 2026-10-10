@@ -129,7 +129,14 @@ class Lambda {
       this.instance?.removeEventListener('message', this._onFinished);
       storage
         ?.getResponse()
-        .then((responseEvent) => callback(responseEvent))
+        // a response that cannot be read answers the request with the failure, and not with an unhandled rejection, which ends the server
+        .then(
+          (responseEvent) => callback(responseEvent),
+          (error) => {
+            this._logger(error);
+            callback(Object.assign(new ResponseEvent(), { statusCode: 500, body: 'Something went wrong.' }));
+          }
+        )
         // the storage listens to the messages of the lambda until it is destroyed
         .finally(() => storage.destroy())
         .finally(() => {

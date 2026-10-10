@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import FileStorage from './FileStorage';
@@ -72,7 +72,7 @@ describe('FileStorage', () => {
 
     expect(existsSync(storage.requestPath)).toBe(false);
     expect(existsSync(storage.responsePath)).toBe(false);
-    await expect(storage.destroy()).resolves.toBeDefined();
+    await expect(storage.destroy()).resolves.toBeUndefined();
   });
 
   it('survives being destroyed twice at the same time, as the lambda and the middleware both do it', async () => {
@@ -80,6 +80,18 @@ describe('FileStorage', () => {
     await storage.setRequest(request);
     await storage.setResponse({ statusCode: 200 });
 
-    await expect(Promise.all([storage.destroy(), storage.destroy()])).resolves.toBeDefined();
+    await expect(Promise.all([storage.destroy(), storage.destroy()])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it('does not reject when a file cannot be removed, as Windows refuses to remove one that is being removed', async () => {
+    const storage = create('abc');
+    // removing a folder that is not empty fails without recursive, like the refusal of the system does
+    await mkdir(storage.responsePath);
+    await writeFile(join(storage.responsePath, 'inside'), '');
+    await storage.setRequest(request);
+
+    await expect(storage.destroy()).resolves.toBeUndefined();
+    // the other file is removed all the same
+    expect(existsSync(storage.requestPath)).toBe(false);
   });
 });
