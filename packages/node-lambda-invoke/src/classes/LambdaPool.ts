@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Lambda from './Lambda';
 import stdoutListener from '../middlewares/stdoutListener';
-import { DEFAULT_START_TIMEOUT, EVENT_STARTED } from '../constants';
+import { DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT, DRAIN_AFTER, EVENT_STARTED, STOP_GRACE } from '../constants';
 import type { Communication, LambdaEvent, Logger } from '../types';
 
 interface LambdaPoolOptions {
@@ -13,6 +13,10 @@ interface LambdaPoolOptions {
   acquireTimeout?: number;
   /** how long a lambda may take to start, in milliseconds */
   startTimeout?: number;
+  /** how long a handler may take to answer, in milliseconds, a lambda is allowed to run that long past the time it is drained */
+  timeout?: number;
+  /** whether the lambdas can only write to their own folders */
+  restrictFileSystem?: boolean;
   /** variables added to the environment of the lambdas */
   env?: Record<string, string>;
   logger?: Logger;
@@ -66,6 +70,8 @@ class LambdaPool {
   readonly limit: number;
   readonly acquireTimeout: number;
   readonly startTimeout: number;
+  readonly timeout: number;
+  readonly restrictFileSystem: boolean;
   readonly env?: Record<string, string>;
   readonly logger: Logger;
   private readonly instances = new Map<string, Lambda>();
@@ -80,6 +86,8 @@ class LambdaPool {
     limit = 0,
     acquireTimeout = 10000,
     startTimeout = DEFAULT_START_TIMEOUT,
+    timeout = DEFAULT_TIMEOUT,
+    restrictFileSystem = true,
     env,
     logger = () => {},
     communication,
@@ -90,6 +98,8 @@ class LambdaPool {
     this.limit = limit;
     this.acquireTimeout = acquireTimeout;
     this.startTimeout = startTimeout;
+    this.timeout = timeout;
+    this.restrictFileSystem = restrictFileSystem;
     this.env = env;
     this.logger = logger;
 
@@ -115,14 +125,17 @@ class LambdaPool {
   }
 
   private getNonBusy() {
-    const timeLimit = Date.now() - 15 * 60 * 1000 + 5000; // lifespan of lambda, to give enough time to respond before killed
-    return Array.from(this.instances.values()).find((instance) => !instance.busy && instance.createdAt !== undefined && instance.createdAt >= timeLimit);
+    return Array.from(this.instances.values()).find((instance) => !instance.busy && !instance.retiring);
   }
 
   createLambda() {
     return new Promise<{ id: string; instance: Lambda }>((resolve, reject) => {
       const currentId = randomUUID();
-      const currentLambdaInstance = new Lambda(this.lambdaPath, this.handlerKey, this.logger, this.communication, this.env);
+      const currentLambdaInstance = new Lambda(this.lambdaPath, this.handlerKey, this.logger, this.communication, this.env, {
+        // the pool stops it when it is time, this is for when that does not work out
+        maxLifetime: DRAIN_AFTER + this.timeout + STOP_GRACE,
+        restrictFileSystem: this.restrictFileSystem,
+      });
       // a lambda that cannot start answers nobody, so the request waiting for it has to fail instead of waiting forever
       const failedToStart = (reason: unknown) => {
         clearTimeout(startTimer);
@@ -159,9 +172,20 @@ class LambdaPool {
       // taken by the request that asked for it, before anything else can pick it from the registry
       instance.busy = true;
       instance.createdAt = Date.now();
-      instance.onFree = () => this.drain();
+      // a lambda that has had its time is stopped when it is free, a request that runs on it is let finish
+      const drainTimer = setTimeout(() => {
+        instance.retiring = true;
+        this.logger(`[${id}] draining`);
+        this.stopIfRetired(instance);
+      }, DRAIN_AFTER);
+      drainTimer.unref();
+      instance.onFree = () => {
+        this.stopIfRetired(instance);
+        this.drain();
+      };
       this.instances.set(id, instance);
       instance.addEventListenerOnce('close', () => {
+        clearTimeout(drainTimer);
         // a lambda that is gone must not be handed out, nor count against the limit, and its place goes to the first request in line
         this.instances.delete(id);
         this.drain();
@@ -173,6 +197,16 @@ class LambdaPool {
       // a lambda that failed to start gives its place back
       this.drain();
     }
+  }
+
+  /** asks an idle lambda that has had its time to stop, and makes it when it does not */
+  private stopIfRetired(instance: Lambda) {
+    if (!instance.retiring || instance.busy) return;
+
+    instance.terminate('SIGTERM');
+    const killTimer = setTimeout(() => instance.terminate('SIGKILL'), STOP_GRACE);
+    killTimer.unref();
+    instance.addEventListenerOnce('close', () => clearTimeout(killTimer));
   }
 
   /** hands lambdas to the requests in line, the first one first, as long as there are free lambdas or room for new ones */

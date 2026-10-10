@@ -78,7 +78,7 @@ Things to know:
 - The stream is destroyed with an error when the client goes away during the upload, `for await` throws it.
 - Requests that have no body (GET, HEAD, DELETE, OPTIONS), websockets and the static worker never get one.
 - The worker holds a request for as long as the upload takes. `limitResponseTimeout` counts from the last part that moved, a stalled upload is answered with 504 after it.
-- The `lambda` server type does not pass the body of a request to the lambda yet (#38).
+- The `lambda` server type reads the whole body into memory first and passes it to the lambda as `body` (see Lambdas below).
 
 ### Websockets
 
@@ -128,24 +128,45 @@ or delaying the ones behind it, and is counted as `abandoned`.
 
 ### Lambdas
 
-A `lambda` server runs an AWS Lambda style handler (`lambdaOptions.lambda` is the file, `handler` the export, `handler` by default), each lambda in a process of its own that answers one request at a time.
-The options of `lambdaOptions`:
+A `lambda` server runs an AWS Lambda handler behind API Gateway (a REST API with the proxy integration), each lambda in a process of its own that answers one request at a time. It is meant as a drop-in for it: the event, the context, the handler styles
+and the answers to failures are the ones of AWS, and the differences are listed below. `lambdaOptions.lambda` is the file, `handler` the export (`handler` by default, a nested one like `controllers.users.get` works), the file can be CommonJS or an ES module with top-level await.
 
-| | |
+```javascript
+exports.handler = async (event, context) => ({ statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: event.httpMethod, body: event.body }) });
+```
+
+| option of `lambdaOptions` | |
 | --- | --- |
 | `limit` | how many lambdas the server may run, the number of CPU cores by default, 0 for no limit. Every lambda server has a limit of its own, and the worker servers have theirs: a configuration with several of them can run up to the sum of their limits as processes. |
 | `acquireTimeout` | how long a request waits for a lambda when all of them are busy and the limit is reached, 10000 ms by default, then it is answered with 503 |
-| `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 502 |
-| `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504 |
-| `env` | variables for the lambdas. They do not get the environment of the server, only what node needs (`PATH`, `HOME`, `TZ`, `NODE_OPTIONS`, the proxies, ...) and what AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
+| `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default (the init timeout of AWS), then it is stopped and the request is answered with 502 |
+| `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504. `context.getRemainingTimeInMillis()` counts down to it. |
+| `limitRequestBody` | the largest body of a request in bytes, 6291456 (6 MiB, the payload limit of AWS) by default, 0 for no limit. Larger ones are answered with 413. |
+| `restrictFileSystem` | whether a lambda can only write to its own folders, true by default, see Storage below |
+| `env` | variables for the lambdas. They do not get the environment of the server, only what node needs (`PATH`, `HOME`, `TZ`, `NODE_OPTIONS`, the proxies, ...) and what AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `AWS_LAMBDA_FUNCTION_VERSION`, `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`, `AWS_LAMBDA_LOG_GROUP_NAME`, `AWS_LAMBDA_LOG_STREAM_NAME`, `AWS_EXECUTION_ENV`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
 | `communication` | how the request and the response reach the lambda, `ipc` (default) or `file` |
 
-Requests that find all lambdas busy wait in line, the one that came first is served first, and are woken as soon as a lambda is free or one exits, nothing polls. A request whose client goes away while it waits leaves the line without taking a lambda
-(`abandoned` in the metrics counts them, `waiting` is the length of the line). The limits of the lambda servers and of the worker servers are independent of each other: a configuration with several of them can run up to the sum of their limits as processes.
+**Event and context.** The event is the one of the proxy integration (payload format 1.0): `resource`, `path`, `httpMethod`, `headers` (the names as the client wrote them, the last value of a repeated one), `multiValueHeaders`, `queryStringParameters`
+(the last value of a repeated parameter, `null` when there are none), `multiValueQueryStringParameters`, `pathParameters` (`{ proxy }`), `stageVariables` (`null`), `requestContext`, and `body` with `isBase64Encoded`. The body is `null` for a request without one,
+the text when it is valid UTF-8, otherwise base64. The context has `awsRequestId` (the `requestContext.requestId` of the event), `functionName`, `functionVersion`, `invokedFunctionArn`, `memoryLimitInMB`, `logGroupName`, `logStreamName`,
+`getRemainingTimeInMillis()` and the old `done`, `succeed` and `fail`. A handler answers with the promise it returns (`async`) or with the callback, whichever comes first. A response has `statusCode`, `headers`, `multiValueHeaders`, `cookies`, `body` and `isBase64Encoded`.
 
-Failures are answered the way API Gateway answers them, with a JSON object with a `message`: a handler that fails (an error to the callback, or a throw), a response without a valid `statusCode` or with a `body` that is not a string, a lambda that does not start
-or exits during the request give 502 `{"message":"Internal server error"}`, the error goes to the log. A handler that takes longer than `timeout` gives 504 `{"message":"Endpoint request timed out"}`, and a full line 503 `{"message":"Service Unavailable"}`.
-Known limits, tracked in #38: one request per lambda at a time (like AWS, but without scaling out), a lambda stops 15 minutes after it started, the body of a request is not passed, and `async` handlers are not supported (call the callback).
+**Waiting.** Requests that find all lambdas busy wait in line, the one that came first is served first, and are woken as soon as a lambda is free or one exits, nothing polls. A request whose client goes away while it waits leaves the line without taking a lambda
+(`abandoned` in the metrics counts them, `waiting` is the length of the line).
+
+**Failures** are answered the way API Gateway answers them, with a JSON object with a `message`: a handler that fails (an error to the callback, a rejection or a throw), a response without a valid `statusCode` or with a `body` that is not a string, a lambda that does not start
+or exits during the request give 502 `{"message":"Internal server error"}`, the error goes to the log. A handler that takes longer than `timeout` gives 504 `{"message":"Endpoint request timed out"}`, a full line 503 `{"message":"Service Unavailable"}`
+and a body that is too large 413 `{"message":"Request Entity Too Large"}`.
+
+**Storage and lifespan.** Every lambda process has a folder of its own in the temporary folder of the system, and `TMPDIR`, `TMP` and `TEMP` point at its `tmp` folder, so `os.tmpdir()` is what `/tmp` is on AWS: it is kept for as long as the lambda runs (across
+invocations), is not shared with another lambda, and is removed when the lambda exits. By default a lambda can write nowhere else (the code is read-only like on AWS), which is the permission model of node (`--permission`), so it needs a node that has it, and
+child processes, workers and addons are allowed as they are on AWS. It does not restrict the network, and it is not a security boundary against native code. The path `/tmp` itself is not the folder, a handler that hardcodes it is refused. The 512 MB of AWS are not enforced.
+The `file` communication keeps its files in a second folder of the lambda, which the server removes with it. A lambda is not handed out any more 14 minutes and 30 seconds after it started and is stopped (`SIGTERM`, `SIGKILL` after 5 seconds) when it is idle,
+a request that runs on it finishes first, up to `timeout`; a replacement starts when the next request needs one. The folders of a server that was killed are removed by the next server that starts.
+
+**Differences from AWS** that stay: one request per lambda process at a time, like AWS, but it queues instead of scaling out and answering 429; the callback ends the invocation without waiting for the event loop to empty
+(`callbackWaitsForEmptyEventLoop` is only there); the response has no size limit; the processes share the host, the user and the network, only the writes to the file system are restricted; there is no frozen environment between invocations;
+only the event of API Gateway is supported (no other event source, no payload format 2.0 for the request); `requestContext` has the identity of the caller and the request only, and `stageVariables` are never set.
 
 ### Idle workers and the limit for all servers
 

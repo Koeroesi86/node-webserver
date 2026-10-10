@@ -24,4 +24,11 @@ describe('isValidResponse', () => {
     expect(isValidResponse(response({ statusCode: 200, body: 1 }))).toBe(false);
     expect(isValidResponse(response({ statusCode: 200, headers: 'x' }))).toBe(false);
   });
+
+  it('accepts the headers of several values and the cookies, and rejects them in another shape', () => {
+    expect(isValidResponse(response({ statusCode: 200, multiValueHeaders: { 'x-a': ['1', '2'] }, cookies: ['a=b'] }))).toBe(true);
+    expect(isValidResponse(response({ statusCode: 200, multiValueHeaders: { 'x-a': '1' } }))).toBe(false);
+    expect(isValidResponse(response({ statusCode: 200, cookies: 'a=b' }))).toBe(false);
+    expect(isValidResponse(response({ statusCode: 200, cookies: [1] }))).toBe(false);
+  });
 });

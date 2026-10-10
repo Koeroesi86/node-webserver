@@ -28,16 +28,65 @@ export interface HttpMiddlewareOptions {
   startTimeout?: number;
   /** how long the handler may take to answer, in milliseconds, before the lambda is stopped and the request is answered with 504. Defaults to 900000 (15 minutes). */
   timeout?: number;
+  /** the largest body of a request in bytes, larger ones are answered with 413, 0 for no limit. Defaults to 6291456 (6 MiB), the payload limit of AWS. */
+  limitRequestBody?: number;
+  /**
+   * Whether a lambda can only write to its own folders (its `/tmp`, see `os.tmpdir()`, and the folder of the `file` communication) and not to the rest of the file system, as on AWS. Defaults to true.
+   * Needs a node that has the permission model.
+   */
+  restrictFileSystem?: boolean;
   /** variables added to the environment of the lambdas, which only get a few of the server (`PATH`, `HOME`, `TZ`, ...) */
   env?: Record<string, string>;
   communication?: Communication;
+}
+
+/** what API Gateway tells a lambda about the request */
+export interface RequestContext {
+  accountId: string;
+  apiId: string;
+  stage: string;
+  /** the id of the invocation, which is also the `awsRequestId` of the context */
+  requestId: string;
+  resourcePath: string;
+  httpMethod: string;
+  path: string;
+  protocol: string;
+  requestTime: string;
+  requestTimeEpoch: number;
+  domainName: string;
+  identity: { sourceIp: string; userAgent: string };
 }
 
 /** an event emitted by a lambda worker */
 export interface LambdaEvent {
   type?: string;
   id?: string;
+  /** when the invocation times out, in milliseconds since the epoch */
+  deadline?: number;
 }
+
+/** the callback of a handler: an error, or the response */
+export type LambdaCallback = (error?: unknown, response?: unknown) => void;
+
+/** the context a handler is called with, as on AWS */
+export interface LambdaContext {
+  callbackWaitsForEmptyEventLoop: boolean;
+  functionName: string;
+  functionVersion: string;
+  invokedFunctionArn: string;
+  memoryLimitInMB: string;
+  awsRequestId: string;
+  logGroupName: string;
+  logStreamName: string;
+  getRemainingTimeInMillis: () => number;
+  /** the callbacks of the context of the old runtimes */
+  done: LambdaCallback;
+  succeed: (response?: unknown) => void;
+  fail: (error?: unknown) => void;
+}
+
+/** a handler of a lambda: it answers with the callback, or with the promise it returns, whichever settles first */
+export type LambdaHandler = (event: RequestEvent, context: LambdaContext, callback: LambdaCallback) => unknown;
 
 /** what a storage can be attached to: the worker itself, a lambda or the current process */
 export type StorageInstance = Lambda | Worker | NodeJS.Process;
@@ -51,6 +100,7 @@ export interface Storage {
 }
 
 export interface StorageDriverConstructor {
-  new (id: string, instance: StorageInstance): Storage;
+  /** `folder` is the folder of the lambda for the files of a storage, there is one for the `file` communication */
+  new (id: string, instance: StorageInstance, folder?: string): Storage;
   start?: () => void;
 }

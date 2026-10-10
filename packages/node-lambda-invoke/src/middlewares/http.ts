@@ -1,13 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import url from 'url';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
 import LambdaPool, { LambdaRequestAbandonedError, LambdaUnavailableError } from '../classes/LambdaPool';
-import RequestEvent from '../classes/RequestEvent';
-import { DEFAULT_TIMEOUT, MESSAGE_ENDPOINT_TIMED_OUT, MESSAGE_INTERNAL_SERVER_ERROR, MESSAGE_SERVICE_UNAVAILABLE } from '../constants';
+import RequestBodyTooLargeError from '../classes/RequestBodyTooLargeError';
+import {
+  DEFAULT_LIMIT_REQUEST_BODY,
+  DEFAULT_TIMEOUT,
+  MESSAGE_ENDPOINT_TIMED_OUT,
+  MESSAGE_INTERNAL_SERVER_ERROR,
+  MESSAGE_PAYLOAD_TOO_LARGE,
+  MESSAGE_SERVICE_UNAVAILABLE,
+} from '../constants';
 import { isRegistered, getRegisteredPath } from '../registry';
+import createRequestEvent from '../utils/create-request-event';
+import createResponseHeaders from '../utils/create-response-headers';
 import invokeLambda from '../utils/invoke-lambda';
 import isValidResponse from '../utils/is-valid-response';
+import readRequestBody from '../utils/read-request-body';
+import sweepLambdaFolders from '../utils/sweep-lambda-folders';
 import writeError from '../utils/write-error';
 import type ResponseEvent from '../classes/ResponseEvent';
 import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
@@ -20,7 +30,7 @@ const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) =
     return;
   }
 
-  response.writeHead(responseEvent.statusCode, responseEvent.headers ?? undefined);
+  response.writeHead(responseEvent.statusCode, createResponseHeaders(responseEvent));
 
   if (!responseEvent.body) {
     response.end();
@@ -40,12 +50,13 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     acquireTimeout,
     startTimeout,
     timeout = DEFAULT_TIMEOUT,
+    limitRequestBody = DEFAULT_LIMIT_REQUEST_BODY,
     env,
+    restrictFileSystem,
     communication = {},
   } = options;
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
-  // TODO: tmp folders
   if (!storagePath) {
     return (req, res, next) => {
       next?.();
@@ -54,16 +65,20 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
 
   const StorageDriver: StorageDriverConstructor = require(storagePath);
   if (StorageDriver.start) StorageDriver.start();
-  const lambdaPool = new LambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, env, logger, communication: currentCommunication });
+  sweepLambdaFolders();
+  const lambdaPool = new LambdaPool({
+    lambdaPath,
+    handlerKey,
+    limit,
+    acquireTimeout,
+    startTimeout,
+    timeout,
+    restrictFileSystem,
+    env,
+    logger,
+    communication: currentCommunication,
+  });
   return (request, response) => {
-    const { query: queryStringParameters, pathname: path } = url.parse(request.url ?? '', true);
-
-    const requestEvent = new RequestEvent();
-    requestEvent.httpMethod = request.method?.toUpperCase() ?? '';
-    requestEvent.path = path ?? '';
-    requestEvent.queryStringParameters = queryStringParameters;
-    requestEvent.headers = request.headers;
-
     const requestId = randomUUID();
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
@@ -76,6 +91,9 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     response.once('close', onClose);
 
     const handleRequest = async () => {
+      // read before a lambda is taken, so that a slow upload does not hold one
+      const body = await readRequestBody(request, limitRequestBody);
+      const requestEvent = createRequestEvent(request, requestId, body);
       const lambdaInstance = await lambdaPool.getLambda(clientGone.signal);
 
       if (clientGone.signal.aborted) {
@@ -83,7 +101,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
         return;
       }
 
-      const storage = new StorageDriver(requestId, lambdaInstance);
+      const storage = new StorageDriver(requestId, lambdaInstance, lambdaInstance.storageFolder);
       const outcome = await invokeLambda(lambdaInstance, requestId, requestEvent, timeout);
 
       if (outcome.type === 'response') writeResponse(response, outcome.responseEvent);
@@ -100,6 +118,17 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     handleRequest()
       .catch((err) => {
         if (err instanceof LambdaRequestAbandonedError) return;
+
+        if (err instanceof RequestBodyTooLargeError) {
+          // the rest of the body is not read, so the connection is closed once the answer is out
+          response.setHeader('Connection', 'close');
+          response.once('finish', () => request.destroy());
+          writeError(response, 413, MESSAGE_PAYLOAD_TOO_LARGE);
+          return;
+        }
+
+        // the client went away halfway through the body, there is nobody to answer
+        if (!response.writable) return;
 
         logger(err);
         // the lambdas that may run are all busy

@@ -3,14 +3,19 @@ import type { ChildProcess, Serializable, SpawnOptions } from 'child_process';
 import type { Listener } from '../types';
 
 // TODO: move this to separate package
+export interface WorkerOptions extends SpawnOptions {
+  /** flags for node, before the file */
+  execArgv?: string[];
+}
+
 class Worker {
   readonly workerPath: string;
   instance?: ChildProcess;
 
-  constructor(workerPath: string, options: SpawnOptions = {}) {
+  constructor(workerPath: string, { execArgv = [], ...options }: WorkerOptions = {}) {
     this.workerPath = workerPath;
     // the running node, as the environment of the worker may not have it on its PATH
-    const instance = spawn(process.execPath, [...this.workerPath.split(' ')], {
+    const instance = spawn(process.execPath, [...execArgv, ...this.workerPath.split(' ')], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       ...options,
     });

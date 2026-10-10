@@ -16,7 +16,7 @@ const invokeLambda = (lambda: Lambda, requestId: string, requestEvent: RequestEv
     const timer = setTimeout(() => settle({ type: 'timeout' }), timeout);
 
     lambda.addEventListenerOnce('close', closeListener);
-    lambda.invoke(requestId, requestEvent, (responseEvent) => settle({ type: 'response', responseEvent }));
+    lambda.invoke(requestId, requestEvent, (responseEvent) => settle({ type: 'response', responseEvent }), timeout);
   });
 
 export default invokeLambda;

@@ -41,4 +41,22 @@ describe('createLambdaEnvironment', () => {
       HANDLER: 'mine',
     });
   });
+
+  it('points the temporary folders at the folder of the lambda, and tells it where the storage is and how long it may live', () => {
+    process.env = { TMPDIR: '/server/tmp' };
+
+    const env = createLambdaEnvironment(
+      '/lambdas/api.js',
+      'handler',
+      { type: 'file' },
+      {},
+      { tmpFolder: '/l/tmp', storageFolder: '/l/storage', maxLifetime: 5000 }
+    );
+
+    expect(env).toMatchObject({ TMPDIR: '/l/tmp', TMP: '/l/tmp', TEMP: '/l/tmp', NODE_LAMBDA_STORAGE_FOLDER: '/l/storage', NODE_LAMBDA_MAX_LIFETIME: '5000' });
+  });
+
+  it('has no storage folder for a communication that does not need one', () => {
+    expect(createLambdaEnvironment('/lambdas/api.js', 'handler', { type: 'ipc' })).not.toHaveProperty('NODE_LAMBDA_STORAGE_FOLDER');
+  });
 });
