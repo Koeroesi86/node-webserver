@@ -29,6 +29,13 @@ describe('createRequestEvent', () => {
     });
   });
 
+  it('passes the parameters of a route instead of the proxy path', () => {
+    const event = createRequestEvent(createRequest('/orders/42'), 'id-4', undefined, { id: '42' });
+
+    expect(event.pathParameters).toEqual({ id: '42' });
+    expect(event.resource).toBe('/{proxy+}');
+  });
+
   it('has nulls where there is nothing, like API Gateway', () => {
     const event = createRequestEvent(createRequest('/'), 'id-2');
 

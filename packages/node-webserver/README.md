@@ -247,7 +247,8 @@ exports.handler = async (event, context) => ({ statusCode: 200, headers: { 'Cont
 
 | option of `lambdaOptions` | |
 | --- | --- |
-| `limit` | how many lambdas the server may run, the number of CPU cores by default, 0 for no limit. Every lambda server has a limit of its own, and the worker servers have theirs: a configuration with several of them can run up to the sum of their limits as processes. |
+| `limit` | how many lambdas the server may run, the number of CPU cores by default, 0 for no limit. Every lambda server has a limit of its own, and the worker servers have theirs: a configuration with several of them can run up to the sum of their limits as processes. With `routes` it is the default limit of every route, see Routes of lambdas below. |
+| `routes` | several lambdas, or several handlers of one file, on one server, chosen by the path, see Routes of lambdas below |
 | `acquireTimeout` | how long a request waits for a lambda when all of them are busy and the limit is reached, 10000 ms by default, then it is answered with 503 |
 | `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default (the init timeout of AWS), then it is stopped and the request is answered with 502 |
 | `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504. `context.getRemainingTimeInMillis()` counts down to it. |
@@ -256,8 +257,35 @@ exports.handler = async (event, context) => ({ statusCode: 200, headers: { 'Cont
 | `env` | variables for the lambdas. They do not get the environment of the server, only what node needs (`PATH`, `HOME`, `TZ`, `NODE_OPTIONS`, the proxies, ...) and what AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `AWS_LAMBDA_FUNCTION_VERSION`, `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`, `AWS_LAMBDA_LOG_GROUP_NAME`, `AWS_LAMBDA_LOG_STREAM_NAME`, `AWS_EXECUTION_ENV`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
 | `communication` | how the request and the response reach the lambda, `ipc` (default) or `file` |
 
+**Routes of lambdas.** One server can host several lambdas instead of one server (with a port or a virtual host) for each. `routes` is a list in the order of precedence, and the first one that matches the path wins, a path or a pattern alike:
+
+```javascript
+{
+  hostname: 'api.localhost',
+  protocol: 'http',
+  type: 'lambda',
+  lambdaOptions: {
+    routes: [
+      { path: '/orders', lambda: '/srv/api/orders.js', handler: 'list' },
+      { pattern: '/orders/(?<id>[0-9]+)', lambda: '/srv/api/orders.js', handler: 'get', limit: 2 }, // event.pathParameters is { id: '12' } for /orders/12
+      { pattern: '/users/.*', lambda: '/srv/api/users.js' }, // handler: 'handler'
+    ],
+  },
+}
+```
+
+A route is a `path` (as it is) or a `pattern` (a regular expression for the whole path, anchored at both ends, with the optional `flags` `i`, `s`, `u` or `v`), the `lambda` file, and optionally the `handler` (`handler` by default) and a `limit`. The matching rules are the ones of the routes of a worker server above: the path
+without the query, nothing longer than 2048 characters matches, and the patterns run in the front process for every request, so they are trusted configuration to keep simple. A route is not valid, and the server does not start, when it has no lambda, when its lambda is not a file, or when its pattern or flags are wrong.
+The lambda and the handler are the ones in the configuration, they are never made from the request.
+
+* The request is matched before a lambda is taken, so a path that no route matches is answered with 404 (`{"message":"Not Found"}`) by the front process, and no lambda is started for it. `lambda` and `handler` next to `routes` keep their meaning, as the route for every path that none of the others matches, and the server only answers 404 when they are not set.
+* The named groups of a pattern are the `pathParameters` of the event. A route without named groups leaves them as they are for a server without routes (`{ proxy }`).
+* The `limit` is per route, `limit` of the server when the route has none: a route has lambdas of its own, never waits for the lambdas of another and never has them stopped for it. Routes with the same lambda and handler are different pools, too. The processes of a server are at most the number of its routes times the limit, so with a limit of
+  the number of CPU cores and several routes that is more than a server without routes. Set the `limit` of a route to what it needs. `acquireTimeout`, `startTimeout`, `timeout`, `limitRequestBody`, `restrictFileSystem`, `env` and `communication` are the same for all routes.
+* `lambdas` in the metrics lists the lambdas per file, with the routes of one file together.
+
 **Event and context.** The event is the one of the proxy integration (payload format 1.0): `resource`, `path`, `httpMethod`, `headers` (the names as the client wrote them, the last value of a repeated one), `multiValueHeaders`, `queryStringParameters`
-(the last value of a repeated parameter, `null` when there are none), `multiValueQueryStringParameters`, `pathParameters` (`{ proxy }`), `stageVariables` (`null`), `requestContext`, and `body` with `isBase64Encoded`. The body is `null` for a request without one,
+(the last value of a repeated parameter, `null` when there are none), `multiValueQueryStringParameters`, `pathParameters` (`{ proxy }`, or the named groups of the pattern of a route), `stageVariables` (`null`), `requestContext`, and `body` with `isBase64Encoded`. The body is `null` for a request without one,
 the text when it is valid UTF-8, otherwise base64. The context has `awsRequestId` (the `requestContext.requestId` of the event), `functionName`, `functionVersion`, `invokedFunctionArn`, `memoryLimitInMB`, `logGroupName`, `logStreamName`,
 `getRemainingTimeInMillis()` and the old `done`, `succeed` and `fail`. A handler answers with the promise it returns (`async`) or with the callback, whichever comes first. A response has `statusCode`, `headers`, `multiValueHeaders`, `cookies`, `body` and `isBase64Encoded`.
 

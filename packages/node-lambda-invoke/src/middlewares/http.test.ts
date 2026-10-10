@@ -320,6 +320,17 @@ describe('httpMiddleware', () => {
     }
   });
 
+  it('hands the path parameters of a caller that routes requests to the lambda, instead of the proxy path', async () => {
+    const { httpMiddleware } = load();
+    const middleware = httpMiddleware({ lambdaPath, communication: { type: 'ipc' }, env: { PID_FILE: pidFile } });
+    server = http.createServer((request, response) => middleware.handle(request, response, { id: '42' }));
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const response = await fetch(`http://localhost:${(server.address() as { port: number }).port}/event`);
+
+    expect(JSON.parse(await response.text())).toMatchObject({ path: '/event', pathParameters: { id: '42' } });
+  });
+
   it('gives the lambda its own environment, not the one of the server', async () => {
     process.env.SECRET_OF_THE_SERVER = 'secret';
     try {
