@@ -16,6 +16,7 @@ import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
 import resolvePath from '../utils/resolvePath';
 import createProbe from '../utils/createProbe';
 import TtlCache from '../utils/ttlCache';
+import createPathLatency from '../utils/create-path-latency';
 import { getServerMetrics, registerMetricsSource, trackRequest } from '../utils/metrics';
 
 /** how long the way to a path is remembered, and how many paths are, so that a client asking for endless different ones cannot grow the cache */
@@ -57,11 +58,12 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   const webSocketSlots = createSlotCounter(config.limitWebSocketConnections);
   const routeCache = new TtlCache<{ indexPath: string; isWorker: boolean }>(routeCacheTtl, routeCacheSize);
   const probe = createProbe();
-  registerMetricsSource(`workers:${config.name ?? rootPath}`, workerPool.getStats);
+  const pathLatency = createPathLatency();
+  registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
 
   return async (request, response, next) => {
     const { query: queryStringParameters, pathname } = url.parse(request.url, true);
-    trackRequest(response);
+    const tracked = trackRequest(response);
     /** frees the slot of a websocket connection, also when the request fails before it has a worker */
     let releaseSlot = noop;
 
@@ -121,6 +123,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         return;
       }
       releaseSlot = slot;
+
+      // by the worker file, like the paths of the pool, so every static file, found or not, counts in the one of the static worker
+      tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
       // a request that waits for a worker leaves the line when its client goes away

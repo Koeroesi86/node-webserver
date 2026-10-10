@@ -75,6 +75,15 @@ export const WebSocketCloseCode = {
   tooBig: 1009,
 } as const;
 
+/** the upper bounds of the buckets the latency of requests is counted in, in milliseconds. One more bucket takes what is slower than the last. */
+export const LatencyBucketsMs: readonly number[] = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000];
+
+/** how many worker files of a worker server get a latency histogram of their own, the ones after share one, so the metrics cannot grow without a limit */
+export const LatencyPathLimit = 100;
+
+/** the name of the histogram the worker files above `LatencyPathLimit` share */
+export const LatencyOtherPaths = '(other)';
+
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
 export enum Protocols {

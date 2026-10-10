@@ -719,9 +719,28 @@ describe('workerMiddleware', () => {
       await new Promise((resolve) => setImmediate(resolve));
 
       const { sources, requests } = getServerMetrics();
-      expect(sources[`workers:${root}`]).toEqual({ workers: 2, active: 1, waiting: 0, paths: {} });
+      expect(sources[`workers:${root}`]).toMatchObject({ workers: 2, active: 1, waiting: 0, paths: {} });
       expect(requests.total - before.total).toBe(1);
       expect(requests.status['4xx'] - before.status['4xx']).toBe(1);
+      expect(requests.latencyMs.count).toBeGreaterThan(0);
+    });
+
+    it('counts how long requests took per worker file, the static files under the static worker', async () => {
+      await start({ name: 'latency-per-path' });
+      mockLeases((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
+      );
+
+      await fetch(`${baseUrl}/`);
+      await fetch(`${baseUrl}/`);
+      await fetch(`${baseUrl}/plain/missing`);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const { latencyMs } = getServerMetrics().sources['workers:latency-per-path'] as { latencyMs: Record<string, { count: number }> };
+      expect(Object.entries(latencyMs).map(([workerPath, { count }]) => [path.basename(workerPath), count])).toEqual([
+        ['exampleWorker.js', 2],
+        ['staticWorker.js', 1],
+      ]);
     });
   });
 
