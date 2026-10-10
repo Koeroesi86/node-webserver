@@ -1,16 +1,4 @@
-import type { Readable } from 'stream';
-import type { ResponseCallback, ResponseEvent } from './types';
-
-export type StreamBody = Readable | AsyncIterable<Buffer | Uint8Array | string>;
-
-export interface StreamResponseOptions {
-  statusCode?: number;
-  headers?: ResponseEvent['headers'];
-  /** how many parts may wait to be written to the client while the next ones are produced. Not limited by default. */
-  window?: number;
-  /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
-  windowBytes?: number;
-}
+import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from './types';
 
 const proceeds = (result: unknown) => result !== false;
 
@@ -69,4 +57,5 @@ async function streamResponse(
   return completed && results.every(proceeds);
 }
 
-export default streamResponse;
+/** required by its file path in the workers (`dist/streamResponse`), so it has to stay a CommonJS `module.exports` */
+export = streamResponse;
