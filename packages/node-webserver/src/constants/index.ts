@@ -43,3 +43,9 @@ export const HOP_BY_HOP_HEADERS = ['connection', 'keep-alive', 'proxy-connection
 
 /** headers that name the client, which only a trusted proxy may set */
 export const CLIENT_ADDRESS_HEADERS = ['x-real-ip', 'x-client-ip', 'cf-connecting-ip'];
+
+/** how long the files of the servers have to be quiet after a change before they are loaded again, as saving a file can be several writes */
+export const RELOAD_DEBOUNCE = 100;
+
+/** how long a server that was removed or changed may take to answer the requests it had, in milliseconds, before what runs behind it is stopped anyway */
+export const RETIRE_TIMEOUT = 30000;

@@ -1,5 +1,5 @@
 import type { EventEmitter } from 'events';
-import LambdaPool, { LambdaRequestAbandonedError, LambdaUnavailableError } from './LambdaPool';
+import LambdaPool, { getLambdaStats, LambdaRequestAbandonedError, LambdaUnavailableError } from './LambdaPool';
 import { DRAIN_AFTER, STOP_GRACE } from '../constants';
 import type Lambda from './Lambda';
 
@@ -273,6 +273,44 @@ describe('LambdaPool', () => {
       jest.advanceTimersByTime(DRAIN_AFTER + STOP_GRACE);
 
       expect(fake().instances[0].terminate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('close', () => {
+    it('stops the idle lambdas at once and a busy one once it answered', async () => {
+      const pool = create({ limit: 0 });
+      const busy = await pool.getLambda();
+      free(await pool.getLambda());
+
+      pool.close();
+
+      expect(fake().instances[0].terminate).not.toHaveBeenCalled();
+      expect(fake().instances[1].terminate).toHaveBeenCalledWith('SIGTERM');
+
+      free(busy);
+
+      expect(fake().instances[0].terminate).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('serves a request that still comes with a lambda that stops after it', async () => {
+      const pool = create();
+      pool.close();
+
+      const lambda = await pool.getLambda();
+      free(lambda);
+
+      expect(fake().instances[0].terminate).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('leaves the stats once its last lambda stopped', async () => {
+      const pool = create({ lambdaPath: '/lambdas/closed.js' });
+      free(await pool.getLambda());
+
+      pool.close();
+      expect(getLambdaStats().files['/lambdas/closed.js']).toEqual({ lambdas: 1, busy: 0 });
+      fake().instances[0].emit('close', 0);
+
+      expect(getLambdaStats().files['/lambdas/closed.js']).toBeUndefined();
     });
   });
 });

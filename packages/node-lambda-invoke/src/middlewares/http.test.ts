@@ -663,6 +663,33 @@ describe('httpMiddleware', () => {
     });
   });
 
+  it('starts a storage driver once, as starting it again would drop what the requests of the middlewares before have stored', async () => {
+    const driver = path.join(build, 'counting-driver.js');
+    const starts = path.join(build, 'starts');
+    await fs.writeFile(driver, `module.exports = class { static start() { require('fs').appendFileSync(${JSON.stringify(starts)}, 'x'); } };`);
+    const { httpMiddleware } = load();
+
+    httpMiddleware({ lambdaPath, communication: { type: 'counting', path: driver } });
+    httpMiddleware({ lambdaPath, communication: { type: 'counting', path: driver } });
+
+    expect(await fs.readFile(starts, 'utf8')).toBe('x');
+  });
+
+  it('stops its lambdas when it is closed', async () => {
+    const { httpMiddleware } = load();
+    const middleware = httpMiddleware({ lambdaPath, communication: { type: 'ipc' } });
+    server = http.createServer(middleware);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const pid = Number((await fetch(`http://localhost:${(server.address() as { port: number }).port}/`)).headers.get('x-pid'));
+
+    middleware.close();
+
+    for (let waited = 0; processExists(pid) && waited < 5000; waited += 50) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(processExists(pid)).toBe(false);
+  });
+
   it('stops the lambdas when the process that started them is killed', async () => {
     const parent = fork(path.join(build, 'parent.js'), [lambdaPath], { env: process.env, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
     spawned.push(parent);

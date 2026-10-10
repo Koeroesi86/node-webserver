@@ -296,6 +296,27 @@ TLS ends in the front process, on the thread that serves every other request too
 and a request that was sent over a connection that has just been closed fails. `maxConnections` (default 10000, 0 for no limit) is the number of open connections per server (http and https each) after which new ones are dropped,
 which the `connections:*` metrics count. Both are in the top level of the configuration, next to the ports.
 
+### Reloading the servers
+
+The servers given as paths in `servers` are loaded again when their files change, while the server keeps running. The files that are watched are the file of a server, the local files it loads
+(not the packages under `node_modules`) and its `key`, `cert` and `ca`. A file in `servers` that does not exist yet is watched too, and started once it is created.
+
+- The writes that come within 100 milliseconds of each other are one change, as an editor can write a file several times when it saves it.
+- Everything is loaded and checked before anything changes. A file that cannot be loaded (a syntax error, a server without a `hostname` or `protocol`, a certificate that cannot be read, a server that fails to start) is logged,
+  and the servers keep running as they were.
+- A server whose files did not change keeps running as it is, with its workers, lambdas and child process. Its certificates are read again, so a renewed certificate is used for the new connections.
+- A server that was changed or removed takes no new requests. The requests it has already taken are answered by it, and its workers and child process are stopped once they are, or after 30 seconds,
+  whichever comes first, which is what ends a websocket that stays open longer. Its idle lambdas are stopped at once, and the busy ones once they answered. A `proxy` server closes its connections
+  to the target once the requests on them are answered, a websocket through it stays open until one of its ends closes it. A changed server is started anew next to it: a `child` server with a fixed
+  `port` in its `proxyOptions` cannot start while the old one still has it.
+- A `proxy` server with a `dynamic` target keeps the target that was registered with it when its file changes, as long as its `hostname` and `protocol` stay the same, so the service behind it does not
+  have to register again (its `ttl` still counts from the last registration).
+- The listening sockets stay open, so no connection is refused during a reload.
+
+`watchServers: false` in the configuration turns watching off, `reloadOnSighup: true` loads the servers again on `SIGHUP` instead of stopping, for deployments that prefer to say when.
+What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the servers defined in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
+the stats and the logging), as it is given to the server once when it starts.
+
 ### Build
 
 TODO: Set up tests for build

@@ -12,7 +12,7 @@ import getClientIp from '../utils/getClientIp';
 import hasBody from '../utils/hasBody';
 import takeSmallBody from '../utils/takeSmallBody';
 import { RequestHandler } from 'express';
-import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
+import { MiddlewareOptions, RequestEvent, WorkerMiddleware, WorkerOutputEvent } from '../types';
 import resolvePath from '../utils/resolvePath';
 import createProbe from '../utils/createProbe';
 import notFoundResponse from '../utils/not-found-response';
@@ -30,7 +30,7 @@ let requestCount = 0;
 const noop = () => {};
 const createRequestId = () => `${requestIdPrefix}-${(requestCount += 1).toString(36)}`;
 
-const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
+const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const config = {
     ...DefaultOptions,
     ...(options && options),
@@ -64,9 +64,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   // another static worker may answer a missing path in its own way, for example with the page of a single page app
   const answersMissingPaths = config.staticWorker === DefaultOptions.staticWorker;
   const pathLatency = createPathLatency();
-  registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
+  const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
 
-  return async (request, response, next) => {
+  const handler: RequestHandler = async (request, response, next) => {
     const { query: queryStringParameters, pathname } = url.parse(request.url, true);
     const tracked = trackRequest(response);
     /** frees the slot of a websocket connection, also when the request fails before it has a worker */
@@ -362,6 +362,13 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       next(e);
     }
   };
+
+  return Object.assign(handler, {
+    close: (timeout?: number) => {
+      unregisterMetrics();
+      return workerPool.dispose(timeout);
+    },
+  });
 };
 
 export default workerMiddleware;

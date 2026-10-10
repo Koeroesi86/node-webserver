@@ -9,6 +9,8 @@ export interface RunningServer {
   /** a request to a virtual host of the server */
   get: (host: string, path?: string, options?: Omit<RequestOptions, 'port' | 'host' | 'path'>) => Promise<Reply>;
   stop: () => Promise<void>;
+  /** what the server wrote to its stdout and stderr so far */
+  output: () => string;
 }
 
 const startTimeout = 45000;
@@ -30,11 +32,11 @@ const isListening = (port: number) =>
     socket.once('error', () => done(false));
   });
 
-/** starts the built server with the servers of the fixtures in a process of its own, and resolves once it accepts connections */
-export const startServer = async (): Promise<RunningServer> => {
+/** starts the built server with the servers of the fixtures in a process of its own, and resolves once it accepts connections. `env` goes to the configuration of the fixtures. */
+export const startServer = async (env: Record<string, string> = {}): Promise<RunningServer> => {
   const [port, httpsPort, childPortFrom, closedPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
   const child = spawn(process.execPath, [resolve(__dirname, '../fixtures/run-server.js')], {
-    env: { ...process.env, PORT_HTTP: `${port}`, PORT_HTTPS: `${httpsPort}`, PORT_CHILD_FROM: `${childPortFrom}`, PORT_CLOSED: `${closedPort}` },
+    env: { ...process.env, ...env, PORT_HTTP: `${port}`, PORT_HTTPS: `${httpsPort}`, PORT_CHILD_FROM: `${childPortFrom}`, PORT_CLOSED: `${closedPort}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -66,5 +68,5 @@ export const startServer = async (): Promise<RunningServer> => {
     await new Promise((done) => setTimeout(done, 100));
   }
 
-  return { port, stop, get: (host, path, options) => request({ ...options, port, host, path }) };
+  return { port, stop, output: () => output, get: (host, path, options) => request({ ...options, port, host, path }) };
 };

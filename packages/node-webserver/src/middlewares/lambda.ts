@@ -3,7 +3,7 @@ import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import logger from '../utils/logger';
 import type { ServerInstance } from '../types';
 
-const lambdaMiddleware = (instance: ServerInstance): RequestHandler => {
+const lambdaMiddleware = (instance: ServerInstance): RequestHandler & { close: () => void } => {
   const { lambdaOptions: config } = instance;
 
   return httpMiddleware({
