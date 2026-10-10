@@ -42,10 +42,16 @@ export interface LambdaOptions {
   handler?: string;
   /** how requests and responses reach the lambda process: `ipc` (default) or through files */
   communication?: 'ipc' | 'file';
-  /** how many lambdas may run in total. Defaults to the number of CPU cores, 0 means no limit. */
+  /** how many lambdas this server may run. Defaults to the number of CPU cores, 0 means no limit. Every lambda server has a limit of its own. */
   limit?: number;
   /** how long a request waits for a lambda when the limit is reached before it is answered with 503, in milliseconds. Defaults to 10000. */
   acquireTimeout?: number;
+  /** how long a lambda may take to load and start before it is stopped and the request is answered with 500, in milliseconds. Defaults to 10000. */
+  startTimeout?: number;
+  /** how long the handler may take to answer before the lambda is stopped and the request is answered with 504, in milliseconds. Defaults to 900000 (15 minutes). */
+  timeout?: number;
+  /** variables of the environment of the lambdas, which get only a few of the server (`PATH`, `HOME`, `TZ`, ...) */
+  env?: Record<string, string>;
 }
 
 export type CompressionEncoding = 'br' | 'gzip' | 'deflate';

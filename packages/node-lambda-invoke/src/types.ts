@@ -17,10 +17,19 @@ export interface HttpMiddlewareOptions {
   lambdaPath: string;
   handlerKey?: string;
   logger?: Logger;
-  /** how many lambdas may run in total, they are shared by all requests: a lambda answers one request at a time. Defaults to the number of CPU cores, 0 means no limit. */
+  /**
+   * how many lambdas this middleware may run, they are shared by all of its requests: a lambda answers one request at a time. Defaults to the number of CPU cores, 0 means no limit.
+   * Every middleware has a limit of its own.
+   */
   limit?: number;
   /** how long a request waits for a lambda when the limit is reached before it is answered with 503, in milliseconds. Defaults to 10000. */
   acquireTimeout?: number;
+  /** how long a lambda may take to load and start, in milliseconds, before it is stopped and the request is answered with 500. Defaults to 10000. */
+  startTimeout?: number;
+  /** how long the handler may take to answer, in milliseconds, before the lambda is stopped and the request is answered with 504. Defaults to 900000 (15 minutes). */
+  timeout?: number;
+  /** variables added to the environment of the lambdas, which only get a few of the server (`PATH`, `HOME`, `TZ`, ...) */
+  env?: Record<string, string>;
   communication?: Communication;
 }
 

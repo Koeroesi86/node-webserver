@@ -2,18 +2,25 @@ import { randomUUID } from 'node:crypto';
 import url from 'url';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
-import LambdaPool, { LambdaUnavailableError } from '../classes/LambdaPool';
+import LambdaPool, { LambdaRequestAbandonedError, LambdaUnavailableError } from '../classes/LambdaPool';
 import RequestEvent from '../classes/RequestEvent';
+import { DEFAULT_TIMEOUT, MESSAGE_ENDPOINT_TIMED_OUT, MESSAGE_INTERNAL_SERVER_ERROR, MESSAGE_SERVICE_UNAVAILABLE } from '../constants';
 import { isRegistered, getRegisteredPath } from '../registry';
+import invokeLambda from '../utils/invoke-lambda';
+import isValidResponse from '../utils/is-valid-response';
+import writeError from '../utils/write-error';
 import type ResponseEvent from '../classes/ResponseEvent';
-import type { Communication, HttpMiddlewareOptions, Storage, StorageDriverConstructor } from '../types';
+import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
 
 export type HttpMiddleware = (request: IncomingMessage, response: ServerResponse, next?: () => void) => void;
 
 const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
-  if (!responseEvent.statusCode) return;
+  if (!isValidResponse(responseEvent)) {
+    writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
+    return;
+  }
 
-  response.writeHead(responseEvent.statusCode, responseEvent.headers);
+  response.writeHead(responseEvent.statusCode, responseEvent.headers ?? undefined);
 
   if (!responseEvent.body) {
     response.end();
@@ -25,7 +32,17 @@ const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) =
 };
 
 function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
-  const { lambdaPath, handlerKey = 'handler', logger = () => {}, limit = availableParallelism(), acquireTimeout, communication = {} } = options;
+  const {
+    lambdaPath,
+    handlerKey = 'handler',
+    logger = () => {},
+    limit = availableParallelism(),
+    acquireTimeout,
+    startTimeout,
+    timeout = DEFAULT_TIMEOUT,
+    env,
+    communication = {},
+  } = options;
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
   // TODO: tmp folders
@@ -37,7 +54,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
 
   const StorageDriver: StorageDriverConstructor = require(storagePath);
   if (StorageDriver.start) StorageDriver.start();
-  const lambdaPool = new LambdaPool({ overallLimit: limit, acquireTimeout, logger, communication: currentCommunication });
+  const lambdaPool = new LambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, env, logger, communication: currentCommunication });
   return (request, response) => {
     const { query: queryStringParameters, pathname: path } = url.parse(request.url ?? '', true);
 
@@ -48,38 +65,48 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     requestEvent.headers = request.headers;
 
     const requestId = randomUUID();
-    let storage: Storage | undefined;
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
 
-    const closeListener = () => {
-      // the lambda exited without answering
-      if (!response.headersSent) response.writeHead(502);
-      if (!response.writableEnded) response.end();
-      if (storage) storage.destroy();
+    // a client that goes away while its request waits for a lambda leaves the line, instead of taking a lambda that nobody reads the answer of
+    const clientGone = new AbortController();
+    const onClose = () => {
+      if (!response.writableFinished) clientGone.abort();
     };
+    response.once('close', onClose);
 
     const handleRequest = async () => {
-      const lambdaInstance = await lambdaPool.getLambda(lambdaPath, handlerKey);
-      lambdaInstance.addEventListenerOnce('close', closeListener);
+      const lambdaInstance = await lambdaPool.getLambda(clientGone.signal);
 
-      const currentStorage = new StorageDriver(requestId, lambdaInstance);
-      storage = currentStorage;
-      const responseEvent = await new Promise<ResponseEvent>((res) => lambdaInstance.invoke(requestId, requestEvent, res));
+      if (clientGone.signal.aborted) {
+        lambdaPool.release(lambdaInstance);
+        return;
+      }
 
-      writeResponse(response, responseEvent);
+      const storage = new StorageDriver(requestId, lambdaInstance);
+      const outcome = await invokeLambda(lambdaInstance, requestId, requestEvent, timeout);
 
-      lambdaInstance.removeEventListener('close', closeListener);
-      return currentStorage.destroy();
+      if (outcome.type === 'response') writeResponse(response, outcome.responseEvent);
+      if (outcome.type === 'closed') writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
+      if (outcome.type === 'timeout') {
+        writeError(response, 504, MESSAGE_ENDPOINT_TIMED_OUT);
+        // it is still busy with the request, and the pool lets go of it once it is gone
+        lambdaInstance.terminate('SIGKILL');
+      }
+
+      return storage.destroy();
     };
 
-    handleRequest().catch((err) => {
-      logger(err);
-      // the lambdas that may run are all busy
-      response.writeHead(err instanceof LambdaUnavailableError ? 503 : 500);
-      response.write(err instanceof LambdaUnavailableError ? 'No lambda available.' : 'Something went wrong.');
-      response.end();
-    });
+    handleRequest()
+      .catch((err) => {
+        if (err instanceof LambdaRequestAbandonedError) return;
+
+        logger(err);
+        // the lambdas that may run are all busy
+        if (err instanceof LambdaUnavailableError) writeError(response, 503, MESSAGE_SERVICE_UNAVAILABLE);
+        else writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
+      })
+      .finally(() => response.off('close', onClose));
   };
 }
 
