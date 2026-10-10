@@ -19,7 +19,12 @@ export const compareFiles = (paths: SummaryPaths): ComparisonResult => {
     };
   }
 
-  const { markdown, passed } = compareSummaries(base, head, limitsFromEnvironment(), { baseCpu: load(paths.baseCpu), headCpu: load(paths.headCpu) });
+  const { markdown, passed } = compareSummaries(base, head, limitsFromEnvironment(), {
+    baseCpu: load(paths.baseCpu),
+    headCpu: load(paths.headCpu),
+    baseBinary: load(paths.baseBinary),
+    headBinary: load(paths.headBinary),
+  });
 
   return { markdown, passed };
 };

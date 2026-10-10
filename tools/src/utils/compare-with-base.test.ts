@@ -35,6 +35,7 @@ describe('compareWithBase', () => {
     rounds: 2,
     duration: '2s',
     cpuDuration: '1s',
+    binaryDuration: '1s',
     resultsDirectory: join(folder, 'results'),
     portHttp: '18481',
     portHttps: '18444',
@@ -52,15 +53,20 @@ describe('compareWithBase', () => {
     expect(result.markdown).toContain('✅ no regression');
     expect(result.markdown).toContain('| Throughput (req/s) | 4000 (4000-4000) | 4000 (4000-4000) | +0.0% | ✅ |');
     expect(result.markdown).toContain('| p95 CPU bound (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+    expect(result.markdown).toContain('| p95 binary responses (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
     expect(k6Calls()).toEqual([
       'base main 2s yes',
       'base cpu 1s yes',
+      'base binary 1s yes',
       'head main 2s yes',
       'head cpu 1s yes',
+      'head binary 1s yes',
       'head main 2s yes',
       'head cpu 1s yes',
+      'head binary 1s yes',
       'base main 2s yes',
       'base cpu 1s yes',
+      'base binary 1s yes',
     ]);
   }, 30000);
 
@@ -118,6 +124,7 @@ describe('compareWithBase', () => {
     await expect(fetch('http://localhost:18481')).rejects.toThrow();
     expect(existsSync(join(folder, 'results', 'server-base-1.log'))).toBe(true);
     expect(existsSync(join(folder, 'results', 'k6-cpu-head-1.log'))).toBe(true);
+    expect(existsSync(join(folder, 'results', 'k6-binary-head-1.log'))).toBe(true);
   }, 30000);
 
   it('removes the results of an earlier run', async () => {

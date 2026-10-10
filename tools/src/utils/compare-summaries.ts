@@ -1,5 +1,5 @@
 import { defaultLimits } from '../constants/comparison-limits';
-import type { ComparisonDetails, CpuSummaries, Limits } from '../types/comparison';
+import type { BinarySummaries, ComparisonDetails, CpuSummaries, Limits } from '../types/comparison';
 import type { K6Summary, Metrics } from '../types/k6-summary';
 import { collectMetric } from './collect-metric';
 import { formatChange } from './format-change';
@@ -16,10 +16,11 @@ export const compareSummaries = (
   baseSummaries: K6Summary[],
   headSummaries: K6Summary[],
   limits: Partial<Limits> = {},
-  { baseCpu = [], headCpu = [] }: CpuSummaries = {}
+  { baseCpu = [], headCpu = [], baseBinary = [], headBinary = [] }: CpuSummaries & BinarySummaries = {}
 ): ComparisonDetails => {
   const { maxThroughputDrop, maxP95Increase, maxCpuP95Increase, minP95DifferenceMs, minCheckRate } = { ...defaultLimits, ...limits };
   const hasCpu = baseCpu.length > 0 && headCpu.length > 0;
+  const hasBinary = baseBinary.length > 0 && headBinary.length > 0;
   const regressions: string[] = [];
   const rows: string[] = [];
 
@@ -110,6 +111,27 @@ export const compareSummaries = (
     );
   }
 
+  if (hasBinary) {
+    const binaryP95 = (summaries: K6Summary[]) => p95Of('binary', summaries);
+    const binaryCheckRate = median(collectMetric(baseBinary, (metrics) => metrics['checks{route:binary}']?.value));
+    const [base, head] = [binaryP95(baseBinary), binaryP95(headBinary)];
+    // a base without the route answers with fast errors, the bodies are what this run is about
+    const comparable = base !== undefined && (binaryCheckRate === undefined || binaryCheckRate >= minCheckRate);
+    const slower = comparable && head !== undefined && head > base * (1 + maxP95Increase) && head - base > minP95DifferenceMs;
+    if (slower)
+      regressions.push(
+        `The p95 of the big binary responses is ${formatChange(base, head).replace('+', '')} higher than the base (${formatNumber(
+          base,
+          1
+        )} ms to ${formatNumber(head, 1)} ms), the limit is ${maxP95Increase * 100}%.`
+      );
+    rows.push(
+      `| p95 binary responses (ms) | ${comparable ? formatNumber(base, 1) : 'n/a'} | ${formatNumber(head, 1)} | ${
+        comparable ? formatChange(base, head) : 'the base cannot serve it'
+      } | ${slower ? '❌' : comparable ? '✅' : '➖'} |`
+    );
+  }
+
   const info = (
     [
       ['p95 of all requests (ms)', (metrics) => metrics.http_req_duration?.['p(95)']],
@@ -131,6 +153,10 @@ export const compareSummaries = (
         ? ` The CPU bound run (${baseCpu.length} runs of the base, ${headCpu.length} of the pull request, at a fixed rate) is judged on its p95 (at most ${
             maxCpuP95Increase * 100
           }% and ${minP95DifferenceMs} ms higher) and on dropped requests.`
+        : ''
+    }${
+      hasBinary
+        ? ` The big binary responses (${baseBinary.length} runs of the base, ${headBinary.length} of the pull request, 768 KiB each) are judged on their p95 like a route.`
         : ''
     }`,
     '',
