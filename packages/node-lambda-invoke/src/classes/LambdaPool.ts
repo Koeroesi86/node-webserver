@@ -22,7 +22,15 @@ interface LambdaPoolOptions {
 /** the limit is reached and no lambda became free in time */
 export class LambdaUnavailableError extends Error {}
 
-const pollInterval = 5;
+/** the client went away while the request waited for a lambda */
+export class LambdaRequestAbandonedError extends Error {}
+
+/** a request that waits for a lambda, in the order of arrival */
+interface Waiter {
+  /** gives the request its lambda, or the promise of one that is starting */
+  serve: (lambda: Lambda | Promise<Lambda>) => void;
+  fail: (error: Error) => void;
+}
 
 /** every pool of the process, for the stats */
 const pools = new Set<LambdaPool>();
@@ -36,6 +44,10 @@ export function getLambdaStats() {
     /** lambdas that were asked for and have not announced themselves yet */
     starting: all.reduce((result, pool) => result + pool.starting, 0),
     busy: all.reduce((result, pool) => result + pool.busy, 0),
+    /** requests that wait for a lambda to become free */
+    waiting: all.reduce((result, pool) => result + pool.waiting, 0),
+    /** requests whose client went away while they waited, since the process started */
+    abandoned: all.reduce((result, pool) => result + pool.abandoned, 0),
     // several servers, or handlers, can use the same file
     files: all
       .filter(({ started }) => started > 0)
@@ -57,8 +69,10 @@ class LambdaPool {
   readonly env?: Record<string, string>;
   readonly logger: Logger;
   private readonly instances = new Map<string, Lambda>();
+  private readonly queue: Waiter[] = [];
   /** lambdas that were asked for but have not announced themselves yet, they count against the limit as well */
   starting = 0;
+  abandoned = 0;
 
   constructor({
     lambdaPath,
@@ -96,6 +110,10 @@ class LambdaPool {
     return Array.from(this.instances.values()).filter(({ busy }) => busy).length;
   }
 
+  get waiting() {
+    return this.queue.length;
+  }
+
   private getNonBusy() {
     const timeLimit = Date.now() - 15 * 60 * 1000 + 5000; // lifespan of lambda, to give enough time to respond before killed
     return Array.from(this.instances.values()).find((instance) => !instance.busy && instance.createdAt !== undefined && instance.createdAt >= timeLimit);
@@ -127,11 +145,7 @@ class LambdaPool {
       currentLambdaInstance.addEventListener('message', lambdaStartListener);
 
       currentLambdaInstance.addEventListenerOnce('error', failedToStart);
-      currentLambdaInstance.addEventListenerOnce('close', (code: number | null) => {
-        failedToStart(`it exited with code ${code}`);
-        // a lambda that is gone must not be handed out, nor count against the limit
-        this.instances.delete(currentId);
-      });
+      currentLambdaInstance.addEventListenerOnce('close', (code: number | null) => failedToStart(`it exited with code ${code}`));
 
       stdoutListener(currentLambdaInstance, this.logger);
     });
@@ -145,41 +159,85 @@ class LambdaPool {
       // taken by the request that asked for it, before anything else can pick it from the registry
       instance.busy = true;
       instance.createdAt = Date.now();
+      instance.onFree = () => this.drain();
       this.instances.set(id, instance);
+      instance.addEventListenerOnce('close', () => {
+        // a lambda that is gone must not be handed out, nor count against the limit, and its place goes to the first request in line
+        this.instances.delete(id);
+        this.drain();
+      });
 
       return instance;
     } finally {
       this.starting -= 1;
+      // a lambda that failed to start gives its place back
+      this.drain();
     }
   }
 
-  /**
-   * Hands out a lambda: a free one, otherwise a new one while the limit allows, otherwise the request waits for one to become free.
-   * Rejects with a LambdaUnavailableError when that takes longer than the acquire timeout.
-   */
-  async getLambda(): Promise<Lambda> {
-    const deadline = Date.now() + this.acquireTimeout;
+  /** hands lambdas to the requests in line, the first one first, as long as there are free lambdas or room for new ones */
+  private drain() {
+    while (this.queue.length > 0) {
+      const lambda = this.getNonBusy();
 
-    for (;;) {
-      const lambdaInstance = this.getNonBusy();
-
-      if (lambdaInstance !== undefined) {
+      if (lambda !== undefined) {
         // marked right away: the invocation starts later, and requests in between must not get the same lambda, as it answers one at a time
-        lambdaInstance.busy = true;
-
-        return lambdaInstance;
+        lambda.busy = true;
+        this.queue.shift()?.serve(lambda);
+      } else if (this.limit <= 0 || this.count < this.limit) {
+        this.queue.shift()?.serve(this.startLambda());
+      } else {
+        return;
       }
-
-      if (this.limit <= 0 || this.count < this.limit) {
-        return this.startLambda();
-      }
-
-      if (Date.now() >= deadline) {
-        throw new LambdaUnavailableError(`No lambda became available for ${this.lambdaPath} within ${this.acquireTimeout}ms.`);
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
+  }
+
+  /** gives a lambda back that was handed out, but not used */
+  release(lambda: Lambda) {
+    lambda.busy = false;
+    this.drain();
+  }
+
+  /**
+   * Hands out a lambda: a free one, otherwise a new one while the limit allows, otherwise the request waits in line for one to become free, without polling.
+   * Rejects with a LambdaUnavailableError when that takes longer than the acquire timeout, and with a LambdaRequestAbandonedError when the signal is aborted.
+   */
+  getLambda(signal?: AbortSignal): Promise<Lambda> {
+    if (signal?.aborted) {
+      this.abandoned += 1;
+      return Promise.reject(new LambdaRequestAbandonedError(`The request for ${this.lambdaPath} was abandoned.`));
+    }
+
+    return new Promise<Lambda>((resolve, reject) => {
+      const leave = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        const index = this.queue.indexOf(waiter);
+        if (index !== -1) this.queue.splice(index, 1);
+      };
+      const waiter: Waiter = {
+        serve: (lambda) => {
+          leave();
+          resolve(lambda);
+        },
+        fail: (error) => {
+          leave();
+          reject(error);
+        },
+      };
+      const timer = setTimeout(
+        () => waiter.fail(new LambdaUnavailableError(`No lambda became available for ${this.lambdaPath} within ${this.acquireTimeout}ms.`)),
+        this.acquireTimeout
+      );
+      const onAbort = () => {
+        this.abandoned += 1;
+        waiter.fail(new LambdaRequestAbandonedError(`The request for ${this.lambdaPath} was abandoned.`));
+      };
+
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.queue.push(waiter);
+      this.drain();
+    });
   }
 }
 

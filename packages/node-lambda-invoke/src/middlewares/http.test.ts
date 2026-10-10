@@ -177,16 +177,23 @@ describe('httpMiddleware', () => {
     await start({ lambdaPath: ownLambdaPath });
 
     try {
-      for (let request = 0; request < 30; request += 1) {
+      // the storage of a request lets go of the lambda after the response was handed over
+      const requestAndSettle = async (request: number) => {
+        await (await fetch(`${baseUrl}/${request}`)).text();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      };
+      await requestAndSettle(0);
+      const lambda = spawn.mock.results[0].value as ChildProcess;
+      const [messageListeners, closeListeners] = [lambda.listenerCount('message'), lambda.listenerCount('close')];
+
+      for (let request = 1; request < 30; request += 1) {
         await (await fetch(`${baseUrl}/${request}`)).text();
       }
-      // the storage of a request lets go of the lambda after the response was handed over
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await requestAndSettle(30);
 
-      const lambda = spawn.mock.results[0].value as ChildProcess;
       expect(spawn).toHaveBeenCalledTimes(1);
-      expect(lambda.listenerCount('message')).toBeLessThan(5);
-      expect(lambda.listenerCount('close')).toBeLessThan(5);
+      expect(lambda.listenerCount('message')).toBe(messageListeners);
+      expect(lambda.listenerCount('close')).toBe(closeListeners);
     } finally {
       spawn.mockRestore();
     }
@@ -209,20 +216,20 @@ describe('httpMiddleware', () => {
     expect(await response.text()).toBe('echo /after');
   });
 
-  it('answers 500 instead of waiting when the lambda cannot start', async () => {
+  it('answers 502 instead of waiting when the lambda cannot start', async () => {
     await start({ lambdaPath: path.join(build, 'missing.js') });
 
     const response = await fetch(`${baseUrl}/`);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(502);
   });
 
-  it('answers 500 and stops a lambda that does not start in time', async () => {
+  it('answers 502 and stops a lambda that does not start in time', async () => {
     await start({ lambdaPath: path.join(build, 'hanging.js'), startTimeout: 300 });
 
     const response = await fetch(`${baseUrl}/`);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(502);
     const pids = (await fs.readFile(pidFile, 'utf8')).trim().split('\n').map(Number);
     const hanging = pids[pids.length - 1];
     for (let waited = 0; processExists(hanging) && waited < 3000; waited += 50) {
@@ -239,6 +246,7 @@ describe('httpMiddleware', () => {
     const next = await fetch(`${baseUrl}/after`);
 
     expect(timedOut.status).toBe(504);
+    expect(await timedOut.json()).toEqual({ message: 'Endpoint request timed out' });
     expect(await next.text()).toBe('echo /after');
   });
 
@@ -249,7 +257,7 @@ describe('httpMiddleware', () => {
     const next = await fetch(`${baseUrl}/after`);
 
     expect(failed.status).toBe(502);
-    expect(await failed.text()).not.toContain('secret');
+    expect(await failed.json()).toEqual({ message: 'Internal server error' });
     expect(await next.text()).toBe('echo /after');
   });
 
@@ -314,6 +322,8 @@ describe('httpMiddleware', () => {
       const responses = await Promise.all([fetch(`${baseUrl}/hold`), fetch(`${baseUrl}/hold`)]);
 
       expect(responses.map(({ status }) => status).sort()).toEqual([200, 503]);
+      const refused = responses.find(({ status }) => status === 503);
+      expect(await refused?.json()).toEqual({ message: 'Service Unavailable' });
     });
 
     it('gives every middleware a limit of its own', async () => {
@@ -332,6 +342,54 @@ describe('httpMiddleware', () => {
         servers.forEach((instance) => instance.closeAllConnections());
         await Promise.all(servers.map((instance) => new Promise((resolve) => instance.close(resolve))));
       }
+    });
+
+    it('serves the requests that wait in the order they came in', async () => {
+      await start({ limit: 1 });
+      const arrived: number[] = [];
+      server.on('request', () => arrived.push(arrived.length + 1));
+      const answered: string[] = [];
+
+      const responses = [];
+      for (let index = 1; index <= 4; index += 1) {
+        responses.push(fetch(`${baseUrl}/slow/${index}`).then(async (response) => answered.push(await response.text())));
+        // the next one is sent when this one has reached the server, so that the order of arrival is known
+        for (; arrived.length < index; ) await new Promise((resolve) => setImmediate(resolve));
+      }
+      await Promise.all(responses);
+
+      expect(answered).toEqual([1, 2, 3, 4].map((index) => `echo /slow/${index}`));
+    });
+
+    it('gives a waiting request the lambda of a request that crashed it', async () => {
+      await start({ limit: 1 });
+
+      const responses = await Promise.all([fetch(`${baseUrl}/exit`), fetch(`${baseUrl}/after`)]);
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 502]);
+    });
+
+    it('lets a request leave the line when its client goes away', async () => {
+      await start({ limit: 1 });
+      const { getLambdaStats } = require(path.join(build, 'index.js'));
+      const holding = fetch(`${baseUrl}/hold`);
+      const leaving = new AbortController();
+      const gone = fetch(`${baseUrl}/after`, { signal: leaving.signal }).catch(() => undefined);
+      for (let waited = 0; getLambdaStats().waiting < 1 && waited < 3000; waited += 10) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(getLambdaStats().waiting).toBe(1);
+
+      leaving.abort();
+      await gone;
+      for (let waited = 0; getLambdaStats().waiting > 0 && waited < 3000; waited += 10) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      expect(getLambdaStats()).toMatchObject({ waiting: 0, abandoned: 1 });
+      expect((await holding).status).toBe(200);
+      // the lambda was not taken by the request that left
+      expect(await (await fetch(`${baseUrl}/next`)).text()).toBe('echo /next');
     });
 
     it('allows as many lambdas as there are CPU cores by default', async () => {
@@ -356,7 +414,7 @@ describe('httpMiddleware', () => {
     it('is empty before a lambda was started', async () => {
       const { getLambdaStats } = load();
 
-      expect(getLambdaStats()).toEqual({ lambdas: 0, starting: 0, busy: 0, files: {} });
+      expect(getLambdaStats()).toEqual({ lambdas: 0, starting: 0, busy: 0, waiting: 0, abandoned: 0, files: {} });
     });
 
     it('counts the lambdas, and the ones that are busy, per file', async () => {

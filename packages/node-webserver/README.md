@@ -103,7 +103,7 @@ module.exports = async (event, callback) => {
 | `uptimeSeconds`, `memory` | of the server process: `rss`, `heapTotal`, `heapUsed`, `external` |
 | `eventLoopDelayMs` | `mean`, `p99` and `max` of how late the event loop ran since the metrics were read the last time (all zero the first time): the best sign that the server is too busy |
 | `requests` | `total`, `active` (no complete response yet) and `status`, the responses by class (`2xx` ... `5xx`) |
-| `sources` | `workers:<host name>` for each worker server (`workers`, `active` requests, `waiting` requests, `refused`, `failing`, the worker files that crashed in a row, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
+| `sources` | `workers:<host name>` for each worker server (`workers`, `active` requests, `waiting` requests, `refused`, `failing`, the worker files that crashed in a row, and the same per worker file under `paths`), `lambdas` (`lambdas`, `busy`, `starting`, `waiting` requests, `abandoned` requests, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
 
 `examples/health/exampleWorker.js` is a worker with `/health` (200, or 503 while requests wait for a worker) and `/metrics`. Mind that a health endpoint is a worker like the others: it is reachable by anyone who can reach its host name.
 Part of the numbers are counted since the server started, a scraper computes rates from them. The existing stats domain (`statsDomain`) reports CPU and memory per process.
@@ -131,14 +131,17 @@ The options of `lambdaOptions`:
 | --- | --- |
 | `limit` | how many lambdas the server may run, the number of CPU cores by default, 0 for no limit. Every lambda server has a limit of its own, and the worker servers have theirs: a configuration with several of them can run up to the sum of their limits as processes. |
 | `acquireTimeout` | how long a request waits for a lambda when all of them are busy and the limit is reached, 10000 ms by default, then it is answered with 503 |
-| `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 500 |
+| `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 502 |
 | `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504 |
 | `env` | variables for the lambdas. They do not get the environment of the server, only what node needs (`PATH`, `HOME`, `TZ`, `NODE_OPTIONS`, the proxies, ...) and what AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
 | `communication` | how the request and the response reach the lambda, `ipc` (default) or `file` |
 
-A handler that fails (an error to the callback, or a throw) is answered with 502 and a generic body, the error goes to the log. So is a response without a valid `statusCode`, or with a `body` that is not a string. A lambda that exits during a request
-answers it with 502. Known limits, tracked in #38: one request per lambda at a time, a waiting request polls for a free lambda, a lambda stops 15 minutes after it started, the body of a request is not passed, and `async` handlers are not supported
-(call the callback).
+Requests that find all lambdas busy wait in line, the one that came first is served first, and are woken as soon as a lambda is free or one exits, nothing polls. A request whose client goes away while it waits leaves the line without taking a lambda
+(`abandoned` in the metrics counts them, `waiting` is the length of the line). The limits of the lambda servers and of the worker servers are independent of each other: a configuration with several of them can run up to the sum of their limits as processes.
+
+Failures are answered the way API Gateway answers them, with a JSON object with a `message`: a handler that fails (an error to the callback, or a throw), a response without a valid `statusCode` or with a `body` that is not a string, a lambda that does not start
+or exits during the request give 502 `{"message":"Internal server error"}`, the error goes to the log. A handler that takes longer than `timeout` gives 504 `{"message":"Endpoint request timed out"}`, and a full line 503 `{"message":"Service Unavailable"}`.
+Known limits, tracked in #38: one request per lambda at a time (like AWS, but without scaling out), a lambda stops 15 minutes after it started, the body of a request is not passed, and `async` handlers are not supported (call the callback).
 
 ### Workers that crash
 

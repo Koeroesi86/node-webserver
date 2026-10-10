@@ -21,6 +21,8 @@ class Lambda {
   instance: Worker | null;
   busy: boolean;
   createdAt?: number;
+  /** called when the lambda is free again, so that the pool can hand it to the next request in line */
+  onFree: () => void = () => {};
 
   constructor(path: string, handler: string, logger: Logger = () => {}, communication: Communication, env?: Record<string, string>) {
     this._path = path;
@@ -82,6 +84,7 @@ class Lambda {
       .catch((error) => {
         // the lambda was not given the request, so it is free again and the request is answered with the failure
         this.busy = false;
+        this.onFree();
         this._logger(error);
         callback(Object.assign(new ResponseEvent(), { statusCode: 500, body: 'Something went wrong.' }));
       });
@@ -100,6 +103,7 @@ class Lambda {
         .finally(() => storage.destroy())
         .finally(() => {
           this.busy = false;
+          this.onFree();
         });
     }
   }

@@ -51,3 +51,10 @@ export const ALLOWED_ENV = [
   'APPDATA',
   'LOCALAPPDATA',
 ];
+
+/** the bodies API Gateway answers with when the integration fails, so that clients of a lambda see what they see on AWS */
+export const MESSAGE_INTERNAL_SERVER_ERROR = 'Internal server error';
+
+export const MESSAGE_ENDPOINT_TIMED_OUT = 'Endpoint request timed out';
+
+export const MESSAGE_SERVICE_UNAVAILABLE = 'Service Unavailable';

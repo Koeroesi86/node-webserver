@@ -2,25 +2,21 @@ import { randomUUID } from 'node:crypto';
 import url from 'url';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
-import LambdaPool, { LambdaUnavailableError } from '../classes/LambdaPool';
+import LambdaPool, { LambdaRequestAbandonedError, LambdaUnavailableError } from '../classes/LambdaPool';
 import RequestEvent from '../classes/RequestEvent';
-import { DEFAULT_TIMEOUT } from '../constants';
+import { DEFAULT_TIMEOUT, MESSAGE_ENDPOINT_TIMED_OUT, MESSAGE_INTERNAL_SERVER_ERROR, MESSAGE_SERVICE_UNAVAILABLE } from '../constants';
 import { isRegistered, getRegisteredPath } from '../registry';
 import invokeLambda from '../utils/invoke-lambda';
 import isValidResponse from '../utils/is-valid-response';
+import writeError from '../utils/write-error';
 import type ResponseEvent from '../classes/ResponseEvent';
 import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
 
 export type HttpMiddleware = (request: IncomingMessage, response: ServerResponse, next?: () => void) => void;
 
-const writeError = (response: ServerResponse, statusCode: number, message: string) => {
-  response.writeHead(statusCode, { 'Content-Type': 'text/plain' });
-  response.end(message);
-};
-
 const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
   if (!isValidResponse(responseEvent)) {
-    writeError(response, 502, 'The lambda answered with a malformed response.');
+    writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
     return;
   }
 
@@ -72,15 +68,28 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
 
     logger('Invoking lambda', `${lambdaPath}#${handlerKey}`);
 
+    // a client that goes away while its request waits for a lambda leaves the line, instead of taking a lambda that nobody reads the answer of
+    const clientGone = new AbortController();
+    const onClose = () => {
+      if (!response.writableFinished) clientGone.abort();
+    };
+    response.once('close', onClose);
+
     const handleRequest = async () => {
-      const lambdaInstance = await lambdaPool.getLambda();
+      const lambdaInstance = await lambdaPool.getLambda(clientGone.signal);
+
+      if (clientGone.signal.aborted) {
+        lambdaPool.release(lambdaInstance);
+        return;
+      }
+
       const storage = new StorageDriver(requestId, lambdaInstance);
       const outcome = await invokeLambda(lambdaInstance, requestId, requestEvent, timeout);
 
       if (outcome.type === 'response') writeResponse(response, outcome.responseEvent);
-      if (outcome.type === 'closed') writeError(response, 502, 'The lambda exited without answering.');
+      if (outcome.type === 'closed') writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
       if (outcome.type === 'timeout') {
-        writeError(response, 504, 'The lambda did not answer in time.');
+        writeError(response, 504, MESSAGE_ENDPOINT_TIMED_OUT);
         // it is still busy with the request, and the pool lets go of it once it is gone
         lambdaInstance.terminate('SIGKILL');
       }
@@ -88,13 +97,16 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
       return storage.destroy();
     };
 
-    handleRequest().catch((err) => {
-      logger(err);
-      // the lambdas that may run are all busy
-      response.writeHead(err instanceof LambdaUnavailableError ? 503 : 500);
-      response.write(err instanceof LambdaUnavailableError ? 'No lambda available.' : 'Something went wrong.');
-      response.end();
-    });
+    handleRequest()
+      .catch((err) => {
+        if (err instanceof LambdaRequestAbandonedError) return;
+
+        logger(err);
+        // the lambdas that may run are all busy
+        if (err instanceof LambdaUnavailableError) writeError(response, 503, MESSAGE_SERVICE_UNAVAILABLE);
+        else writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
+      })
+      .finally(() => response.off('close', onClose));
   };
 }
 

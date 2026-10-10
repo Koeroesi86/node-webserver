@@ -1,5 +1,5 @@
 import ResponseEvent from '../classes/ResponseEvent';
-import { EVENT_STARTED, EVENT_REQUEST, EVENT_RESPONSE, ENV_COMMUNICATION, ENV_HANDLER, ENV_PATH } from '../constants';
+import { EVENT_STARTED, EVENT_REQUEST, EVENT_RESPONSE, ENV_COMMUNICATION, ENV_HANDLER, ENV_PATH, MESSAGE_INTERNAL_SERVER_ERROR } from '../constants';
 import { getRegisteredPath } from '../registry';
 import sendToParent from '../utils/sendToParent';
 import type RequestEvent from '../classes/RequestEvent';
@@ -21,7 +21,11 @@ setTimeout(() => {
 /** what AWS answers for a failed function: the details go to the log of the lambda, not to the client */
 const failure = (error: unknown) => {
   console.error(error);
-  return Object.assign(new ResponseEvent(), { statusCode: 502, headers: { 'Content-Type': 'text/plain' }, body: 'Internal server error.' });
+  return Object.assign(new ResponseEvent(), {
+    statusCode: 502,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: MESSAGE_INTERNAL_SERVER_ERROR }),
+  });
 };
 
 function messageListener(event: LambdaEvent) {
