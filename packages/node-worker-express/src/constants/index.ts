@@ -18,6 +18,12 @@ export enum WORKER_EVENT {
   RESPONSE = 'WORKER_RESPONSE',
   RESPONSE_EMIT = 'WORKER_RESPONSE_EMIT',
   RESPONSE_ACKNOWLEDGE = 'WORKER_RESPONSE_ACK',
+  /**
+   * the worker asks to write a streamed body to the client itself, with the head of the response. The server answers with the connection of the client,
+   * sent along with this message over the IPC channel, or with a refusal, after which the body is streamed as usual
+   */
+  RESPONSE_HANDOFF = 'WORKER_RESPONSE_HANDOFF',
+  RESPONSE_HANDOFF_REFUSE = 'WORKER_RESPONSE_HANDOFF_REFUSE',
   WS_MESSAGE_RECEIVE = 'WS_MESSAGE_RECEIVE',
   /** the worker is done with a received message, the server may pass on another one */
   WS_MESSAGE_ACKNOWLEDGE = 'WS_MESSAGE_ACK',
@@ -101,6 +107,8 @@ export const DefaultOptions: MiddlewareOptions = {
   inlineRequestBody: 64 * 1024,
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
+  // handing a socket over is not verified on Windows yet
+  handOffResponses: process.platform === 'win32' ? 0 : 8 * 1024 * 1024,
   limitQueue: 1000,
   limitWebSocketMessage: 1024 * 1024,
   limitWebSocketConnections: 1000,

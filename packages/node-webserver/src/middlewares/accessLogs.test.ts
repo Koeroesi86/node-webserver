@@ -1,9 +1,11 @@
 import { EventEmitter } from 'events';
 import accessLogsMiddleware from './accessLogs';
+import { isHandedOff } from '@koeroesi86/node-worker-express';
 import logger from '../utils/logger';
 import type { NextFunction, Request, Response } from 'express';
 
 jest.mock('../utils/logger', () => ({ __esModule: true, default: { success: jest.fn(), error: jest.fn(), isEnabled: jest.fn() } }));
+jest.mock('@koeroesi86/node-worker-express', () => ({ isHandedOff: jest.fn(() => false) }));
 jest.mock('../utils/getDate', () => ({ __esModule: true, default: () => '2026-01-01 00:00:00' }));
 
 const mockedLogger = jest.mocked(logger);
@@ -137,6 +139,29 @@ describe('accessLogsMiddleware', () => {
 
       expect(get).not.toHaveBeenCalled();
       expect(mockedLogger.success).not.toHaveBeenCalled();
+    });
+
+    it('logs a response whose connection went to a worker when it closes, as it does not finish here', () => {
+      enable('success', 'error');
+      const response = createResponse(200);
+      jest.mocked(isHandedOff).mockReturnValueOnce(true);
+
+      accessLogsMiddleware({})(createRequest(), response, jest.fn() as NextFunction);
+      jest.runAllTimers();
+      response.emit('close');
+
+      expect(mockedLogger.success).toHaveBeenCalledWith(expect.stringContaining('RESPONSE GET http://web.localhost/page?x=1 200 OK 12b sent'));
+    });
+
+    it('does not log a response that closes without finishing and was not handed over', () => {
+      enable('success', 'error');
+      const response = createResponse(200);
+
+      accessLogsMiddleware({})(createRequest(), response, jest.fn() as NextFunction);
+      jest.runAllTimers();
+      response.emit('close');
+
+      expect(mockedLogger.success).not.toHaveBeenCalledWith(expect.stringContaining('RESPONSE'));
     });
 
     it('logs the error responses when only the errors are on', () => {

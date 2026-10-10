@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { isHandedOff } from '@koeroesi86/node-worker-express';
 import getDate from '../utils/getDate';
 import logger from '../utils/logger';
 import type { LogLevels } from '../types';
@@ -41,7 +42,8 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
     }
 
     if (logsResponses) {
-      response.on('finish', () => {
+      // a response whose connection went to a worker closes here without finishing, the worker writes the body
+      const logResponse = () => {
         const level = getResponseLevel(response.statusCode);
         if (!logger.isEnabled(level)) return;
 
@@ -57,7 +59,9 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
           `${response.get('Content-Length') || 0}b sent`,
         ].join(' ');
         logger[level](logLine);
-      });
+      };
+      response.on('finish', logResponse);
+      response.on('close', () => isHandedOff(response) && logResponse());
     }
     next();
   };

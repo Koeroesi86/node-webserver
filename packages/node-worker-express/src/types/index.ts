@@ -87,6 +87,14 @@ export type WorkerInputEvent =
       event?: RequestEvent;
     };
 
+/** what goes along with the connection of a client that is handed to a worker, over the IPC channel */
+export type HandOffMessage = {
+  type: WORKER_EVENT.RESPONSE_HANDOFF;
+  requestId: string;
+  /** how long the client may take nothing before the worker closes the connection, in milliseconds, 0 for no limit */
+  timeout: number;
+};
+
 /** a response as it travels from the worker to the server: the body is raw bytes, and null ends a streamed response */
 export type ResponseMessage = Omit<ResponseEvent, 'body' | 'isBase64Encoded'> & { body?: Buffer | null };
 
@@ -131,10 +139,21 @@ export type WSMessage = {
 };
 
 /**
+ * Asks to write the body of a streamed response to the client directly, instead of sending it through the server. The promise `callback` returns resolves
+ * with the socket of the client, with the head of the response written already, or with anything else when the server keeps the connection: then the body is streamed as usual.
+ * `streamResponse` does this by itself for a response with a `Content-Length`.
+ */
+export type HandOffEvent = {
+  statusCode: number;
+  headers?: { [key: string]: string };
+  handOff: true;
+};
+
+/**
  * Answers the request. A response with `emit` streams the body in parts, ending with a part without a body.
  * For those the returned promise resolves when the part was written to the client: `true` to go on, `false` when the client is gone and streaming should stop.
  */
-export type ResponseCallback = (e: ResponseEvent) => unknown;
+export type ResponseCallback = (e: ResponseEvent | HandOffEvent) => unknown;
 
 /** The function a worker file exports. */
 export type InvokableWorker = (event: WorkerRequestEvent, callback: ResponseCallback) => unknown;
@@ -164,6 +183,12 @@ export interface MiddlewareOptions {
   limitRequestTimeout?: number;
   /** how long the worker may stay silent while answering an HTTP request before it is answered with 504, 0 disables it */
   limitResponseTimeout?: number;
+  /**
+   * a streamed response of at least this many bytes (by its `Content-Length`) on a plain HTTP/1 connection is written to the client by the worker itself: the server hands the socket over,
+   * so the body does not pass through it, and the connection is closed after the body. 0 disables it. Defaults to 8 MiB, and to 0 on Windows.
+   * Disable it when a middleware in front of this one changes the body other than by setting `Content-Encoding` (as compression does), the body would bypass it.
+   */
+  handOffResponses?: number;
   /** @deprecated nothing polls for a worker any more, requests that wait are woken when one is free. Has no effect. */
   idleCheckTimeout?: number;
   /**

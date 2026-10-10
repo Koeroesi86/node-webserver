@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Socket } from 'node:net';
 import path from 'path';
 import { Duplex } from 'stream';
 import Worker from '@koeroesi86/node-worker';
@@ -10,7 +11,7 @@ import WorkerUnavailableError from './workerUnavailableError';
 import WorkerAbandonedError from './workerAbandonedError';
 import createWorkerBudget from './create-worker-budget';
 import pickIdleWorker from './pick-idle-worker';
-import type { IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
+import type { HandOffMessage, IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const pools: WorkerPool[] = [];
 
@@ -55,6 +56,11 @@ export interface WorkerLease {
   send: (message: WorkerInputEvent) => void;
   /** `onMessage` receives the messages of the worker for the request, `onExit` is called when the worker dies before the lease is released */
   subscribe: (requestId: string, onMessage: (message: WorkerOutputEvent) => void, onExit: (code: number | null) => void) => void;
+  /**
+   * gives the connection of the client to the worker, along with the message, over the IPC channel. The socket is closed in this process once it was sent,
+   * the promise rejects when it could not be sent
+   */
+  handOff: (message: HandOffMessage, socket: Socket) => Promise<void>;
   /** frees the worker for other requests, safe to call more than once */
   release: () => void;
 }
@@ -235,10 +241,11 @@ class WorkerPool implements WorkerBudgetMember {
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = randomUUID();
     // the fourth stdio is the socket pair the messages go through, in place of the IPC channel of node that sends JSON.
-    // 'overlapped' is a plain pipe except on Windows, where the worker could not read and write it at the same time otherwise
+    // 'overlapped' is a plain pipe except on Windows, where the worker could not read and write it at the same time otherwise.
+    // the IPC channel of node is only there for what the socket pair cannot carry: the connections of clients that are handed over
     const instance = new Worker(createWorkerCommand(workerPath), {
       ...(typeof options === 'function' ? options() : options),
-      stdio: ['pipe', 'pipe', 'pipe', 'overlapped'],
+      stdio: ['pipe', 'pipe', 'pipe', 'overlapped', 'ipc'],
     });
     const socket = instance.instance.stdio[3];
     if (!(socket instanceof Duplex)) {
@@ -341,6 +348,14 @@ class WorkerPool implements WorkerBudgetMember {
     return {
       worker: leased,
       send: (message) => this.channels.get(leased)?.send(message),
+      handOff: (message, socket) =>
+        new Promise<void>((resolve, reject) => {
+          if (!leased.instance.connected) {
+            reject(new Error('The worker has no IPC channel.'));
+            return;
+          }
+          leased.instance.send(message, socket, (error) => (error ? reject(error) : resolve()));
+        }),
       subscribe: (requestId, onMessage, onExit) => {
         Object.assign(state, { requestId, onMessage, onExit });
         this.subscriptions.set(requestId, state);
