@@ -18,7 +18,21 @@ import { warmUpServer } from './warm-up-server';
  * machine does not always hit the same side. The server is warmed up before the measuring starts, see warm-up-server.ts. The prefixes (for example `taskset -c 0-2`) are put in front of the commands of the server and of k6.
  */
 export const compareWithBase = async (options: ComparisonOptions): Promise<ComparisonResult> => {
-  const { base, head, rounds, duration, cpuDuration, binaryDuration, resultsDirectory, portHttp, portHttps, serverPrefix, k6Prefix } = options;
+  const {
+    base,
+    head,
+    rounds,
+    duration,
+    cpuDuration,
+    binaryDuration,
+    resultsDirectory,
+    portHttp,
+    portHttps,
+    serverPrefix,
+    k6Prefix,
+    serverEnvironment,
+    mainOnly,
+  } = options;
   const [k6Script, cpuScript, binaryScript] = ['example.ts', 'cpu.ts', 'binary.ts'].map((name) => join(head, 'tools/src/k6', name));
   const certificates = 'packages/node-webserver/.certificates/localhost';
   // the processes that run, which are stopped when the comparison is interrupted
@@ -50,7 +64,7 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
     const name = `${side}-${round}`;
     const server = launch([...serverPrefix, 'node', 'dist/scripts/load-test-server.js'], join(resultsDirectory, `server-${name}.log`), {
       cwd: join(directory, 'packages/node-webserver'),
-      env: { ...process.env, PORT_HTTP: portHttp, PORT_HTTPS: portHttps },
+      env: { ...process.env, ...serverEnvironment, PORT_HTTP: portHttp, PORT_HTTPS: portHttps },
     });
     await waitForServer(portHttp);
     // the first requests of a run would wait for the workers to start, which differs between versions on purpose
@@ -72,30 +86,32 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
       ],
       join(resultsDirectory, `k6-${name}.log`)
     );
-    // a fixed arrival rate, so the latency of the workers shows and does not depend on how fast the rest of the server is, the thresholds are not used here either
-    await k6(
-      [
-        `--summary-export=${join(resultsDirectory, `cpu-${name}.json`)}`,
-        '-e',
-        `BASE_URL=http://localhost:${portHttp}`,
-        '-e',
-        `DURATION=${cpuDuration}`,
-        cpuScript,
-      ],
-      join(resultsDirectory, `k6-cpu-${name}.log`)
-    );
-    // big binary responses at a fixed number of users, the thresholds are not used here either
-    await k6(
-      [
-        `--summary-export=${join(resultsDirectory, `binary-${name}.json`)}`,
-        '-e',
-        `BASE_URL=http://localhost:${portHttp}`,
-        '-e',
-        `DURATION=${binaryDuration}`,
-        binaryScript,
-      ],
-      join(resultsDirectory, `k6-binary-${name}.log`)
-    );
+    if (!mainOnly) {
+      // a fixed arrival rate, so the latency of the workers shows and does not depend on how fast the rest of the server is, the thresholds are not used here either
+      await k6(
+        [
+          `--summary-export=${join(resultsDirectory, `cpu-${name}.json`)}`,
+          '-e',
+          `BASE_URL=http://localhost:${portHttp}`,
+          '-e',
+          `DURATION=${cpuDuration}`,
+          cpuScript,
+        ],
+        join(resultsDirectory, `k6-cpu-${name}.log`)
+      );
+      // big binary responses at a fixed number of users, the thresholds are not used here either
+      await k6(
+        [
+          `--summary-export=${join(resultsDirectory, `binary-${name}.json`)}`,
+          '-e',
+          `BASE_URL=http://localhost:${portHttp}`,
+          '-e',
+          `DURATION=${binaryDuration}`,
+          binaryScript,
+        ],
+        join(resultsDirectory, `k6-binary-${name}.log`)
+      );
+    }
     console.error(`${side} ${round}: ${readRequestRate(join(resultsDirectory, `${name}.json`))}`);
     await stopProcess(server);
   };
@@ -128,10 +144,14 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
   const result = compareFiles({
     base: files('', 'base'),
     head: files('', 'head'),
-    baseCpu: files('cpu-', 'base'),
-    headCpu: files('cpu-', 'head'),
-    baseBinary: files('binary-', 'base'),
-    headBinary: files('binary-', 'head'),
+    ...(mainOnly
+      ? {}
+      : {
+          baseCpu: files('cpu-', 'base'),
+          headCpu: files('cpu-', 'head'),
+          baseBinary: files('binary-', 'base'),
+          headBinary: files('binary-', 'head'),
+        }),
   });
   const unevenlyServed = describeUnevenlyServed(warmedUp.get('base') ?? [], warmedUp.get('head') ?? []);
 

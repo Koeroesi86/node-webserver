@@ -9,6 +9,7 @@ const { appendFileSync, existsSync, readFileSync, writeFileSync } = require('fs'
 const { join } = require('path');
 const checkout = join(__dirname, '../../../..');
 writeFileSync(join(checkout, 'server.pid'), String(process.pid));
+writeFileSync(join(checkout, 'setting.txt'), process.env.FAKE_SETTING ?? '');
 http.createServer((request, response) => {
   appendFileSync(join(checkout, 'requests.log'), [request.headers.host, request.method, request.url].join(' ') + '\\n');
   request.resume();
