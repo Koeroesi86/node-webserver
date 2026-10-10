@@ -79,6 +79,9 @@ module.exports = async (event, callback) => {
     return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
   }
   if (event.path === '/event-keys') return callback({ statusCode: 200, headers: {}, body: JSON.stringify(Object.keys(event).sort()), isBase64Encoded: false });
+  if (event.path === '/inline-body-field') {
+    return callback({ statusCode: 200, headers: {}, body: JSON.stringify({ inlineBody: event.inlineBody, keys: Object.keys(event).includes('inlineBody') }), isBase64Encoded: false });
+  }
   if (event.path === '/upload-ignored') return callback({ statusCode: 413, headers: {}, body: 'too large', isBase64Encoded: false });
   if (event.path === '/upload-catches') {
     try {
@@ -452,6 +455,17 @@ describe('workerInvoke', () => {
 
       expect(answerOf('a')).not.toContain('body');
       expect(answerOf('a')).toContain('bodyStream');
+    });
+
+    it('is still given to the worker as base64 in inlineBody, and only when there is a body', async () => {
+      const body = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
+      send('a', '/inline-body-field', false, body);
+      send('b', '/inline-body-field');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1 && of('b', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).toEqual({ inlineBody: body.toString('base64'), keys: true });
+      expect(answerOf('b')).toEqual({ keys: false });
     });
 
     it('keeps every byte', async () => {
