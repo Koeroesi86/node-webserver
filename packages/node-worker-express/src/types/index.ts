@@ -242,3 +242,4 @@ export interface WorkerBudget {
   wakeUp: (except?: WorkerBudgetMember) => void;
   getStats: () => { limit: number; workers: number };
 }
+export * from './cache';
