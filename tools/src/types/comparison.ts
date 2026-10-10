@@ -56,3 +56,36 @@ export interface ComparisonOptions {
 export interface ComparisonDetails extends ComparisonResult {
   regressions: string[];
 }
+
+/** the rows of the table and the regressions found by judging one metric */
+export interface Judgement {
+  rows: string[];
+  regressions: string[];
+}
+
+export interface P95Judgement {
+  /** starts the sentence of the regression */
+  subject: string;
+  label: string;
+  base: number | undefined;
+  head: number | undefined;
+  comparable: boolean;
+  maxIncrease: number;
+  minDifferenceMs: number;
+}
+
+export interface JudgedRow {
+  label: string;
+  base: number | undefined;
+  head: number | undefined;
+  /** false when the base cannot serve what is measured, so there is nothing to compare with */
+  comparable: boolean;
+  failed: boolean;
+  digits?: number;
+}
+
+export interface JudgedMetrics {
+  limits: Limits;
+  cpuRuns?: { base: number; head: number };
+  binaryRuns?: { base: number; head: number };
+}
