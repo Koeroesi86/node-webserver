@@ -35,6 +35,7 @@ describe('compareWithBase', () => {
     rounds: 2,
     duration: '2s',
     cpuDuration: '1s',
+    binaryDuration: '1s',
     resultsDirectory: join(folder, 'results'),
     portHttp: '18481',
     portHttps: '18444',
@@ -51,17 +52,33 @@ describe('compareWithBase', () => {
     expect(result.passed).toBe(true);
     expect(result.markdown).toContain('✅ no regression');
     expect(result.markdown).toContain('| Throughput (req/s) | 4000 (4000-4000) | 4000 (4000-4000) | +0.0% | ✅ |');
-    expect(result.markdown).toContain('| p95 CPU bound (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+    expect(result.markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+    expect(result.markdown).toContain('| p95 binary responses (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
     expect(k6Calls()).toEqual([
       'base main 2s yes',
       'base cpu 1s yes',
+      'base binary 1s yes',
       'head main 2s yes',
       'head cpu 1s yes',
+      'head binary 1s yes',
       'head main 2s yes',
       'head cpu 1s yes',
+      'head binary 1s yes',
       'base main 2s yes',
       'base cpu 1s yes',
+      'base binary 1s yes',
     ]);
+  }, 30000);
+
+  it('runs only the main scenario for a comparison of the main one, and gives both servers the settings', async () => {
+    const [base, head] = [checkout('base', 4000), checkout('head', 4000)];
+    const result = await compareWithBase(options(base, head, { rounds: 1, mainOnly: true, serverEnvironment: { FAKE_SETTING: 'on' } }));
+
+    expect(k6Calls().map((call) => call.trim())).toEqual(['base main 2s', 'head main 2s']);
+    expect(readFileSync(join(base, 'setting.txt'), 'utf8')).toBe('on');
+    expect(readFileSync(join(head, 'setting.txt'), 'utf8')).toBe('on');
+    expect(result.passed).toBe(true);
+    expect(result.markdown).not.toContain('CPU bound');
   }, 30000);
 
   it('warms the server up before k6 measures, with the endpoints that start workers', async () => {
@@ -118,6 +135,7 @@ describe('compareWithBase', () => {
     await expect(fetch('http://localhost:18481')).rejects.toThrow();
     expect(existsSync(join(folder, 'results', 'server-base-1.log'))).toBe(true);
     expect(existsSync(join(folder, 'results', 'k6-cpu-head-1.log'))).toBe(true);
+    expect(existsSync(join(folder, 'results', 'k6-binary-head-1.log'))).toBe(true);
   }, 30000);
 
   it('removes the results of an earlier run', async () => {

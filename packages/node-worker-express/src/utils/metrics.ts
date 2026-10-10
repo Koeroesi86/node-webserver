@@ -1,5 +1,7 @@
-import { monitorEventLoopDelay } from 'perf_hooks';
+import { monitorEventLoopDelay, performance } from 'perf_hooks';
 import type { ServerResponse } from 'http';
+import type { LatencyHistogram, LatencySnapshot } from '../types';
+import createLatencyHistogram from './create-latency-histogram';
 
 export type StatusClass = '1xx' | '2xx' | '3xx' | '4xx' | '5xx';
 
@@ -9,15 +11,20 @@ export type ServerMetrics = {
   memory: { rss: number; heapTotal: number; heapUsed: number; external: number };
   /** how late the event loop of the server ran in the time since the metrics were read the last time, in milliseconds. All zero the first time. */
   eventLoopDelayMs: { mean: number; p99: number; max: number };
-  /** the requests handled by the worker middleware, `active` are the ones without a complete response yet */
-  requests: { total: number; active: number; status: Record<StatusClass, number> };
+  /** the requests handled by the worker middleware, `active` are the ones without a complete response yet, `latencyMs` how long the ones with a closed response took */
+  requests: { total: number; active: number; status: Record<StatusClass, number>; latencyMs: LatencySnapshot };
   /** what other parts of the server registered, by name: worker pools, connections, lambdas */
   sources: Record<string, unknown>;
 };
 
 const sources = new Map<string, () => unknown>();
 
-const requests: ServerMetrics['requests'] = { total: 0, active: 0, status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 } };
+const requests: Omit<ServerMetrics['requests'], 'latencyMs'> = { total: 0, active: 0, status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 } };
+
+const latency = createLatencyHistogram();
+
+/** what a tracked request is counted in besides the totals, once it is known which worker file answers it */
+export type TrackedRequest = { path?: LatencyHistogram };
 
 /** how often the delay of the event loop is sampled, in milliseconds */
 const eventLoopResolution = 20;
@@ -37,14 +44,24 @@ export function registerMetricsSource(name: string, read: () => unknown) {
   return () => sources.delete(uniqueName);
 }
 
-/** counts a request as active until its response is closed, and by the class of its status after it */
-export function trackRequest(response: ServerResponse) {
+/**
+ * Counts a request as active until its response is closed, and by the class of its status and how long it took after it.
+ * Setting `path` of what it returns counts the time in that histogram too.
+ */
+export function trackRequest(response: ServerResponse): TrackedRequest {
+  const startedAt = performance.now();
+  const tracked: TrackedRequest = {};
   requests.total += 1;
   requests.active += 1;
   response.once('close', () => {
+    const durationMs = performance.now() - startedAt;
     requests.active -= 1;
     requests.status[`${Math.floor(response.statusCode / 100)}xx`] += 1;
+    latency.record(durationMs);
+    tracked.path?.record(durationMs);
   });
+
+  return tracked;
 }
 
 const readSource = (read: () => unknown) => {
@@ -79,7 +96,7 @@ export function getServerMetrics(): ServerMetrics {
     uptimeSeconds: process.uptime(),
     memory: { rss, heapTotal, heapUsed, external },
     eventLoopDelayMs: readEventLoop(),
-    requests: { ...requests, status: { ...requests.status } },
+    requests: { ...requests, status: { ...requests.status }, latencyMs: latency.read() },
     sources: Object.fromEntries(Array.from(sources.entries()).map(([name, read]) => [name, readSource(read)])),
   };
 }

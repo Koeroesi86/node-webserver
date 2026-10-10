@@ -1,61 +1,72 @@
-import ResponseEvent from '../classes/ResponseEvent';
-import { EVENT_STARTED, EVENT_REQUEST, EVENT_RESPONSE } from '../constants';
+import { resolve } from 'path';
+import { pathToFileURL } from 'url';
+import {
+  EVENT_STARTED,
+  EVENT_REQUEST,
+  EVENT_RESPONSE,
+  ENV_COMMUNICATION,
+  ENV_HANDLER,
+  ENV_MAX_LIFETIME,
+  ENV_PATH,
+  ENV_STORAGE_FOLDER,
+  DEFAULT_TIMEOUT,
+  LIFESPAN,
+} from '../constants';
 import { getRegisteredPath } from '../registry';
+import createContext from '../utils/create-context';
+import findHandler from '../utils/find-handler';
+import runHandler from '../utils/run-handler';
 import sendToParent from '../utils/sendToParent';
-import type RequestEvent from '../classes/RequestEvent';
 import type { Communication, LambdaEvent, StorageDriverConstructor } from '../types';
 
-type LambdaHandler = (event: RequestEvent, context: object, callback: (error?: unknown, response?: ResponseEvent) => void) => void;
+const {
+  [ENV_PATH]: lambdaPath = './testLambda.js',
+  [ENV_HANDLER]: handlerKey = 'handler',
+  [ENV_COMMUNICATION]: communicationJson = '{}',
+  [ENV_STORAGE_FOLDER]: storageFolder,
+  [ENV_MAX_LIFETIME]: maxLifetime = `${LIFESPAN}`,
+} = process.env;
 
-const { LAMBDA = './testLambda.js', HANDLER = 'handler', COMMUNICATION = '{}' } = process.env;
-
-const lambdaModule: Record<string, LambdaHandler> = require(LAMBDA);
-const lambdaHandler = lambdaModule[HANDLER];
-const communication: Communication = JSON.parse(COMMUNICATION);
-const Storage: StorageDriverConstructor = require(getRegisteredPath(communication.type));
-
+// a safety net: the server stops a lambda when it is time, this is for when it does not, for example because it hangs
 setTimeout(() => {
   process.exit(0);
-}, 15 * 60 * 1000); // setting to default 15 minutes AWS timeout 15 * 60 * 1000
+}, Number(maxLifetime));
 
-const getErrorBody = (error: unknown) => (typeof error === 'object' && error !== null && 'body' in error && error.body ? `${error.body}` : `${error}`);
-
-function messageListener(event: LambdaEvent) {
+function messageListener(event: LambdaEvent, handler: ReturnType<typeof findHandler> & object, Storage: StorageDriverConstructor) {
   if (event.type !== EVENT_REQUEST || event.id === undefined) return;
 
-  const { id } = event;
-  const storage = new Storage(id, process);
+  const { id, deadline = Date.now() + DEFAULT_TIMEOUT } = event;
+  const storage = new Storage(id, process, storageFolder);
 
   Promise.resolve()
     .then(() => storage.getRequest())
-    .then(
-      (requestEvent) =>
-        new Promise<ResponseEvent>((resolve) => {
-          lambdaHandler(requestEvent, {}, (error, response = new ResponseEvent()) => {
-            const responseEvent = new ResponseEvent();
-
-            if (error) {
-              responseEvent.statusCode = 500;
-              responseEvent.body = getErrorBody(error);
-            } else {
-              Object.assign(responseEvent, response);
-            }
-
-            resolve(responseEvent);
-          });
-        })
-    )
+    .then((requestEvent) => runHandler(handler, requestEvent, (done) => createContext(id, deadline, done)))
     .then((responseEvent) => storage.setResponse(responseEvent))
     .then(() => sendToParent({ type: EVENT_RESPONSE, id }));
 }
 
-process.on('message', (event) => {
-  if (typeof event === 'object' && event !== null) {
-    messageListener(event);
-  }
+/** loads the module the way AWS does, CommonJS or an ES module that may use top-level await, then starts listening, so a lambda that cannot load never announces itself */
+async function main() {
+  const communication: Communication = JSON.parse(communicationJson);
+  const Storage: StorageDriverConstructor = require(getRegisteredPath(communication.type));
+  const namespace: unknown = await import(pathToFileURL(resolve(lambdaPath)).href);
+  const handler = findHandler(namespace, handlerKey);
+
+  if (!handler) throw new Error(`The handler ${handlerKey} was not found in ${lambdaPath}.`);
+
+  process.on('message', (event) => {
+    if (typeof event === 'object' && event !== null) {
+      messageListener(event, handler, Storage);
+    }
+  });
+
+  // the parent can disappear without running its exit handlers, for example when it is terminated by a signal
+  process.on('disconnect', () => process.exit(0));
+
+  sendToParent({ type: EVENT_STARTED });
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
 });
-
-// the parent can disappear without running its exit handlers, for example when it is terminated by a signal
-process.on('disconnect', () => process.exit(0));
-
-sendToParent({ type: EVENT_STARTED });

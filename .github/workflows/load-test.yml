@@ -35,22 +35,25 @@ jobs:
         include:
           # requests per second and core of the server that the throughput floor asks for. Linux is calibrated with the cores split between the server and k6,
           # the other systems cannot do that, so the server shares its cores with k6 there.
-          # cpu-max-p95-ms is the p95 allowed for the CPU bound worker, which shares its cores with k6 there too
+          # cpu-max-p95-ms is the p95 allowed for the CPU bound worker, which shares its cores with k6 there too. It only catches a collapse, about 3 times the slower
+          # Linux runners (24-37 ms, the faster ones 9-14 ms): a slowdown of the code is for the comparison with the base to find, which measures both on the same machine.
           # p95-overrides: the p95 allowed for routes (and `ws_connecting`, the time to connect a websocket) instead of their own, in the form of `route=ms,route=ms`. Lambdas are processes, which Windows is slow to start.
           # cpu-rate: requests per second for the CPU bound worker, cpu-max-dropped: how many of its requests k6 may fail to start (of 3000 in a run)
           # comparison-limits: the limits of the comparison with the base (see tools/README.md) that differ from the defaults. The identical code measured up to 40% apart on these systems.
           # comparison-rounds: runs of each side, the median of which is compared. The systems with the large spread between runs of the same side get more of them.
+          # access-logs-comparison: also compares the base with the pull request with the access logs on (informational), where the logger shows in the numbers. One system is enough for that.
           # p95-factor: multiplies the p95 allowed for every route, where everything is slower and shared runners are noisier.
           # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
           - os: ubuntu-latest
             requests-per-core: 250
-            cpu-max-p95-ms: 50
+            cpu-max-p95-ms: 100
             cpu-rate: 150
             cpu-max-dropped: 0
             p95-overrides: ''
             comparison-limits: ''
             comparison-informational: false
             comparison-rounds: 3
+            access-logs-comparison: true
             p95-factor: 1
           - os: windows-latest
             requests-per-core: 100
@@ -61,6 +64,7 @@ jobs:
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
             comparison-informational: true
             comparison-rounds: 5
+            access-logs-comparison: false
             p95-factor: 2
           - os: macos-latest
             requests-per-core: 100
@@ -71,6 +75,7 @@ jobs:
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
             comparison-informational: true
             comparison-rounds: 5
+            access-logs-comparison: false
             p95-factor: 2
     defaults:
       run:
@@ -127,6 +132,10 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           echo 'ready=true' >> "$GITHUB_OUTPUT"
+          # a base without the setting would run without access logs, and the comparison would not be about the logger
+          if grep -q ACCESS_LOGS packages/node-webserver/src/configuration.load-test.ts; then
+            echo 'access-logs=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Runner resources and cores for the server and k6
         run: |
           cores=$(node -p "require('os').availableParallelism()")
@@ -222,7 +231,7 @@ jobs:
             echo "::warning::The CPU bound run failed its limits (attempt ${attempt} of 2)"
           done
           exit 1
-      # big binary responses, on their own and not part of the comparison with the base, which has no such route
+      # big binary responses against the limit of the pull request; the comparison with the base runs the same scenario on both sides
       - name: Run binary response load test
         timeout-minutes: 5
         if: always()
@@ -233,6 +242,38 @@ jobs:
             -e BASE_URL="http://localhost:${PORT_HTTP}" \
             -e MAX_P95_MS="$(( 100 * P95_FACTOR ))" \
             tools/src/k6/binary.ts
+      # a new TLS connection for every request on the https port, next to plain HTTP requests: what the handshakes on the front process cost the other routes.
+      # On its own and not part of the comparison with the base, which has no such scenario
+      - name: Run new TLS connections load test
+        timeout-minutes: 5
+        if: always()
+        run: |
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
+            --summary-export=k6-tls-summary.json \
+            -e BASE_URL="http://localhost:${PORT_HTTP}" \
+            -e HTTPS_PORT="${PORT_HTTPS}" \
+            -e MAX_PLAIN_P95_MS="$(( 50 * P95_FACTOR ))" \
+            -e MAX_HANDSHAKE_P95_MS="$(( 100 * P95_FACTOR ))" \
+            tools/src/k6/tls.ts
+      # lambdas that crash, more requests than lambdas and the file communication; on its own, as the lambdas are processes that take the cores of the other routes
+      - name: Run lambda load test
+        timeout-minutes: 5
+        if: always()
+        run: |
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
+            --summary-export=k6-lambda-summary.json \
+            -e BASE_URL="http://localhost:${PORT_HTTP}" \
+            -e MARGIN_MS="$(( 1000 * P95_FACTOR ))" \
+            tools/src/k6/lambda.ts || {
+            status=$?
+            # a lambda that crashes must not take the server with it, so the log shows what a failed run did to it
+            echo '::group::The end of the log of the server'
+            tail -n 60 server.log
+            echo '::endgroup::'
+            exit "${status}"
+          }
       - name: Summarize results
         if: always()
         run: |
@@ -242,10 +283,21 @@ jobs:
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/summary.js k6-binary-summary.json '' 'Load test: big binary responses' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-tls-summary.json '' 'Load test: new TLS connections' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-lambda-summary.json '' 'Load test: lambdas that fail' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
         if: always()
-        run: kill "$(cat server.pid)" || echo 'The server had already stopped.'
+        run: |
+          # on Windows kill ends the server only, and its workers and lambdas would stay through the comparison with the base. taskkill ends them all,
+          # it needs the Windows pid of the process, which Git Bash keeps next to its own
+          if [ "${RUNNER_OS}" = 'Windows' ]; then
+            taskkill //PID "$(cat "/proc/$(cat server.pid)/winpid")" //T //F || echo 'The server had already stopped.'
+          else
+            kill "$(cat server.pid)" || echo 'The server had already stopped.'
+          fi
       # one server at a time, the one above is stopped, and the cores of the runner are the same for both sides
       - name: Compare with the base
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
@@ -261,6 +313,27 @@ jobs:
           cat compare-summary.md
           cat compare-summary.md >> "$GITHUB_STEP_SUMMARY"
           exit "${status}"
+      # the load test server logs the requests with ACCESS_LOGS=1, the cost of which is the logger. Only the main scenario, as the others do not go through more of it.
+      - name: Compare with the base with the access logs on
+        if: always() && github.event_name == 'pull_request' && matrix.access-logs-comparison && steps.base.outputs.access-logs == 'true'
+        timeout-minutes: 10
+        # informational: the access logs are what this shows, and the limits above are calibrated without them
+        continue-on-error: true
+        env:
+          SERVER_ENV: ACCESS_LOGS=1
+          MAIN_ONLY: '1'
+          RESULTS_DIRECTORY: compare-results-access-logs
+        run: |
+          status=0
+          # shellcheck disable=SC2086
+          env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . "${COMPARISON_ROUNDS}" 15s > compare-summary-access-logs.md || status=$?
+          cat compare-summary-access-logs.md
+          {
+            echo '## With the access logs on'
+            echo
+            cat compare-summary-access-logs.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "${status}"
       - name: Note that there is nothing to compare with
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready != 'true'
         run: |
@@ -274,8 +347,10 @@ jobs:
             k6-summary.json
             k6-cpu-summary.json
             k6-binary-summary.json
+            k6-tls-summary.json
             server.log
             runner-before.json
             runner-after.json
             compare-results/
+            compare-results-access-logs/
           if-no-files-found: ignore

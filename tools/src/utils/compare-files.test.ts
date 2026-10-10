@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cpuSummary, summary } from '../test-helpers/summaries';
+import { binarySummary, cpuSummary, summary } from '../test-helpers/summaries';
 import type { K6Summary } from '../types/k6-summary';
 import { compareFiles } from './compare-files';
 
@@ -43,6 +43,19 @@ describe('compareFiles', () => {
 
     expect(result.passed).toBe(false);
     expect(result.markdown).toContain('CPU bound');
+  });
+
+  it('judges the binary runs when there are some', () => {
+    const [base, head] = [write('b6.json', summary()), write('h6.json', summary())];
+    const result = compareFiles({
+      base: [base],
+      head: [head],
+      baseBinary: [write('bb6.json', binarySummary({ p95: 20 }))],
+      headBinary: [write('hb6.json', binarySummary({ p95: 60 }))],
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.markdown).toContain('binary responses');
   });
 
   it('ignores the summaries that were not written, as long as one run of each side is there', () => {

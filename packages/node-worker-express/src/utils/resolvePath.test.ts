@@ -37,7 +37,15 @@ describe('resolvePath', () => {
   });
 
   it('serves an existing file statically', async () => {
-    expect(await resolve('static', 'index.html')).toMatchObject({ isWorker: false, pathExists: true });
+    expect(await resolve('static', 'index.html')).toMatchObject({ isWorker: false, pathExists: true, targetExists: true });
+  });
+
+  it('tells whether the requested path itself exists, not only a directory above it', async () => {
+    expect(await resolve('static', 'missing.html')).toMatchObject({ targetExists: false });
+    expect(await resolve('static', 'missing', 'index.html')).toMatchObject({ targetExists: false });
+    expect(await resolve('static')).toMatchObject({ targetExists: true });
+    expect(await resolve()).toMatchObject({ targetExists: true });
+    expect(await resolve('app', 'missing', 'page')).toMatchObject({ isWorker: true, targetExists: false });
   });
 
   describe('with a probe', () => {

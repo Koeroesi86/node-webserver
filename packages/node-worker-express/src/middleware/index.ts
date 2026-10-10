@@ -12,10 +12,12 @@ import getClientIp from '../utils/getClientIp';
 import hasBody from '../utils/hasBody';
 import takeSmallBody from '../utils/takeSmallBody';
 import { RequestHandler } from 'express';
-import { MiddlewareOptions, RequestEvent, WorkerOutputEvent } from '../types';
+import { MiddlewareOptions, RequestEvent, WorkerMiddleware, WorkerOutputEvent } from '../types';
 import resolvePath from '../utils/resolvePath';
 import createProbe from '../utils/createProbe';
+import notFoundResponse from '../utils/not-found-response';
 import TtlCache from '../utils/ttlCache';
+import createPathLatency from '../utils/create-path-latency';
 import { getServerMetrics, registerMetricsSource, trackRequest } from '../utils/metrics';
 
 /** how long the way to a path is remembered, and how many paths are, so that a client asking for endless different ones cannot grow the cache */
@@ -28,7 +30,7 @@ let requestCount = 0;
 const noop = () => {};
 const createRequestId = () => `${requestIdPrefix}-${(requestCount += 1).toString(36)}`;
 
-const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
+const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const config = {
     ...DefaultOptions,
     ...(options && options),
@@ -44,6 +46,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
     maxQueue: config.limitQueue,
     onStdout: config.onStdout,
     onStderr: config.onStderr,
+    idleTimeout: config.limitWorkerIdleTimeout,
+    budget: config.workerBudget,
   });
   // a function, as copying the environment is costly and only needed when a worker is started, not for every request
   const workerOptions = () => ({
@@ -57,11 +61,14 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
   const webSocketSlots = createSlotCounter(config.limitWebSocketConnections);
   const routeCache = new TtlCache<{ indexPath: string; isWorker: boolean }>(routeCacheTtl, routeCacheSize);
   const probe = createProbe();
-  registerMetricsSource(`workers:${config.name ?? rootPath}`, workerPool.getStats);
+  // another static worker may answer a missing path in its own way, for example with the page of a single page app
+  const answersMissingPaths = config.staticWorker === DefaultOptions.staticWorker;
+  const pathLatency = createPathLatency();
+  const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
 
-  return async (request, response, next) => {
+  const handler: RequestHandler = async (request, response, next) => {
     const { query: queryStringParameters, pathname } = url.parse(request.url, true);
-    trackRequest(response);
+    const tracked = trackRequest(response);
     /** frees the slot of a websocket connection, also when the request fails before it has a worker */
     let releaseSlot = noop;
 
@@ -75,9 +82,20 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
 
       // a path that was resolved lately is trusted until its entry expires, without asking the file system again
       const cached = routeCache.get(pathname);
-      const { indexPath, isWorker, pathExists } = cached ? { ...cached, pathExists: true } : await resolvePath(rootPath, pathFragments, config.index, probe);
+      const { indexPath, isWorker, targetExists } = cached
+        ? { ...cached, targetExists: true }
+        : await resolvePath(rootPath, pathFragments, config.index, probe);
 
-      if (pathExists && !cached) {
+      // A path that is not there and that no worker answers is the 404 of the static worker, which is known here without the round trip to it.
+      // It is not remembered as a route: the probe remembers the missing file for a shorter time, so that a file that is added is found soon.
+      if (!isWorker && !targetExists && answersMissingPaths) {
+        const { statusCode, headers, body } = notFoundResponse();
+        response.writeHead(statusCode, { ...headers, 'Content-Length': Buffer.byteLength(body) });
+        response.end(body);
+        return;
+      }
+
+      if (!cached && (isWorker || targetExists)) {
         routeCache.set(pathname, { indexPath, isWorker });
       }
 
@@ -110,7 +128,6 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         rootPath: rootPath,
         // the body is not part of the event, the worker takes it from a stream while it arrives
         ...(streamsBody && { hasBody: true }),
-        ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
       };
 
       const isSocketRequest = event.protocol === Protocols.websocket;
@@ -122,6 +139,9 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         return;
       }
       releaseSlot = slot;
+
+      // by the worker file, like the paths of the pool, so every static file, found or not, counts in the one of the static worker (a missing path answered above only in the totals)
+      tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
 
       const limitPerPath = typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath;
       // a request that waits for a worker leaves the line when its client goes away
@@ -315,7 +335,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       lease.send({
         type: WORKER_EVENT.REQUEST,
         requestId,
-        event,
+        // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
+        event: inlineBody === undefined ? event : { ...event, body: inlineBody },
       });
 
       if (streamsBody) {
@@ -341,6 +362,13 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       next(e);
     }
   };
+
+  return Object.assign(handler, {
+    close: (timeout?: number) => {
+      unregisterMetrics();
+      return workerPool.dispose(timeout);
+    },
+  });
 };
 
 export default workerMiddleware;

@@ -159,6 +159,65 @@ describe('compression', () => {
       expect((await get('gzip')).headers['content-encoding']).toBe('gzip');
     });
 
+    it('sends the responses over the concurrency as they are, until a place is free again', async () => {
+      let release: () => void = () => undefined;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      await serve(
+        (request, response) => {
+          response.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(text) });
+          if (request.url !== '/held') return void response.end(text);
+
+          response.write(text.slice(0, 1000));
+          released.then(() => response.end(text.slice(1000)));
+        },
+        { concurrency: 1 }
+      );
+
+      const held = await new Promise<http.IncomingMessage>((resolve, reject) =>
+        http.get({ port, path: '/held', headers: { 'Accept-Encoding': 'gzip' } }, resolve).on('error', reject)
+      );
+      const whileHeld = await get('gzip');
+      release();
+      const heldBody = await new Promise<Buffer>((resolve) => {
+        const chunks: Buffer[] = [];
+        held.on('data', (chunk) => chunks.push(chunk));
+        held.on('end', () => resolve(Buffer.concat(chunks)));
+      });
+      const afterwards = await get('gzip');
+
+      expect(held.headers['content-encoding']).toBe('gzip');
+      expect(zlib.gunzipSync(heldBody).toString()).toBe(text);
+      expect(whileHeld.headers['content-encoding']).toBeUndefined();
+      expect(whileHeld.headers.vary).toBe('Accept-Encoding');
+      expect(whileHeld.body.toString()).toBe(text);
+      expect(afterwards.headers['content-encoding']).toBe('gzip');
+    });
+
+    it('frees the place of a response the client gave up on', async () => {
+      await serve(
+        (request, response) => {
+          response.writeHead(200, { 'Content-Type': 'text/plain' });
+          if (request.url !== '/abandoned') return void response.end(text);
+
+          response.write(text);
+          response.on('close', () => server.emit('abandoned'));
+        },
+        { concurrency: 1 }
+      );
+
+      const abandoned = new Promise((resolve) => server.once('abandoned', resolve));
+      await new Promise<void>((resolve, reject) => {
+        const request = http.get({ port, path: '/abandoned', headers: { 'Accept-Encoding': 'gzip' } }, () => {
+          request.destroy();
+          resolve();
+        });
+        request.on('error', reject);
+      });
+      await abandoned;
+
+      expect((await get('gzip')).headers['content-encoding']).toBe('gzip');
+    });
+
     it('only uses the encodings that are allowed', async () => {
       await serve(explicit(), { encodings: ['gzip'] });
 

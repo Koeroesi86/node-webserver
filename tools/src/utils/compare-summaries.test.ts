@@ -1,4 +1,4 @@
-import { cpuRuns, cpuSummary, runs, same } from '../test-helpers/summaries';
+import { binaryRuns, binarySummary, cpuRuns, cpuSummary, runs, same } from '../test-helpers/summaries';
 import type { K6Summary } from '../types/k6-summary';
 import { compareSummaries } from './compare-summaries';
 
@@ -141,7 +141,7 @@ describe('compareSummaries', () => {
       const { regressions, markdown } = compareCpu(cpuRuns(3), cpuRuns(3));
 
       expect(regressions).toEqual([]);
-      expect(markdown).toContain('| p95 CPU bound (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+      expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
       expect(markdown).toContain('| CPU bound dropped requests | 0 | 0 | n/a | ✅ |');
     });
 
@@ -179,11 +179,68 @@ describe('compareSummaries', () => {
       const { regressions, markdown } = compareCpu(cpuRuns(3, { p95: 2, checks: 0 }), cpuRuns(3, { p95: 40, dropped: 10 }));
 
       expect(regressions).toEqual([]);
-      expect(markdown).toContain('| p95 CPU bound (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
+      expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
+    });
+
+    it('uses the lowest p95 of each side, as slow runs are the machine and not the build', () => {
+      expect(compareCpu(cpuRuns(3), [cpuSummary(), cpuSummary(), cpuSummary({ p95: 300 })]).regressions).toEqual([]);
+      // a run on GitHub had medians of 43 and 73 ms with the same server on both sides, which one fast run of the pull request passes now
+      expect(compareCpu(cpuRuns(3, { p95: 43 }), [cpuSummary({ p95: 40 }), cpuSummary({ p95: 73 }), cpuSummary({ p95: 80 })]).regressions).toEqual([]);
+    });
+
+    it('is a regression when every run of the pull request is slower than the fastest of the base', () => {
+      const { regressions, markdown } = compareCpu(
+        [cpuSummary({ p95: 12 }), cpuSummary({ p95: 30 }), cpuSummary({ p95: 14 })],
+        [cpuSummary({ p95: 20 }), cpuSummary({ p95: 22 }), cpuSummary({ p95: 40 })]
+      );
+
+      expect(regressions).toEqual([expect.stringContaining('12.0 ms to 20.0 ms')]);
+      expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 20.0 | +66.7% | ❌ |');
+    });
+  });
+
+  describe('binary run', () => {
+    const compareBinary = (base: K6Summary[], head: K6Summary[]) => compareSummaries(same(), same(), {}, { baseBinary: base, headBinary: head });
+
+    it('is not shown when there are no summaries of it', () => {
+      expect(compareSummaries(same(), same()).markdown).not.toContain('binary');
+    });
+
+    it('finds no regression with the same results', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3), binaryRuns(3));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 binary responses (ms) | 20.0 | 20.0 | +0.0% | ✅ |');
+    });
+
+    it('is a regression when the p95 is more than 50% and 5 ms higher', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3, { p95: 20 }), binaryRuns(3, { p95: 40 }));
+
+      expect(regressions).toEqual([expect.stringContaining('big binary responses')]);
+      expect(markdown).toContain('❌');
+    });
+
+    it('is not when it is 40% higher, or higher by less than 5 ms', () => {
+      expect(compareBinary(binaryRuns(3, { p95: 20 }), binaryRuns(3, { p95: 28 })).regressions).toEqual([]);
+      expect(compareBinary(binaryRuns(3, { p95: 3 }), binaryRuns(3, { p95: 7 })).regressions).toEqual([]);
+    });
+
+    it('shows a gain without judging it', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3, { p95: 27.5 }), binaryRuns(3, { p95: 11.1 }));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 binary responses (ms) | 27.5 | 11.1 | −59.6% | ✅ |');
+    });
+
+    it('is not judged when the base cannot serve it', () => {
+      const { regressions, markdown } = compareBinary(binaryRuns(3, { p95: 2, checks: 0 }), binaryRuns(3, { p95: 40 }));
+
+      expect(regressions).toEqual([]);
+      expect(markdown).toContain('| p95 binary responses (ms) | n/a | 40.0 | the base cannot serve it | ➖ |');
     });
 
     it('uses the medians, so one bad run does not decide', () => {
-      expect(compareCpu(cpuRuns(3), [cpuSummary(), cpuSummary(), cpuSummary({ p95: 300 })]).regressions).toEqual([]);
+      expect(compareBinary(binaryRuns(3), [binarySummary(), binarySummary(), binarySummary({ p95: 300 })]).regressions).toEqual([]);
     });
   });
 

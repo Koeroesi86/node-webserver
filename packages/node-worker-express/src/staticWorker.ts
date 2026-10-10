@@ -8,6 +8,7 @@ import getFileInfo from './utils/getFileInfo';
 import isInside from './utils/isInside';
 import isNotModified from './utils/isNotModified';
 import readSmallFile from './utils/read-small-file';
+import notFoundResponse from './utils/not-found-response';
 
 let timer: NodeJS.Timeout | undefined;
 
@@ -37,15 +38,7 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   const stats = ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, fileName) ? await fs.stat(fileName).catch(() => undefined) : undefined;
 
   if (!stats?.isFile()) {
-    callback({
-      statusCode: 404,
-      headers: {
-        'Content-Type': 'text/plain',
-        'Cache-Control': 'public, max-age=0',
-      },
-      body: `${event.path} does not exist`,
-      isBase64Encoded: false,
-    });
+    callback(notFoundResponse());
     return;
   }
 
@@ -74,4 +67,5 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   }
 };
 
-export default staticWorker;
+/** loaded by file path in the workers, so it has to stay a CommonJS `module.exports` */
+export = staticWorker;

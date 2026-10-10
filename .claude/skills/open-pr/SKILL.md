@@ -30,7 +30,7 @@ Check the table against the `workspace:*` dependencies in the `package.json` fil
 
 Fill in `.github/pull_request_template.md`, section by section, no free-form summary:
 
-- **What and why**: the reason, in a few sentences. `Closes #N` for the issue, or the pull request it is stacked on.
+- **What and why**: the reason, in a few sentences. `Closes #N` for the GitHub issue (the tickets live there, `gh issue view N`), or the pull request it is stacked on.
 - **Changes**: one line for each.
 - **Behaviour changes**: config, API, defaults or output the users notice. Delete the section if there are none.
 - **Release**: the packages from above and whether it is breaking.
@@ -40,6 +40,15 @@ Fill in `.github/pull_request_template.md`, section by section, no free-form sum
 
 Run the checks that are missing before opening (the `verify-change` skill does that and gives the list for the two sections), unless the user said not to. A workflow change also needs `zizmor .github`.
 
+When the request path, workers, logging or proxying changed, also compare with the base locally, as CI does (`tools/README.md`, "Comparison with the base"). It needs k6 and a built worktree of `master`:
+
+```sh
+git worktree add ../base master && (cd ../base && pnpm install --frozen-lockfile && pnpm build)
+SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s
+```
+
+`SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` repeats the pass with the access logs on, as CI does on Ubuntu. Put the result under Verification, and under **Not verified** when it did not run (no k6 on the machine is a reason).
+
 ## Opening it
 
 1. The title is the squash commit: an imperative sentence without a prefix ("Add ...", "Cancel a request that ..."), without the number.
@@ -48,4 +57,4 @@ Run the checks that are missing before opening (the `verify-change` skill does t
 4. Do not merge, and do not change the settings of the repository.
 5. Give the user the link and the list of what was not verified.
 
-When the change moves after the pull request is open, update the description with `gh pr edit --body-file` so it stays true.
+Never comment on the pull request. When the change moves, update the description with `gh pr edit --body-file`, keeping the template sections, so it stays true.

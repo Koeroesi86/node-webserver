@@ -1,91 +1,36 @@
-import vHost from 'vhost';
-import type { Express, RequestHandler } from 'express';
-import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
+import type { RequestHandler } from 'express';
 import getURL from './getURL';
-import compressionMiddleware from '../middlewares/compression';
-import proxyMiddleware from '../middlewares/proxy';
-import lambdaMiddleware from '../middlewares/lambda';
+import virtualHostRouter from './virtual-host-router';
 import getDate from './getDate';
 import logger from './logger';
 import type { Configuration, ServerInstance } from '../types';
 
-function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
-  const { options } = instance;
-
-  if (!options) {
-    throw new Error(`options are required for worker server ${instance.hostname}.`);
-  }
-
-  return workerMiddleware({
-    name: instance.hostname,
-    ...options,
-    onStdout(data) {
-      logger.info(`[${getDate()}] ${data.toString().trim()}`);
-      if (options.onStdout) {
-        options.onStdout(data);
-      }
-    },
-    onStderr(data) {
-      logger.error(`[${getDate()}] ${data.toString().trim()}`);
-      if (options.onStderr) {
-        options.onStderr(data);
-      }
-    },
-  });
+interface StartedHost {
+  instance: ServerInstance;
+  handler: RequestHandler;
 }
 
-function getMiddleware(instance: ServerInstance): RequestHandler {
-  if (instance.type === 'child') {
-    return proxyMiddleware(instance);
-  }
-  if (instance.type === 'lambda') {
-    return lambdaMiddleware(instance);
-  }
-  if (instance.type === 'worker') {
-    return getWorkerMiddleware(instance);
-  }
-  return (req, res, next) => {
-    next();
-  };
-}
-
-/** the handlers one after the other, like `use` on an app does */
-const compose =
-  (first: RequestHandler, second: RequestHandler): RequestHandler =>
-  (request, response, next) =>
-    first(request, response, (error?: unknown) => (error ? next(error) : second(request, response, next)));
-
-function getHandler(instance: ServerInstance): RequestHandler {
-  const { compression } = instance;
-  const middleware = getMiddleware(instance);
-
-  return compression ? compose(compressionMiddleware(compression === true ? {} : compression), middleware) : middleware;
-}
-
-function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
+/** the handler of the http server and the one of the https server, which pass every request to the server of its host name */
+function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configuration>): Record<'http' | 'https', RequestHandler> {
   const { portHttp, portHttps } = Configuration;
-  const { hostname, protocol } = instance;
+  const ports: Record<string, number | undefined> = { http: portHttp, https: portHttps };
 
-  switch (protocol) {
-    case 'http':
-      httpApp.use(vHost(hostname, getHandler(instance)));
-      instance.url = getURL(protocol, hostname, portHttp);
-      logger.system(`[${getDate()}] Server started for ${instance.url}`);
-      break;
-    case 'https':
-      httpsApp.use(vHost(hostname, getHandler(instance)));
-      instance.url = getURL(protocol, hostname, portHttps);
-      logger.system(`[${getDate()}] Server started for ${instance.url}`);
-      break;
-    default:
-      logger.error(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);
-  }
+  hosts
+    .filter(({ instance }) => !(instance.protocol in ports))
+    .forEach(({ instance }) => logger.error(`[${getDate()}] Unknown protocol ${instance.protocol} for ${instance.hostname}`));
 
-  return instance;
-}
+  // one router per protocol instead of a vhost middleware per host, so that finding the host does not walk the list
+  const forProtocol = (protocol: string) =>
+    virtualHostRouter(
+      hosts
+        .filter(({ instance }) => instance.protocol === protocol)
+        .map(({ instance, handler }) => {
+          instance.url = getURL(protocol, instance.hostname, ports[protocol]);
+          return { hostname: instance.hostname, handler };
+        })
+    );
 
-function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
-  instances.forEach((instance) => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
+  return { http: forProtocol('http'), https: forProtocol('https') };
 }
 
 export default setupVirtualHosts;
