@@ -5,6 +5,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | Tool | What it does | Run |
 | --- | --- | --- |
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
+| [Channel benchmark](#channel-benchmark) | the channel between the server and a worker on its own: messages and bytes per second, the old IPC against the socket pair | `node tools/dist/scripts/channel-bench.js` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
 ### Layout
@@ -13,7 +14,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`. They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
@@ -32,6 +33,13 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 | `NPM_REGISTRY_URL` | the registry to compare with, defaults to https://registry.npmjs.org |
 | `VERSION_DRY_RUN` | only print the plan without changing any file |
 | `PUBLISH_ALL` | publish every package regardless of the changes |
+
+## Channel benchmark
+
+`node tools/dist/scripts/channel-bench.js [ipc|socket|both] [scale]` (needs `pnpm build`) measures the channel between the server and a worker without HTTP, which the load test cannot do: the number does not depend on Express, the runner or k6.
+A child process echoes every message, the parent keeps a number of them in flight (1 or 64, 16 and 4 for the bigger bodies) and measures messages per second, megabytes of body per second, its own CPU time per message and the latency, for requests without a body and with bodies of 4 KiB, 64 KiB and 1 MiB.
+`socket` is the `createChannel` of `node-worker-express`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
+Pin it like the load test to compare runs, for example `taskset -c 0-2 node tools/dist/scripts/channel-bench.js`; on 3 cores the socket was 2-10 times faster with a body from 4 KiB and not faster without one.
 
 ## Load tests
 
