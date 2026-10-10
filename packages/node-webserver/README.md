@@ -272,6 +272,24 @@ Requests that arrive in the meantime are answered with 503 and a `Retry-After`, 
 
 What a worker writes to its stdout and stderr is handed to `onStdout` and `onStderr` from the moment it starts.
 
+### HTTPS
+
+A server with `protocol: 'https'` is served on the https port for its host name (SNI), with the files in `key`, `cert` and, for the chain, `ca` (paths to PEM files).
+TLS ends in the front process, on the thread that serves every other request too, so a handshake slows all of them down a little, plain HTTP included. What keeps that small:
+
+- **Use an ECDSA (P-256) certificate** where the clients allow it (every current browser does). Its handshakes are cheaper for the server than with RSA 2048: about 40% more of them per second,
+  and less delay for the other requests while they run, see [the load test](../../tools/README.md#new-tls-connections). Certificate authorities, Let's Encrypt among them, issue both, for example `certbot --key-type ecdsa`. Self signed:
+
+  ```sh
+  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 365 -subj "/CN=secure.localhost" \
+    -addext "subjectAltName=DNS:secure.localhost" -keyout privkey.pem -out cert.pem
+  ```
+
+- **Session resumption** is on without any setting: a client that comes back resumes its session with a ticket, which skips the expensive part of the handshake. The keys of the tickets are made when the server starts, so a restart makes clients do full handshakes again.
+- Clients that keep their connections (`keepAliveTimeout`, below) need no new handshakes at all.
+- The cipher settings of `https.createServer` (`honorCipherOrder`, the order of the suites, `ecdhCurve`) made no measurable difference to the number of handshakes, so there is nothing to tune there. Only limiting the server to TLS 1.2 made them cheaper (about 15% more per second), which costs the clients that use TLS 1.3 their faster handshake: not worth it.
+- Where many new connections are expected, end TLS in a reverse proxy or CDN in front of the server and let it talk plain HTTP to the server.
+
 ### Connections
 
 `keepAliveTimeout` (milliseconds, default 65000) is how long the server keeps an idle connection of a client open. Node closes them after 5 seconds, which is shorter than what load balancers and proxies keep theirs for (60 seconds is common),

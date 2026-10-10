@@ -49,12 +49,12 @@ Pin it like the load test to compare runs, for example `taskset -c 0-2 node tool
 
 ```sh
 pnpm install
-pnpm load-test           # builds, starts the example server, runs the example scenario and then the CPU bound one, stops the server
+pnpm load-test           # builds, starts the example server, runs the example scenario and then the others, each on its own, stops the server
 pnpm load-test 30s       # a longer example run (15s by default)
 ```
 
 `scripts/load-test.ts` (`pnpm load-test` builds first) does what the workflow does, on one machine: it makes the certificate for `https://secure.localhost` (needs `openssl`, the HTTPS routes are left out without it),
-starts the server on `PORT_HTTP` / `PORT_HTTPS` (8080 and 8443), warms it up, runs `example.ts` and `cpu.ts` and stops the server. The exit code is 1 when a threshold fails.
+starts the server on `PORT_HTTP` / `PORT_HTTPS` (8080 and 8443), warms it up, runs `example.ts`, `cpu.ts`, `binary.ts` and, with the certificate, `tls.ts`, and stops the server. The exit code is 1 when a threshold fails.
 The k6 summary is printed, and the log of the server is in a temporary folder, whose path is printed first.
 
 It uses **the installed k6** when there is one, and otherwise **Docker** with the official [`grafana/k6`](https://hub.docker.com/r/grafana/k6) image (the version of the workflow, `k6Image` in `constants/load-test.ts`).
@@ -113,6 +113,30 @@ and `health.localhost`, whose worker answers `/health` and `/metrics` from the m
 `binary.ts` requests `web.localhost/binary/?size=786432` (`examples/binary/exampleWorker.js`: 768 KiB from the worker in a single message) with 10 users and checks every byte through the sha256, with a p95 of at most 100 ms. The comparison with the base runs it too, see below.
 It runs on its own after the CPU bound one, and is left out of the comparison with the base: a base without the route would answer it with fast errors, and look better for it.
 To see the difference to another build, give that build the route (a worker with the same name) and run the script against both servers.
+
+### New TLS connections
+
+`tls.ts` opens a new connection for every request (`noVUConnectionReuse`), so each request on `https://secure.localhost` is a full handshake on the front process (k6 does not resume TLS sessions), with 10 users.
+Next to it 100 plain HTTP requests per second go to the worker route, and one user reads `health.localhost/metrics` every half second for how late the event loop of the server ran (`tls_server_event_loop_max_ms`).
+The p95 of the plain requests and of the ones after a handshake may be at most 50 ms (`MAX_PLAIN_P95_MS`), the p95 of the handshake itself 100 ms (`MAX_HANDSHAKE_P95_MS`), and the workflow multiplies both with `P95_FACTOR`.
+It runs when there is a certificate, on its own after the binary one, and is left out of the comparison with the base. Handshakes per second are the `http_reqs` of the `handshakes` scenario.
+
+With the server on 3 cores and k6 on the fourth, three runs each (`taskset`, as in [Cores](#cores)):
+
+| Certificate | Handshakes per second | Handshake median / p95 | Plain HTTP median / p95 |
+| --- | --- | --- | --- |
+| RSA 2048, 1 user instead of 10 (one run) | 410 | 1.2 ms / 1.8 ms | 1.3 ms / 2.6 ms |
+| RSA 2048 (what the load test makes) | 670-720 | 8.5-9.0 ms / 12.5-13.4 ms | 5.5-5.9 ms / 8.5-9.6 ms |
+| ECDSA P-256 | 970-1030 | 5.4-5.7 ms / 9.4-10.1 ms | 4.0-4.2 ms / 8.3-9.4 ms |
+
+The handshakes take the event loop that serves every other request, so the plain requests are slower while they run, by less with an ECDSA certificate. Nothing in the cipher settings moved it either. Three runs of 10 seconds each, handshakes per second (RSA 2048 / ECDSA P-256): default 710-770 / 980-1000, `honorCipherOrder` 720-740 / 1000-1090, `TLS_AES_128_GCM_SHA256` first 760-780 / 990-1120,
+`TLS_CHACHA20_POLY1305_SHA256` first 750-760 / 950-1060, `ecdhCurve: 'X25519'` instead of the default `X25519MLKEM768` 720-770 / 1020-1040. The runs of one setting differ by as much as the settings do. Only `maxVersion: 'TLSv1.2'` stood out, with 820-890 / 1110-1190.
+
+```sh
+k6 run -e HTTPS_PORT=8443 tools/src/k6/tls.ts
+```
+
+Options: `VUS`, `PLAIN_RATE`, `DURATION`, `MAX_PLAIN_P95_MS`, `MAX_HANDSHAKE_P95_MS`.
 
 ### Websocket flow control
 
