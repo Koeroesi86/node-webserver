@@ -47,7 +47,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and 
 - A pull request stacked on another one says so in "What and why" and has that branch as its base.
 - One change per pull request, from a branch off `master`. Never push to `master`. Do not merge, or change the settings of the repository, unless asked.
 - The title is the squash commit: a sentence in the imperative without a prefix ("Add ...", "Cancel a request that ..."), the number is added by GitHub. The body of a commit says why.
-- **Do not commit or push to an open pull request.** Once it is open, the only thing Claude changes on it is the description (`gh pr edit --body-file`), following the template, and only where it went stale. A change to the code goes to the author or into a new branch if asked.
+- **Do not comment on pull requests** (`gh pr comment`, reviews, replies). Put what a reader needs into the description (`gh pr edit --body-file`), following the template, and keep it true when the change moves. Commits to the branch are fine.
 
 ## Code
 

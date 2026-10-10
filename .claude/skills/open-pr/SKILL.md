@@ -57,4 +57,4 @@ SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/
 4. Do not merge, and do not change the settings of the repository.
 5. Give the user the link and the list of what was not verified.
 
-Once the pull request is open, do not commit or push to it. When the change moves, only update the description with `gh pr edit --body-file`, keeping the template sections, so it stays true.
+Never comment on the pull request. When the change moves, update the description with `gh pr edit --body-file`, keeping the template sections, so it stays true.
