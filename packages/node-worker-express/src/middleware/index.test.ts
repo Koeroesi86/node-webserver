@@ -819,6 +819,8 @@ describe('workerMiddleware', () => {
 
       await fetch(`${baseUrl}/`);
       await fetch(`${baseUrl}/`);
+      await fetch(`${baseUrl}/plain/file.txt`);
+      // answered without a worker, so it has no worker file to count under
       await fetch(`${baseUrl}/plain/missing`);
       await new Promise((resolve) => setImmediate(resolve));
 
