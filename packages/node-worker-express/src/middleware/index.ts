@@ -110,7 +110,6 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
         rootPath: rootPath,
         // the body is not part of the event, the worker takes it from a stream while it arrives
         ...(streamsBody && { hasBody: true }),
-        ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
       };
 
       const isSocketRequest = event.protocol === Protocols.websocket;
@@ -315,7 +314,8 @@ const workerMiddleware = (options: MiddlewareOptions): RequestHandler => {
       lease.send({
         type: WORKER_EVENT.REQUEST,
         requestId,
-        event,
+        // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
+        event: inlineBody === undefined ? event : { ...event, body: inlineBody },
       });
 
       if (streamsBody) {

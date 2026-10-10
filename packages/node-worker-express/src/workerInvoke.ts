@@ -59,10 +59,10 @@ const createEmptyBody = () =>
   });
 
 /** the stream of the body of a request: the parts that follow, the one that came with the request, or no bytes */
-const createBodyStream = ({ hasBody, inlineBody }: RequestEvent, requestId: string) => {
+const createBodyStream = (hasBody: boolean | undefined, body: Buffer | undefined, requestId: string) => {
   if (hasBody) return createUpload(requestId);
 
-  return inlineBody ? Readable.from([Buffer.from(inlineBody, 'base64')], { objectMode: false }) : createEmptyBody();
+  return body?.length ? Readable.from([body], { objectMode: false }) : createEmptyBody();
 };
 
 /** what a worker is called with, the websocket frames and the closing of a connection too */
@@ -181,10 +181,12 @@ function messageListener(message: WorkerInputEvent) {
   }
 
   if (message.type === WORKER_EVENT.REQUEST) {
+    // the body is given to the worker as its stream, not as a part of the request
+    const { body, ...request } = message.event;
     let responded = false;
     const stream: Stream = { waiting: [], aborted: false };
     streams.set(message.requestId, stream);
-    if (message.event.protocol === Protocols.websocket) webSockets.set(message.requestId, { event: message.event, stream });
+    if (request.protocol === Protocols.websocket) webSockets.set(message.requestId, { event: request, stream });
 
     const callback = (responseEvent: ResponseEvent | WSFrameEvent) => {
       let e: WorkerOutputEvent;
@@ -250,7 +252,7 @@ function messageListener(message: WorkerInputEvent) {
     };
 
     invoke(
-      toWorkerEvent(message.event, message.requestId, createBodyStream(message.event, message.requestId)),
+      toWorkerEvent(request, message.requestId, createBodyStream(request.hasBody, body, message.requestId)),
       callback,
       (error) => {
         console.error(error);
