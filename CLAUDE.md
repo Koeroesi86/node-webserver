@@ -9,12 +9,13 @@ A pnpm workspace: a web server that hosts workers, lambdas and proxied apps by v
 pnpm install --frozen-lockfile
 pnpm build              # every package, in dependency order; the scripts and the tests of other packages run the compiled dist
 pnpm lint               # eslint with prettier, `--ext .ts`
+pnpm fallow             # unused files, exports and dependencies (errors), duplication and complexity, configured in `.fallowrc.jsonc`
 pnpm test               # unit tests
 pnpm test:integration   # starts the built server with one server of every type
 pnpm load-test          # k6 against the example server, needs k6 or Docker
 ```
 
-Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm test:integration`, plus the load test when the request path, workers, logging or proxying changed. Say which of them you did not run.
+Before saying something is done, run `pnpm lint`, `pnpm fallow`, `pnpm build`, `pnpm test` and `pnpm test:integration`, plus the load test when the request path, workers, logging or proxying changed. Say which of them you did not run.
 
 ## Layout
 
@@ -28,6 +29,8 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and 
 | `.github/` | workflows (`pr-checks.yml` gates master), the pull request template, dependabot and zizmor config |
 
 - `node-worker` and `node-worker-express` build with rollup, all the others with `tsc -p tsconfig.build.json`; every package builds to `dist/`. Packages depend on each other through `workspace:*`, so a package is tested against the `dist` of the ones it uses: run `pnpm build` after changing a dependency.
+- `pnpm fallow` enforces which package may import which (`boundaries` in `.fallowrc.jsonc`): a new `workspace:*` dependency goes into the rules there too.
+- `.claude/hooks/fallow-gate.sh` (installed with `fallow hooks install --target agent`) runs `fallow audit` before a `git commit` or `git push` of Claude and blocks it on a finding the change introduces. It needs `jq`, and `node` on the PATH (see the pitfall below), otherwise it skips the audit without a word.
 - Jest with ts-jest, `src/**/*.test.ts`. `jest-retry.js` in the root retries a failing test twice because process and socket tests depend on the runner, so a test that only passes on a retry is still a flaky test: fix it. The integration test has its own config (`packages/node-webserver/integration/jest.config.js`).
 - The older packages use camelCase file names (`startServer.ts`, `setupVirtualHosts.ts`); new files follow the kebab-case rule above, and do not rename the existing ones without a reason, as that touches `packages/**` and publishes it.
 - `node >=24` and pnpm 12 (`corepack enable`). Eslint is v8 with prettier 2, run from the root only.

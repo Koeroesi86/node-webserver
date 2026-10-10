@@ -16,7 +16,7 @@
 
 ## Verification
 
-- [ ] `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm test:integration` pass
+- [ ] `pnpm lint`, `pnpm fallow`, `pnpm build`, `pnpm test` and `pnpm test:integration` pass
 - [ ] Load test run, if the request path, workers, logging or proxying changed (`pnpm load-test` or CI)
 - [ ] Tried by hand: <!-- what you ran and saw -->
 
