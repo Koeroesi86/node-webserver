@@ -30,7 +30,7 @@ Check the table against the `workspace:*` dependencies in the `package.json` fil
 
 Fill in `.github/pull_request_template.md`, section by section, no free-form summary:
 
-- **What and why**: the reason, in a few sentences. `Closes #N` for the issue, or the pull request it is stacked on.
+- **What and why**: the reason, in a few sentences. `Closes #N` for the GitHub issue (the tickets live there, `gh issue view N`), or the pull request it is stacked on.
 - **Changes**: one line for each.
 - **Behaviour changes**: config, API, defaults or output the users notice. Delete the section if there are none.
 - **Release**: the packages from above and whether it is breaking.
@@ -57,4 +57,4 @@ SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/
 4. Do not merge, and do not change the settings of the repository.
 5. Give the user the link and the list of what was not verified.
 
-When the change moves after the pull request is open, update the description with `gh pr edit --body-file` so it stays true.
+Never comment on the pull request. When the change moves, update the description with `gh pr edit --body-file`, keeping the template sections, so it stays true.

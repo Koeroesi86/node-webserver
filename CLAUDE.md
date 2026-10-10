@@ -40,13 +40,14 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm test` and 
 
 ## Pull requests
 
+- **Tickets are GitHub issues** (`gh issue list`, `gh issue view <N>`). Read the issue and its comments before starting, and link it with `Closes #N` in the pull request.
 - **Use `.github/pull_request_template.md` and fill in every section.** Delete a section only where the template says so (Behaviour changes, Release). The body is not a free-form summary.
 - Verification: tick only what was run. Put what was not run, or not tried by hand, under **Not verified**, and write "nothing" only when everything was.
 - Release: say which packages publish (a change in `packages/**` or `pnpm-lock.yaml`, or in a package they depend on) and whether it is breaking. Delete the section for tools, docs and CI only.
 - A pull request stacked on another one says so in "What and why" and has that branch as its base.
 - One change per pull request, from a branch off `master`. Never push to `master`. Do not merge, or change the settings of the repository, unless asked.
 - The title is the squash commit: a sentence in the imperative without a prefix ("Add ...", "Cancel a request that ..."), the number is added by GitHub. The body of a commit says why.
-- After the pull request is open, keep its description true when the change moves.
+- **Do not comment on pull requests** (`gh pr comment`, reviews, replies). Put what a reader needs into the description (`gh pr edit --body-file`), following the template, and keep it true when the change moves. Commits to the branch are fine.
 
 ## Code
 
