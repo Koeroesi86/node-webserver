@@ -66,11 +66,13 @@ const createBodyStream = (hasBody: boolean | undefined, body: Buffer | undefined
 };
 
 /** what a worker is called with, the websocket frames and the closing of a connection too */
-const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Readable): WorkerRequestEvent => ({
-  ...event,
-  bodyStream,
-  getMetrics: () => getMetrics(requestId),
-});
+const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Readable, body?: Buffer): WorkerRequestEvent => {
+  const workerEvent: WorkerRequestEvent = { ...event, bodyStream, getMetrics: () => getMetrics(requestId) };
+  // workers read the body that came with the request as base64 before it travelled as bytes: encoded only when read, so nobody pays for it who does not
+  if (body !== undefined) Object.defineProperty(workerEvent, 'inlineBody', { get: () => body.toString('base64'), enumerable: true });
+
+  return workerEvent;
+};
 
 /**
  * The stream a worker reads a streamed request body from. A part is acknowledged once the reader has room for it,
@@ -252,7 +254,7 @@ function messageListener(message: WorkerInputEvent) {
     };
 
     invoke(
-      toWorkerEvent(request, message.requestId, createBodyStream(request.hasBody, body, message.requestId)),
+      toWorkerEvent(request, message.requestId, createBodyStream(request.hasBody, body, message.requestId), body),
       callback,
       (error) => {
         console.error(error);

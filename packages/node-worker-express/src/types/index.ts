@@ -20,6 +20,8 @@ export type RequestEvent = {
   binaryFrame?: Buffer;
   /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
   hasBody?: boolean;
+  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. Only a worker gets it, encoded when read. */
+  inlineBody?: string;
 };
 
 /** a request as it travels to the worker: the body travels as raw bytes, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
