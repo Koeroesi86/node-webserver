@@ -48,6 +48,29 @@ Node starts 4 threads, set `UV_THREADPOOL_SIZE` in the environment of the server
 before the process starts. `concurrency` caps how many responses of the whole process are compressed at the same time, so that a burst of compressed responses does not
 make the reads of files wait. The ones over the cap are sent as they are, and a streamed response holds its place until it ends. There is no cap by default (0).
 
+### Routes
+
+A `worker` server finds the worker of a request in the files under `root`. `routes` in its options name the worker of some paths instead, without asking the file system, and the workers may live outside of `root`:
+
+```javascript
+{
+  hostname: 'web.localhost',
+  protocol: 'http',
+  type: 'worker',
+  options: {
+    root: '/path/to/files',
+    routes: [
+      { path: '/health', worker: 'workers/health.js' },
+      { pattern: '/items/(?<id>[0-9]+)', worker: '/srv/app/items.js' }, // event.pathParameters is { id: '12' } for /items/12
+    ],
+    fallthrough: false, // answer 404 for what matches no route, instead of looking under root
+  },
+}
+```
+
+The first route that matches the path wins, and a pattern has to match the whole path. A configuration with a route that is not valid (a missing worker, a broken pattern) stops the server from starting.
+The patterns run in the front process for every request, so keep them simple. See the README of `@koeroesi86/node-worker-express` for the details.
+
 ### Request bodies
 
 The body of a request is not part of the event a worker is called with. The worker is called as soon as the request arrives, and reads the body from `event.bodyStream`, a Readable, while it comes in.
