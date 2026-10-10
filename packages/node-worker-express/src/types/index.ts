@@ -185,6 +185,13 @@ export interface MiddlewareOptions {
   /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
   warmStaticWorker?: boolean;
   /**
+   * request paths (`/`, `/api/`) whose worker file is started when the middleware is created, and started again whenever it has fewer than `warmWorkersPerPath` workers,
+   * so that no request has to wait for a process to start and load its module. The workers count towards `limit`, and requests that wait for a worker come first. Defaults to none.
+   */
+  warmPaths?: string[];
+  /** how many workers are kept running for each of `warmPaths`, at most `limitPerPath`. Defaults to 1. */
+  warmWorkersPerPath?: number;
+  /**
    * a request body that has arrived with the request, and is not bigger than this many bytes, is sent to the worker along with the request, which saves the messages for its parts.
    * Bigger ones, and ones that arrive later, are streamed. 0 streams all. Defaults to 65536.
    */
