@@ -157,3 +157,14 @@ export interface MiddlewareOptions {
   staticWorker?: string;
   cwd?: string;
 }
+
+export type StreamBody = Readable | AsyncIterable<Buffer | Uint8Array | string>;
+
+export interface StreamResponseOptions {
+  statusCode?: number;
+  headers?: ResponseEvent['headers'];
+  /** how many parts may wait to be written to the client while the next ones are produced. Not limited by default. */
+  window?: number;
+  /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
+  windowBytes?: number;
+}
