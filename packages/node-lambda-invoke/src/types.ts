@@ -56,7 +56,32 @@ export interface RequestContext {
 export interface LambdaEvent {
   type?: string;
   id?: string;
+  /** when the invocation times out, in milliseconds since the epoch */
+  deadline?: number;
 }
+
+/** the callback of a handler: an error, or the response */
+export type LambdaCallback = (error?: unknown, response?: unknown) => void;
+
+/** the context a handler is called with, as on AWS */
+export interface LambdaContext {
+  callbackWaitsForEmptyEventLoop: boolean;
+  functionName: string;
+  functionVersion: string;
+  invokedFunctionArn: string;
+  memoryLimitInMB: string;
+  awsRequestId: string;
+  logGroupName: string;
+  logStreamName: string;
+  getRemainingTimeInMillis: () => number;
+  /** the callbacks of the context of the old runtimes */
+  done: LambdaCallback;
+  succeed: (response?: unknown) => void;
+  fail: (error?: unknown) => void;
+}
+
+/** a handler of a lambda: it answers with the callback, or with the promise it returns, whichever settles first */
+export type LambdaHandler = (event: RequestEvent, context: LambdaContext, callback: LambdaCallback) => unknown;
 
 /** what a storage can be attached to: the worker itself, a lambda or the current process */
 export type StorageInstance = Lambda | Worker | NodeJS.Process;

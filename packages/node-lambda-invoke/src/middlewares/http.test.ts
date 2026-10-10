@@ -34,7 +34,21 @@ exports.handler = (event, context, callback) => {
   respond();
 };
 
+exports.asyncHandler = async (event, context) => ({
+  statusCode: 200,
+  body: JSON.stringify({ id: context.awsRequestId, requestId: event.requestContext.requestId, remaining: context.getRemainingTimeInMillis(), name: context.functionName }),
+});
+exports.controllers = { users: { get(event, context, callback) { callback(null, { statusCode: 200, body: 'this is ' + (this === exports.controllers.users) }); } } };
+exports.headers = (event, context, callback) => callback(null, { statusCode: 200, headers: { 'X-A': '1' }, multiValueHeaders: { 'x-a': ['2'] }, cookies: ['a=1', 'b=2'] });
 exports.other = (event, context, callback) => callback(null, { statusCode: 200, headers: { 'x-pid': String(process.pid) }, body: 'other ' + event.path });
+`;
+
+/** an ES module that loads asynchronously, which AWS allows */
+const esmSource = `
+import { appendFileSync } from 'node:fs';
+appendFileSync(process.env.PID_FILE, process.pid + '\\n');
+await Promise.resolve();
+export const handler = async (event) => ({ statusCode: 200, body: 'esm ' + event.path });
 `;
 
 /** a lambda whose module never finishes loading */
@@ -86,7 +100,8 @@ describe('httpMiddleware', () => {
     build = await fs.mkdtemp(path.join(__dirname, '../..', '.test-build-'));
     const compile = (source: string) =>
       ts.transpileModule(source, {
-        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, resolveJsonModule: true },
+        // node16 keeps `import()` as it is, which is how the lambda loads its module, CommonJS or ES
+        compilerOptions: { module: ts.ModuleKind.Node16, target: ts.ScriptTarget.ES2022, esModuleInterop: true, resolveJsonModule: true },
       }).outputText;
     const sources = (await fs.readdir(path.join(__dirname, '..'), { recursive: true })).filter(
       (file) => /\.(ts|json)$/.test(file) && !file.endsWith('.test.ts')
@@ -103,6 +118,7 @@ describe('httpMiddleware', () => {
     process.env.PID_FILE = pidFile;
     await fs.writeFile(lambdaPath, lambdaSource);
     await fs.writeFile(path.join(build, 'hanging.js'), hangingSource);
+    await fs.writeFile(path.join(build, 'esm.mjs'), esmSource);
     await fs.writeFile(path.join(build, 'parent.js'), parentSource);
   });
 
@@ -298,6 +314,45 @@ describe('httpMiddleware', () => {
     } finally {
       delete process.env.SECRET_OF_THE_SERVER;
     }
+  });
+
+  describe('handlers', () => {
+    it('answers with what an async handler returns, and gives it the context of AWS', async () => {
+      await start({ handlerKey: 'asyncHandler', timeout: 60000 });
+
+      const body: { id: string; requestId: string; remaining: number } = JSON.parse(await (await fetch(`${baseUrl}/`)).text());
+
+      expect(body).toMatchObject({ name: 'lambda', id: body.requestId });
+      expect(body.remaining).toBeGreaterThan(50000);
+      expect(body.remaining).toBeLessThanOrEqual(60000);
+    });
+
+    it('calls a nested handler on what holds it', async () => {
+      await start({ handlerKey: 'controllers.users.get' });
+
+      expect(await (await fetch(`${baseUrl}/`)).text()).toBe('this is true');
+    });
+
+    it('loads an ES module with top-level await', async () => {
+      await start({ lambdaPath: path.join(build, 'esm.mjs') });
+
+      expect(await (await fetch(`${baseUrl}/hello`)).text()).toBe('esm /hello');
+    });
+
+    it('answers 502 instead of waiting when the handler does not exist', async () => {
+      await start({ handlerKey: 'missing.handler' });
+
+      expect((await fetch(`${baseUrl}/`)).status).toBe(502);
+    });
+
+    it('writes the headers of several values and the cookies', async () => {
+      await start({ handlerKey: 'headers' });
+
+      const response = await fetch(`${baseUrl}/`);
+
+      expect(response.headers.get('x-a')).toBe('1, 2');
+      expect(response.headers.getSetCookie()).toEqual(['a=1', 'b=2']);
+    });
   });
 
   describe('request', () => {

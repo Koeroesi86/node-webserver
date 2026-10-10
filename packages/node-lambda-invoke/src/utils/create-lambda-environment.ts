@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname } from 'path';
 import { ALLOWED_ENV, ENV_COMMUNICATION, ENV_HANDLER, ENV_PATH } from '../constants';
 import type { Communication } from '../types';
@@ -13,6 +14,10 @@ const createLambdaEnvironment = (lambdaPath: string, handlerKey: string, communi
     ...Object.fromEntries(ALLOWED_ENV.filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]])),
     AWS_LAMBDA_FUNCTION_NAME: functionName,
     AWS_LAMBDA_FUNCTION_VERSION: '$LATEST',
+    AWS_LAMBDA_FUNCTION_MEMORY_SIZE: '128',
+    AWS_LAMBDA_LOG_GROUP_NAME: `/aws/lambda/${functionName}`,
+    AWS_LAMBDA_LOG_STREAM_NAME: `${new Date().toISOString().slice(0, 10).replace(/-/g, '/')}/[$LATEST]${randomUUID().replace(/-/g, '')}`,
+    AWS_EXECUTION_ENV: `AWS_Lambda_nodejs${process.versions.node.split('.')[0]}.x`,
     LAMBDA_TASK_ROOT: dirname(lambdaPath),
     _HANDLER: `${functionName}.${handlerKey}`,
     ...env,

@@ -13,6 +13,7 @@ import {
 } from '../constants';
 import { isRegistered, getRegisteredPath } from '../registry';
 import createRequestEvent from '../utils/create-request-event';
+import createResponseHeaders from '../utils/create-response-headers';
 import invokeLambda from '../utils/invoke-lambda';
 import isValidResponse from '../utils/is-valid-response';
 import readRequestBody from '../utils/read-request-body';
@@ -28,7 +29,7 @@ const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) =
     return;
   }
 
-  response.writeHead(responseEvent.statusCode, responseEvent.headers ?? undefined);
+  response.writeHead(responseEvent.statusCode, createResponseHeaders(responseEvent));
 
   if (!responseEvent.body) {
     response.end();

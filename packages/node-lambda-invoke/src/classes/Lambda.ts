@@ -1,6 +1,6 @@
 import { resolve } from 'path';
 import Worker from './Worker';
-import { EVENT_REQUEST, EVENT_RESPONSE } from '../constants';
+import { DEFAULT_TIMEOUT, EVENT_REQUEST, EVENT_RESPONSE } from '../constants';
 import createLambdaEnvironment from '../utils/create-lambda-environment';
 import { getRegisteredPath } from '../registry';
 import type RequestEvent from './RequestEvent';
@@ -67,7 +67,7 @@ class Lambda {
     });
   }
 
-  invoke(requestId: string, requestEvent: RequestEvent, callback: (response: ResponseEvent) => void = () => {}) {
+  invoke(requestId: string, requestEvent: RequestEvent, callback: (response: ResponseEvent) => void = () => {}, timeout = DEFAULT_TIMEOUT) {
     if (!this.instance) this.instance = this.createInstance();
     const { instance } = this;
     const storage = new this.StorageDriver(requestId, instance);
@@ -79,7 +79,7 @@ class Lambda {
         this._requestId = requestId;
         this._callback = callback;
         instance.addEventListener('message', this._onFinished);
-        instance.postMessage({ type: EVENT_REQUEST, id: requestId });
+        instance.postMessage({ type: EVENT_REQUEST, id: requestId, deadline: Date.now() + timeout });
       })
       .catch((error) => {
         // the lambda was not given the request, so it is free again and the request is answered with the failure
