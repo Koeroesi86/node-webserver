@@ -69,6 +69,11 @@ export interface CompressionOptions {
   brotliQuality?: number;
   /** what may be used, in the order of preference when the client likes them the same. Defaults to all of them: br, gzip, deflate. */
   encodings?: CompressionEncoding[];
+  /**
+   * how many responses the whole process compresses at the same time, the others are sent as they are, as the threadpool of node that runs zlib also runs
+   * the file system and DNS work. Defaults to 0, no limit.
+   */
+  concurrency?: number;
 }
 
 export interface ServerInstance {

@@ -10,6 +10,12 @@ const compressibleTypes =
   /^(text\/|application\/(json|(x-)?javascript|xml|wasm|manifest\+json|.+\+(json|xml))|image\/svg\+xml|font\/(ttf|otf)|application\/vnd\.ms-fontobject)/i;
 const bodylessStatuses = [204, 205, 304];
 
+/**
+ * the responses being compressed in this process. zlib runs on the threadpool of node, which the file system and DNS share: a cap keeps a burst of
+ * compressed responses from queueing the reads of files behind it, the ones over it are sent as they are.
+ */
+let compressing = 0;
+
 const lowerCased = (headers: Headers) => Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
 const asString = (value: unknown) => (Array.isArray(value) ? value.join(', ') : `${value ?? ''}`);
 
@@ -55,7 +61,7 @@ const createStream = (encoding: CompressionEncoding, { level = 6, brotliQuality 
 const compression =
   (options: CompressionOptions = {}): RequestHandler =>
   (request, response, next) => {
-    const { threshold = 1024, encodings = defaultEncodings } = options;
+    const { threshold = 1024, encodings = defaultEncodings, concurrency = 0 } = options;
     const encoding = chooseEncoding(asString(request.headers['accept-encoding']), encodings);
     const { writeHead, write, end } = response;
     const original = {
@@ -68,11 +74,23 @@ const compression =
 
     const startCompressing = (compressionEncoding: CompressionEncoding, length: number | undefined) => {
       const compressor = createStream(compressionEncoding, options, length);
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        compressing -= 1;
+      };
+      compressing += 1;
       // the compressed data goes out through the original write, and the source waits when the client does not keep up
       compressor.on('data', (chunk: Buffer) => {
         if (original.write(chunk) === false) compressor.pause();
       });
-      compressor.on('end', () => original.end());
+      compressor.on('end', () => {
+        // before the response ends, so that the next request of the client already finds the place free
+        release();
+        original.end();
+      });
+      compressor.on('close', release);
       compressor.on('error', () => response.destroy());
       response.on('drain', () => compressor.resume());
       response.on('close', () => compressor.destroy());
@@ -97,7 +115,8 @@ const compression =
         !bodylessStatuses.includes(statusCode) &&
         (headers['content-encoding'] === undefined || headers['content-encoding'] === 'identity') &&
         !/(^|,)\s*no-transform\s*(,|$)/i.test(asString(headers['cache-control'])) &&
-        (length === undefined || Number.isNaN(length) || length >= threshold);
+        (length === undefined || Number.isNaN(length) || length >= threshold) &&
+        (concurrency === 0 || compressing < concurrency);
 
       if (!mayCompress) return varied;
 

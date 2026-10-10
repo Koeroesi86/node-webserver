@@ -34,7 +34,7 @@ Compression is off. Switch it on for a server with `compression` in its definiti
   hostname: 'web.localhost',
   protocol: 'http',
   type: 'worker',
-  compression: true, // or { threshold: 512, level: 6, brotliQuality: 4, encodings: ['br', 'gzip'] }
+  compression: true, // or { threshold: 512, level: 6, brotliQuality: 4, encodings: ['br', 'gzip'], concurrency: 4 }
   options: { root: '/path/to/files' },
 }
 ```
@@ -42,6 +42,11 @@ Compression is off. Switch it on for a server with `compression` in its definiti
 Responses of text like types (text, JSON, JavaScript, XML, SVG, some fonts) are compressed with brotli, gzip or deflate, whichever the client accepts and likes most,
 when they are at least `threshold` bytes (1024 by default) or of unknown size. Streamed responses stay streamed, as every part is flushed. The compression runs on the
 threads of node, not on the one that serves the requests, but it still takes CPU: leave it to a reverse proxy or CDN if there is one in front of the server.
+
+Those threads are the threadpool of node, which the file system work and the look up of host names (like `localhost` of a proxied server) use as well.
+Node starts 4 threads, set `UV_THREADPOOL_SIZE` in the environment of the server for more (up to 1024): it is read when the threadpool starts, so it has to be set
+before the process starts. `concurrency` caps how many responses of the whole process are compressed at the same time, so that a burst of compressed responses does not
+make the reads of files wait. The ones over the cap are sent as they are, and a streamed response holds its place until it ends. There is no cap by default (0).
 
 ### Request bodies
 
