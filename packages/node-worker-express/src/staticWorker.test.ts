@@ -82,6 +82,28 @@ describe('staticWorker', () => {
     expect((await request('/index.html', 'POST')).statusCode).toBe(404);
   });
 
+  it('reads a small file only once while it does not change', async () => {
+    await fs.writeFile(path.join(root, 'cached.txt'), 'cached');
+    await request('/cached.txt');
+    const readFile = jest.spyOn(fs, 'readFile');
+
+    expect(bodyOf(await request('/cached.txt'))).toBe('cached');
+    expect(readFile).not.toHaveBeenCalled();
+    readFile.mockRestore();
+  });
+
+  it('serves the new content of a small file that changed between two requests', async () => {
+    const file = path.join(root, 'changing.txt');
+    await fs.writeFile(file, 'before');
+    expect(bodyOf(await request('/changing.txt'))).toBe('before');
+
+    await fs.writeFile(file, 'after the change');
+    const response = await request('/changing.txt');
+
+    expect(bodyOf(response)).toBe('after the change');
+    expect(response.headers['Content-Length']).toBe('16');
+  });
+
   describe('conditional requests', () => {
     it('answers 304 without a body for the ETag it sent', async () => {
       const { headers } = await request('/index.html');

@@ -79,6 +79,15 @@ const routes: Record<string, Route> = {
     validate: (r) => r.headers['Content-Type'].startsWith('image/') && Number(r.headers['Content-Length']) > 0,
     maxP95: 20,
   },
+  // a client that has the file already: the static worker answers from the stats of the file, without its content
+  staticNotModified: {
+    method: 'GET',
+    url: `${baseUrl}/static/index.html`,
+    headers: { 'If-Modified-Since': 'Fri, 01 Jan 2100 00:00:00 GMT' },
+    status: 304,
+    validate: (r) => r.body === '' || r.body === null,
+    maxP95: 20,
+  },
   // the example lambda serves the files of the static folder, in a lambda process. A lambda answers one request at a time and there are as many as cores,
   // so only a share of the iterations goes there: the route is meant to measure the lambda, not the queue in front of them
   lambda: {

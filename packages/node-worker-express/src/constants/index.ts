@@ -30,6 +30,12 @@ export enum WORKER_EVENT {
 export const StaticStreamThreshold = 1024 * 1024;
 
 /**
+ * Every static worker keeps the files it sends in one part in memory, up to this many of them and this many bytes, the least recently used go first.
+ * A file is read again when its size or modification time changed, which the worker checks for every request anyway.
+ */
+export const StaticFileCache = { entries: 1000, bytes: 16 * 1024 * 1024 };
+
+/**
  * The largest frame of the channel between the server and a worker, in bytes, which a message and its body have to fit in.
  * A length above it is taken for garbage and closes the channel, instead of buffering up to the 4 GiB a length can say.
  * Bodies up to about 400 MB were all the JSON of the IPC before the socket pair could carry as base64, so no response that worked then is refused.
