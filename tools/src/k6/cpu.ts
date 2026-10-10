@@ -7,8 +7,9 @@ import { check } from 'k6';
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
 const rounds = 8000;
-// 11-24 ms were seen on the 4 core GitHub runners, where a single worker needs seconds
-const maxP95 = Number(__ENV.MAX_P95_MS || 50);
+// 9-37 ms were seen on the 4 core GitHub runners, where a single worker needs seconds: the limit only catches a collapse,
+// a slowdown is for the comparison with the base to find
+const maxP95 = Number(__ENV.MAX_P95_MS || 100);
 // systems where k6 shares starved cores with the workers drop a few iterations without the server being at fault
 const maxDropped = Number(__ENV.MAX_DROPPED || 0);
 

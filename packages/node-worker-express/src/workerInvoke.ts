@@ -1,6 +1,6 @@
 import net from 'net';
 import { Readable } from 'stream';
-import { Protocols, WORKER_EVENT } from './constants';
+import { ChannelMaxFrameLength, Protocols, WORKER_EVENT } from './constants';
 import {
   HandOffEvent,
   InvokableWorker,
@@ -100,18 +100,20 @@ const createEmptyBody = () =>
   });
 
 /** the stream of the body of a request: the parts that follow, the one that came with the request, or no bytes */
-const createBodyStream = ({ hasBody, inlineBody }: RequestEvent, requestId: string) => {
+const createBodyStream = (hasBody: boolean | undefined, body: Buffer | undefined, requestId: string) => {
   if (hasBody) return createUpload(requestId);
 
-  return inlineBody ? Readable.from([Buffer.from(inlineBody, 'base64')], { objectMode: false }) : createEmptyBody();
+  return body?.length ? Readable.from([body], { objectMode: false }) : createEmptyBody();
 };
 
 /** what a worker is called with, the websocket frames and the closing of a connection too */
-const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Readable): WorkerRequestEvent => ({
-  ...event,
-  bodyStream,
-  getMetrics: () => getMetrics(requestId),
-});
+const toWorkerEvent = (event: RequestEvent, requestId: string, bodyStream: Readable, body?: Buffer): WorkerRequestEvent => {
+  const workerEvent: WorkerRequestEvent = { ...event, bodyStream, getMetrics: () => getMetrics(requestId) };
+  // workers read the body that came with the request as base64 before it travelled as bytes: encoded only when read, so nobody pays for it who does not
+  if (body !== undefined) Object.defineProperty(workerEvent, 'inlineBody', { get: () => body.toString('base64'), enumerable: true });
+
+  return workerEvent;
+};
 
 /**
  * The stream a worker reads a streamed request body from. A part is acknowledged once the reader has room for it,
@@ -162,7 +164,7 @@ function sendWsMessage(requestId: string, stream: Stream | undefined, { frame, c
 
   // the acknowledgements find the stream by the request
   streams.set(requestId, stream);
-  channel.send({
+  const sent = channel.send({
     type: WORKER_EVENT.WS_MESSAGE_SEND,
     requestId,
     event: {
@@ -170,8 +172,11 @@ function sendWsMessage(requestId: string, stream: Stream | undefined, { frame, c
       ...(close && { close }),
     },
   });
+  if (!sent && channelSocket.writable) {
+    console.error(new Error(`A websocket message of ${requestId} is bigger than the ${ChannelMaxFrameLength} bytes a message may have.`));
+  }
 
-  return frame === undefined ? Promise.resolve(false) : new Promise<boolean>((resolve) => stream.waiting.push(resolve));
+  return frame === undefined || !sent ? Promise.resolve(false) : new Promise<boolean>((resolve) => stream.waiting.push(resolve));
 }
 
 /** the connection is gone: what the worker waits for will not come */
@@ -224,10 +229,12 @@ function messageListener(message: WorkerInputEvent) {
   }
 
   if (message.type === WORKER_EVENT.REQUEST) {
+    // the body is given to the worker as its stream, not as a part of the request
+    const { body, ...request } = message.event;
     let responded = false;
     const stream: Stream = { waiting: [], aborted: false };
     streams.set(message.requestId, stream);
-    if (message.event.protocol === Protocols.websocket) webSockets.set(message.requestId, { event: message.event, stream });
+    if (request.protocol === Protocols.websocket) webSockets.set(message.requestId, { event: request, stream });
 
     const callback = (responseEvent: ResponseEvent | HandOffEvent | WSFrameEvent) => {
       let e: WorkerOutputEvent;
@@ -267,7 +274,12 @@ function messageListener(message: WorkerInputEvent) {
         streams.set(message.requestId, stream);
       }
 
-      channel.send(e);
+      if (!channel.send(e) && channelSocket.writable) {
+        // too big for a frame: the request fails alone, instead of the channel and with it the other requests of the worker
+        console.error(new Error(`A response of ${message.requestId} is bigger than the ${ChannelMaxFrameLength} bytes a message may have, stream it instead.`));
+        if (e.type === WORKER_EVENT.RESPONSE_EMIT) return Promise.resolve(false);
+        channel.send({ type: WORKER_EVENT.RESPONSE, requestId: message.requestId, event: toMessage(internalServerError) });
+      }
 
       // once the response is complete the server drops the rest of the request body, so the stream has nothing more to give
       if (e.type === WORKER_EVENT.RESPONSE || (e.type === WORKER_EVENT.RESPONSE_EMIT && e.event?.body === null)) {
@@ -292,7 +304,7 @@ function messageListener(message: WorkerInputEvent) {
     };
 
     invoke(
-      toWorkerEvent(message.event, message.requestId, createBodyStream(message.event, message.requestId)),
+      toWorkerEvent(request, message.requestId, createBodyStream(request.hasBody, body, message.requestId), body),
       callback,
       (error) => {
         console.error(error);

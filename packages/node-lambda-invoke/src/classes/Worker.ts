@@ -3,27 +3,25 @@ import type { ChildProcess, Serializable, SpawnOptions } from 'child_process';
 import type { Listener } from '../types';
 
 // TODO: move this to separate package
+export interface WorkerOptions extends SpawnOptions {
+  /** flags for node, before the file */
+  execArgv?: string[];
+}
+
 class Worker {
   readonly workerPath: string;
   instance?: ChildProcess;
 
-  constructor(workerPath: string, options: SpawnOptions = {}) {
+  constructor(workerPath: string, { execArgv = [], ...options }: WorkerOptions = {}) {
     this.workerPath = workerPath;
     // the running node, as the environment of the worker may not have it on its PATH
-    const instance = spawn(process.execPath, [...this.workerPath.split(' ')], {
+    const instance = spawn(process.execPath, [...execArgv, ...this.workerPath.split(' ')], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       ...options,
     });
     this.instance = instance;
     // an unhandled error event would take the whole process down, for example when the process could not be spawned
     instance.on('error', (error) => console.error(error));
-
-    if (instance.stdout) {
-      const messageListener = (data: Buffer | string) => {
-        console.info(data.toString().trim());
-      };
-      instance.stdout.on('data', messageListener);
-    }
     instance.once('close', () => {
       delete this.instance;
     });
@@ -80,8 +78,9 @@ class Worker {
   //
   // }
 
-  terminate() {
-    if (this.instance) this.instance.kill('SIGINT');
+  /** a lambda can ignore SIGINT, SIGKILL is for one that has to stop */
+  terminate(signal: NodeJS.Signals = 'SIGINT') {
+    if (this.instance) this.instance.kill(signal);
   }
 
   postMessage(message: Serializable, cb: (error: Error | null) => void = () => {}) {

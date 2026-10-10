@@ -4,14 +4,18 @@ import getDate from '../utils/getDate';
 import logger from '../utils/logger';
 import type { LogLevels } from '../types';
 
-const fullUrl = (request: Request) => `${request.protocol}://${request.get('host')}${request.originalUrl}`;
+// the host header is read from the parsed headers, request.get() lowercases the name and looks at the special cases of express for every call
+const fullUrl = (request: Request) => `${request.protocol}://${request.headers.host}${request.originalUrl}`;
+
+const redactedHeaders = ['authorization', 'proxy-authorization'];
 
 const serialiseHeaders = (request: Request) =>
   JSON.stringify(
     Object.fromEntries(
       Object.keys(request.headers)
         .sort()
-        .map((key) => [key, request.headers[key]])
+        // credentials, like the token of the control path of a proxy, are never logged
+        .map((key) => [key, redactedHeaders.includes(key) ? '[redacted]' : request.headers[key]])
     )
   );
 
@@ -23,20 +27,16 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
   const logsResponses = logger.isEnabled('success') || logger.isEnabled('error');
 
   return (request: Request, response: Response, next: NextFunction) => {
+    // both lines of a request show the same url, and request.protocol of express is not cheap, so it is built when the first line needs it
+    let url: string | undefined;
+    const getUrl = () => (url ??= fullUrl(request));
+
     if (logsRequests) {
       // after the request was handed on, with the cheapest way to wait for that
       setImmediate(() => {
         const timePrefix = `[${getDate()}]`;
         logger.success(
-          [
-            timePrefix,
-            `[${alias}]`,
-            'REQUEST',
-            (request.method || '!no-method!').toUpperCase(),
-            fullUrl(request),
-            'HEADERS',
-            `${serialiseHeaders(request)}`,
-          ].join(' ')
+          [timePrefix, `[${alias}]`, 'REQUEST', (request.method || '!no-method!').toUpperCase(), getUrl(), 'HEADERS', `${serialiseHeaders(request)}`].join(' ')
         );
       });
     }
@@ -53,7 +53,7 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
           `[${alias}]`,
           'RESPONSE',
           (request.method || '!no-method!').toUpperCase(),
-          fullUrl(request),
+          getUrl(),
           response.statusCode,
           response.statusMessage,
           `${response.get('Content-Length') || 0}b sent`,

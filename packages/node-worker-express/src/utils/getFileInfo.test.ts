@@ -66,14 +66,14 @@ describe('getFileInfo', () => {
   });
 
   it('forgets the oldest files when there are too many', async () => {
-    const files = await Promise.all(Array.from({ length: 1001 }, (_, index) => create(`many-${index}.txt`, 'x')));
-    await files.reduce((previous, { fileName, stats }) => previous.then(() => getFileInfo(fileName, stats).then(() => undefined)), Promise.resolve());
-    getCharsetMock.mockClear();
+    // binary names are never read, so one real file gives the stats and creating a thousand files (slow on windows) is not needed
+    const { stats } = await create('many.bin', 'x');
+    const fileNames = Array.from({ length: 1001 }, (_, index) => path.join(folder, `many-${index}.bin`));
+    // nothing is awaited for a binary name before it is kept, so they go into the cache in this order
+    const infos = await Promise.all(fileNames.map((fileName) => getFileInfo(fileName, stats)));
 
-    await getFileInfo(files[1000].fileName, files[1000].stats);
-    expect(getCharsetMock).not.toHaveBeenCalled();
-
-    await getFileInfo(files[0].fileName, files[0].stats);
-    expect(getCharsetMock).toHaveBeenCalledTimes(1);
+    // a kept result is returned as the same object, a new one is a new object
+    expect(await getFileInfo(fileNames[1000], stats)).toBe(infos[1000]);
+    expect(await getFileInfo(fileNames[0], stats)).not.toBe(infos[0]);
   });
 });

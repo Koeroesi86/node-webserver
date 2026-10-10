@@ -1,53 +1,40 @@
-import { existsSync, rmSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync } from 'fs';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
 import FileStorage from './FileStorage';
 import RequestEvent from './RequestEvent';
 
 describe('FileStorage', () => {
-  const originalBases = { requestBase: FileStorage.requestBase, responseBase: FileStorage.responseBase };
-  let base: string;
+  let folder: string;
 
-  beforeEach(() => {
-    base = resolve(__dirname, '../..', `.test-file-storage-${process.pid}-${Date.now()}`);
-    FileStorage.requestBase = resolve(base, 'requests');
-    FileStorage.responseBase = resolve(base, 'responses');
-    FileStorage.start();
+  beforeEach(async () => {
+    folder = await mkdtemp(join(tmpdir(), 'file-storage-'));
   });
 
-  afterEach(() => {
-    rmSync(base, { recursive: true, force: true });
-    Object.assign(FileStorage, originalBases);
+  afterEach(async () => {
+    await rm(folder, { recursive: true, force: true });
   });
+
+  const create = (id: string) => new FileStorage(id, process, folder);
 
   const request = Object.assign(new RequestEvent(), { path: '/a', httpMethod: 'GET', headers: { a: 'b' }, queryStringParameters: { q: '1' } });
 
-  it('creates the folders when it starts, and empties them', async () => {
-    await new FileStorage('old').setRequest(request);
-    FileStorage.start();
-
-    expect(existsSync(FileStorage.requestBase)).toBe(true);
-    expect(existsSync(FileStorage.responseBase)).toBe(true);
-    expect(existsSync(new FileStorage('old').requestPath)).toBe(false);
+  it('needs the folder of the lambda', () => {
+    expect(() => new FileStorage('abc', process)).toThrow('folder');
   });
 
-  it('leaves dotfiles such as .gitkeep in the folders when it empties them', () => {
-    writeFileSync(resolve(FileStorage.requestBase, '.gitkeep'), '');
-    FileStorage.start();
+  it('keeps a request and a response in files named by the id, in the folder', () => {
+    const storage = create('abc');
 
-    expect(existsSync(resolve(FileStorage.requestBase, '.gitkeep'))).toBe(true);
-  });
-
-  it('keeps a request and a response in files named by the id', () => {
-    const storage = new FileStorage('abc');
-
-    expect(storage.requestPath).toBe(resolve(FileStorage.requestBase, 'abc'));
-    expect(storage.responsePath).toBe(resolve(FileStorage.responseBase, 'abc'));
+    expect(storage.requestPath).toBe(resolve(folder, 'request-abc'));
+    expect(storage.responsePath).toBe(resolve(folder, 'response-abc'));
   });
 
   it('stores and restores a request', async () => {
-    await new FileStorage('abc').setRequest(request);
+    await create('abc').setRequest(request);
 
-    await expect(new FileStorage('abc').getRequest()).resolves.toEqual({
+    await expect(create('abc').getRequest()).resolves.toEqual({
       path: '/a',
       httpMethod: 'GET',
       headers: { a: 'b' },
@@ -56,17 +43,29 @@ describe('FileStorage', () => {
   });
 
   it('stores and restores a response', async () => {
-    await new FileStorage('abc').setResponse({ statusCode: 201, body: 'ő' });
+    await create('abc').setResponse({ statusCode: 201, body: 'ő' });
 
-    await expect(new FileStorage('abc').getResponse()).resolves.toEqual({ statusCode: 201, body: 'ő' });
+    await expect(create('abc').getResponse()).resolves.toEqual({ statusCode: 201, body: 'ő' });
+  });
+
+  it('does not mix the files of two folders', async () => {
+    const other = await mkdtemp(join(tmpdir(), 'file-storage-'));
+
+    try {
+      await create('abc').setResponse({ statusCode: 201 });
+
+      await expect(new FileStorage('abc', process, other).getResponse()).rejects.toThrow();
+    } finally {
+      await rm(other, { recursive: true, force: true });
+    }
   });
 
   it('rejects when there is nothing stored', async () => {
-    await expect(new FileStorage('nothing').getResponse()).rejects.toThrow();
+    await expect(create('nothing').getResponse()).rejects.toThrow();
   });
 
   it('removes both files when destroyed, and does not mind when they are gone already', async () => {
-    const storage = new FileStorage('abc');
+    const storage = create('abc');
     await storage.setRequest(request);
     await storage.setResponse({ statusCode: 200 });
     await storage.destroy();
@@ -77,7 +76,7 @@ describe('FileStorage', () => {
   });
 
   it('survives being destroyed twice at the same time, as the lambda and the middleware both do it', async () => {
-    const storage = new FileStorage('abc');
+    const storage = create('abc');
     await storage.setRequest(request);
     await storage.setResponse({ statusCode: 200 });
 

@@ -6,6 +6,10 @@ import type { ResponseCallback, ResponseEvent } from './types';
 const bodyOf = (parts: ResponseEvent[]) => Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer));
 
 describe('streamResponse', () => {
+  it('is the module.exports of its file, as workers require it by its path', () => {
+    expect(jest.requireActual('./streamResponse')).toBe(streamResponse);
+  });
+
   /** collects the parts, `acknowledge` decides what the promise of each part resolves to */
   const collect = (acknowledge: (part: number) => unknown = () => true) => {
     const parts: ResponseEvent[] = [];

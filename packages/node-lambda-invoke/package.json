@@ -38,8 +38,6 @@
   "files": [
     "dist",
     "example",
-    ".env.example",
-    "requests/.gitkeep",
-    "responses/.gitkeep"
+    ".env.example"
   ]
 }

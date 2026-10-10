@@ -13,11 +13,19 @@ export interface CpuSummaries {
   headCpu?: K6Summary[];
 }
 
+/** the runs of binary.ts, big binary responses from a worker */
+export interface BinarySummaries {
+  baseBinary?: K6Summary[];
+  headBinary?: K6Summary[];
+}
+
 export interface SummaryPaths {
   base: string[];
   head: string[];
   baseCpu?: string[];
   headCpu?: string[];
+  baseBinary?: string[];
+  headBinary?: string[];
 }
 
 export interface ComparisonResult {
@@ -33,11 +41,16 @@ export interface ComparisonOptions {
   rounds: number;
   duration: string;
   cpuDuration: string;
+  binaryDuration: string;
   resultsDirectory: string;
   portHttp: string;
   portHttps: string;
   serverPrefix: string[];
   k6Prefix: string[];
+  /** variables for the servers of both sides, on top of the environment: a setting that the base has to know as well to be compared with */
+  serverEnvironment?: Record<string, string>;
+  /** only example.ts is run, not the CPU bound and the binary scenarios: for a setting that is about what every request goes through */
+  mainOnly?: boolean;
 }
 
 export interface ComparisonDetails extends ComparisonResult {

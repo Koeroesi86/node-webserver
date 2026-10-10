@@ -36,6 +36,22 @@ describe('metrics', () => {
       expect(['2xx', '3xx', '4xx', '5xx'].map((name) => after[name] - before[name])).toEqual([2, 1, 1, 2]);
     });
 
+    it('counts how long a request took once its response is closed, overall and in the histogram of its path', () => {
+      const before = getServerMetrics().requests.latencyMs.count;
+      const tracked = response();
+      const recorded: number[] = [];
+
+      trackRequest(tracked).path = { record: (durationMs) => recorded.push(durationMs), read: () => getServerMetrics().requests.latencyMs };
+      const during = getServerMetrics().requests.latencyMs.count;
+      tracked.emit('close');
+      const after = getServerMetrics().requests.latencyMs;
+
+      expect(during).toBe(before);
+      expect(after.count - before).toBe(1);
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]).toBeGreaterThanOrEqual(0);
+    });
+
     it('does not let a caller change the counters through a snapshot', () => {
       const snapshot = getServerMetrics();
       snapshot.requests.total = -1;

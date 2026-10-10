@@ -41,6 +41,10 @@ module.exports = async (event, callback) => {
       fs.writeFileSync(path.join(event.rootPath, 'ws-waited'), String(sent));
     }
     if (event.path === '/ws-closes') callback({ sendWsMessage: true, close: { code: 4000, reason: 'bye' } });
+    if (event.path === '/ws-too-big') {
+      const sent = await callback({ sendWsMessage: true, frame: Buffer.alloc(5 * 1024 * 1024) });
+      fs.writeFileSync(path.join(event.rootPath, 'ws-too-big'), String(sent));
+    }
     return;
   }
   if (event.protocol === 'WS') {
@@ -75,6 +79,10 @@ module.exports = async (event, callback) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     return callback({ statusCode: 200, headers: {}, body: await readBody(event), isBase64Encoded: false });
   }
+  if (event.path === '/event-keys') return callback({ statusCode: 200, headers: {}, body: JSON.stringify(Object.keys(event).sort()), isBase64Encoded: false });
+  if (event.path === '/inline-body-field') {
+    return callback({ statusCode: 200, headers: {}, body: JSON.stringify({ inlineBody: event.inlineBody, keys: Object.keys(event).includes('inlineBody') }), isBase64Encoded: false });
+  }
   if (event.path === '/upload-ignored') return callback({ statusCode: 413, headers: {}, body: 'too large', isBase64Encoded: false });
   if (event.path === '/upload-catches') {
     try {
@@ -98,6 +106,12 @@ module.exports = async (event, callback) => {
     else await new Promise((resolve) => socket.once('close', resolve));
     return callback(part(null));
   }
+  if (event.path === '/too-big') return callback({ statusCode: 200, headers: {}, body: Buffer.alloc(5 * 1024 * 1024) });
+  if (event.path === '/too-big-part') {
+    const sent = await callback(part(Buffer.alloc(5 * 1024 * 1024)));
+    fs.writeFileSync(path.join(event.rootPath, 'too-big-part'), String(sent));
+    await callback(part(null));
+  }
   if (event.path === '/stops-when-aborted') {
     let index = 0;
     while (await callback(part('part ' + index++)));
@@ -118,10 +132,12 @@ describe('workerInvoke', () => {
     await fs.mkdir(path.join(folder, 'utils'));
     const compile = (source: string) =>
       ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
+    // a limit of a frame that a response can go over without half a gigabyte, still above the response of several megabytes
+    const smallerLimit = (source: string) => source.replace(/ChannelMaxFrameLength = [^;]+;/, `ChannelMaxFrameLength = ${4 * 1024 * 1024};`);
     // what the worker process loads, as the build puts it together
     await Promise.all(
       ['workerInvoke', 'constants/index', 'utils/createChannel', 'utils/frames'].map(async (file) =>
-        fs.writeFile(path.join(folder, `${file}.js`), compile(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8')))
+        fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8'))))
       )
     );
     await fs.writeFile(path.join(folder, 'worker.js'), workerSource);
@@ -160,7 +176,7 @@ describe('workerInvoke', () => {
         rootPath: folder,
         headers: {},
         ...(hasBody && { hasBody: true }),
-        ...(inlineBody !== undefined && { inlineBody: inlineBody.toString('base64') }),
+        ...(inlineBody !== undefined && { body: inlineBody }),
       },
     });
   const sendUpgrade = (requestId: string, requestPath = '/ws') =>
@@ -217,6 +233,35 @@ describe('workerInvoke', () => {
     await until(() => of('a').length === 1);
 
     expect(Buffer.alloc(3 * 1024 * 1024, 7).equals(Buffer.from(of('a')[0].event.body))).toBe(true);
+  });
+
+  it('answers a response too big for the channel with a 500, and goes on with the other requests', async () => {
+    send('a', '/too-big');
+    send('b', '/plain');
+
+    await until(() => of('a').length === 1 && of('b').length === 1);
+
+    expect(of('a')[0]).toMatchObject({ type: WORKER_EVENT.RESPONSE, event: { statusCode: 500 } });
+    expect(of('b')[0].event).toMatchObject({ statusCode: 200, body: Buffer.from('plain') });
+  });
+
+  it('tells a worker that a streamed part too big for the channel was not sent', async () => {
+    send('a', '/too-big-part');
+
+    await until(() => fsSync.existsSync(path.join(folder, 'too-big-part')) && of('a').length === 1);
+
+    expect(fsSync.readFileSync(path.join(folder, 'too-big-part'), 'utf8')).toBe('false');
+    // the end of the response, which the server writes as a truncated one
+    expect(of('a')[0]).toMatchObject({ type: WORKER_EVENT.RESPONSE_EMIT, event: { body: null } });
+  });
+
+  it('tells a worker that a websocket message too big for the channel was not sent', async () => {
+    sendUpgrade('a', '/ws-too-big');
+
+    await until(() => fsSync.existsSync(path.join(folder, 'ws-too-big')));
+
+    expect(fsSync.readFileSync(path.join(folder, 'ws-too-big'), 'utf8')).toBe('false');
+    expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND)).toHaveLength(0);
   });
 
   it('sends nothing else for a plain request, as every message is a write to the channel', async () => {
@@ -417,6 +462,26 @@ describe('workerInvoke', () => {
       expect(answerOf('a')).toEqual({ size: body.length, sha256: sha256(body) });
     });
 
+    it('is not a part of the request the worker is called with', async () => {
+      send('a', '/event-keys', false, Buffer.from('inline'));
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).not.toContain('body');
+      expect(answerOf('a')).toContain('bodyStream');
+    });
+
+    it('is still given to the worker as base64 in inlineBody, and only when there is a body', async () => {
+      const body = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
+      send('a', '/inline-body-field', false, body);
+      send('b', '/inline-body-field');
+
+      await until(() => of('a', WORKER_EVENT.RESPONSE).length === 1 && of('b', WORKER_EVENT.RESPONSE).length === 1);
+
+      expect(answerOf('a')).toEqual({ inlineBody: body.toString('base64'), keys: true });
+      expect(answerOf('b')).toEqual({ keys: false });
+    });
+
     it('keeps every byte', async () => {
       const body = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
       send('a', '/upload', false, body);
@@ -470,7 +535,12 @@ describe('workerInvoke', () => {
       uptimeSeconds,
       memory: { rss: 0, heapTotal: 0, heapUsed: 0, external: 0 },
       eventLoopDelayMs: { mean: 0, p99: 0, max: 0 },
-      requests: { total: 0, active: 0, status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 } },
+      requests: {
+        total: 0,
+        active: 0,
+        status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 },
+        latencyMs: { count: 0, sumMs: 0, maxMs: 0, p50: 0, p90: 0, p99: 0, buckets: {} },
+      },
       sources: {},
     });
 

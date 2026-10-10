@@ -5,7 +5,7 @@ import https from 'https';
 import path from 'path';
 import fs from 'fs';
 import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
-import { registerMetricsSource } from '@koeroesi86/node-worker-express';
+import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
 import exampleConfig from '../configuration.example';
 import accessLogsMiddleware from '../middlewares/accessLogs';
 import addExitListeners from './exitHandler';
@@ -40,6 +40,10 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
     ...exampleConfig,
     ...configuration,
   };
+  const { trustedProxies = [] } = hydratedConfiguration;
+  // before the hosts are set up, as the client address and the protocol of every request depend on it
+  httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.http ?? []);
+  httpsApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.https ?? []);
   const instances = hydratedConfiguration.servers.flatMap((config) => (typeof config === 'string' ? loadInstance(config) : [config]));
   /** access logs */
   httpApp.use(accessLogsMiddleware({ alias: 'http' }));
@@ -48,7 +52,9 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   /** overall stats endpoint */
   setupStatsHandler(instances, httpApp, configuration);
 
-  setupVirtualHosts(instances, httpApp, httpsApp, configuration);
+  const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
+  registerMetricsSource('workers', workerBudget.getStats);
+  setupVirtualHosts(instances, httpApp, httpsApp, configuration, workerBudget);
   setupSecureContexts(instances);
   const contexts = Object.fromEntries(instances.filter((inst) => inst.protocol === 'https').map((instance) => [instance.hostname, instance.secureContext]));
 

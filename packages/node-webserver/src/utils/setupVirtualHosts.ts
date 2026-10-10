@@ -1,15 +1,18 @@
-import vHost from 'vhost';
 import type { Express, RequestHandler } from 'express';
 import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
+import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import getURL from './getURL';
+import virtualHostRouter from './virtual-host-router';
 import compressionMiddleware from '../middlewares/compression';
 import proxyMiddleware from '../middlewares/proxy';
+import proxyServerMiddleware from '../middlewares/proxy-server';
 import lambdaMiddleware from '../middlewares/lambda';
 import getDate from './getDate';
 import logger from './logger';
 import type { Configuration, ServerInstance } from '../types';
+import type { VirtualHost } from '../types/virtual-host';
 
-function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
+function getWorkerMiddleware(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   const { options } = instance;
 
   if (!options) {
@@ -18,6 +21,7 @@ function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
 
   return workerMiddleware({
     name: instance.hostname,
+    workerBudget,
     ...options,
     onStdout(data) {
       logger.info(`[${getDate()}] ${data.toString().trim()}`);
@@ -34,15 +38,18 @@ function getWorkerMiddleware(instance: ServerInstance): RequestHandler {
   });
 }
 
-function getMiddleware(instance: ServerInstance): RequestHandler {
+function getMiddleware(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   if (instance.type === 'child') {
     return proxyMiddleware(instance);
+  }
+  if (instance.type === 'proxy') {
+    return proxyServerMiddleware(instance);
   }
   if (instance.type === 'lambda') {
     return lambdaMiddleware(instance);
   }
   if (instance.type === 'worker') {
-    return getWorkerMiddleware(instance);
+    return getWorkerMiddleware(instance, workerBudget);
   }
   return (req, res, next) => {
     next();
@@ -55,37 +62,45 @@ const compose =
   (request, response, next) =>
     first(request, response, (error?: unknown) => (error ? next(error) : second(request, response, next)));
 
-function getHandler(instance: ServerInstance): RequestHandler {
+function getHandler(instance: ServerInstance, workerBudget?: WorkerBudget): RequestHandler {
   const { compression } = instance;
-  const middleware = getMiddleware(instance);
+  const middleware = getMiddleware(instance, workerBudget);
 
   return compression ? compose(compressionMiddleware(compression === true ? {} : compression), middleware) : middleware;
 }
 
-function setupVirtualHost(instance: ServerInstance, httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
+/** the worker servers share `workerBudget`, so that their processes together stay under its limit */
+function setupVirtualHosts(
+  instances: ServerInstance[],
+  httpApp: Express,
+  httpsApp: Express,
+  Configuration: Partial<Configuration>,
+  workerBudget?: WorkerBudget
+) {
   const { portHttp, portHttps } = Configuration;
-  const { hostname, protocol } = instance;
+  const ports = { http: portHttp, https: portHttps };
+  const hosts: Record<keyof typeof ports, VirtualHost[]> = { http: [], https: [] };
 
-  switch (protocol) {
-    case 'http':
-      httpApp.use(vHost(hostname, getHandler(instance)));
-      instance.url = getURL(protocol, hostname, portHttp);
-      logger.system(`[${getDate()}] Server started for ${instance.url}`);
-      break;
-    case 'https':
-      httpsApp.use(vHost(hostname, getHandler(instance)));
-      instance.url = getURL(protocol, hostname, portHttps);
-      logger.system(`[${getDate()}] Server started for ${instance.url}`);
-      break;
-    default:
+  instances.forEach((instance) => {
+    const { hostname, protocol } = instance;
+
+    if (protocol !== 'http' && protocol !== 'https') {
       logger.error(`[${getDate()}] Unknown protocol ${protocol} for ${hostname}`);
+      return;
+    }
+
+    hosts[protocol].push({ hostname, handler: getHandler(instance, workerBudget) });
+    instance.url = getURL(protocol, hostname, ports[protocol]);
+    logger.system(`[${getDate()}] Server started for ${instance.url}`);
+  });
+
+  // one router per app instead of a vhost middleware per host, so that finding the host does not walk the list
+  if (hosts.http.length > 0) {
+    httpApp.use(virtualHostRouter(hosts.http));
   }
-
-  return instance;
-}
-
-function setupVirtualHosts(instances: ServerInstance[], httpApp: Express, httpsApp: Express, Configuration: Partial<Configuration>) {
-  instances.forEach((instance) => setupVirtualHost(instance, httpApp, httpsApp, Configuration));
+  if (hosts.https.length > 0) {
+    httpsApp.use(virtualHostRouter(hosts.https));
+  }
 }
 
 export default setupVirtualHosts;

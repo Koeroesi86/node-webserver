@@ -44,6 +44,25 @@ const healthServer: ServerInstance = {
     index: ['exampleWorker.js'],
   },
 };
+const upstreamPort = Number(process.env.PORT_UPSTREAM ?? 8081);
+// an application on a port of its own, started by the server as a child: the target of the proxy server below
+const upstreamServer: ServerInstance = {
+  hostname: 'upstream.localhost',
+  protocol: 'http',
+  type: 'child',
+  childOptions: {
+    command: process.execPath,
+    args: [resolve(PACKAGE_ROOT, 'examples/staticServer.js'), '--path', resolve(PACKAGE_ROOT, 'examples/static'), '--port', `${upstreamPort}`],
+  },
+  proxyOptions: { port: upstreamPort },
+  serverOptions: { protocol: 'http', proxyTarget: `http://127.0.0.1:${upstreamPort}` },
+};
+const proxiedServer: ServerInstance = {
+  hostname: 'proxied.localhost',
+  protocol: 'http',
+  type: 'proxy',
+  proxyOptions: { target: `http://127.0.0.1:${upstreamPort}` },
+};
 const secureServers: ServerInstance[] =
   existsSync(key) && existsSync(cert)
     ? [
@@ -65,26 +84,30 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
   server.options && process.env.WORKERS_PER_PATH ? { ...server, options: { ...server.options, limitPerPath: Number(process.env.WORKERS_PER_PATH) } } : server;
 
 /**
- * Example configuration without per-request access logs and on unprivileged ports,
+ * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
  * The logger reads its levels from NODE_WEBSERVER_CONFIG, so this module has to be selected through it, load-test-env does that.
  *
  * `compressed.localhost` serves the example worker with compression on.
  * `upload.localhost` serves a worker that reads the request body as a stream.
+ * `proxied.localhost` is a proxy server in front of a static file server on PORT_UPSTREAM (8081), which the server starts as a child.
  * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests.
  * WORKERS_PER_PATH overrides the number of workers started per path.
+ * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {
   ...exampleConfiguration,
   logLevels: {
     system: true,
-    info: false,
-    success: false,
+    info: process.env.ACCESS_LOGS === '1',
+    success: process.env.ACCESS_LOGS === '1',
     error: true,
     warning: true,
   },
-  servers: [...exampleConfiguration.servers, lambdaServer, compressedServer, uploadServer, healthServer, ...secureServers].map(withWorkerLimit),
+  servers: [...exampleConfiguration.servers, lambdaServer, compressedServer, uploadServer, healthServer, upstreamServer, proxiedServer, ...secureServers].map(
+    withWorkerLimit
+  ),
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

@@ -20,9 +20,12 @@ export type RequestEvent = {
   binaryFrame?: Buffer;
   /** the request has a body, which follows in parts. Without one `bodyStream` is empty. */
   hasBody?: boolean;
-  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
+  /** the whole body as base64, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. Only a worker gets it, encoded when read. */
   inlineBody?: string;
 };
+
+/** a request as it travels to the worker: the body travels as raw bytes, when it had arrived with the request and was small. No parts follow then, `bodyStream` holds it. */
+export type RequestMessage = RequestEvent & { body?: Buffer };
 
 /**
  * What a worker is called with: the request, the stream to read its body from, and a way to ask for the metrics of the server.
@@ -34,6 +37,24 @@ export type WorkerRequestEvent = RequestEvent & {
   /** a snapshot of the server: uptime, memory, event loop delay, requests, worker pools and what else registered itself */
   getMetrics: () => Promise<ServerMetrics>;
 };
+
+/** how long requests took, from the request to the close of its response, since the server started */
+export type LatencySnapshot = {
+  count: number;
+  sumMs: number;
+  maxMs: number;
+  /** the upper bound of the bucket the percentile falls into, or `maxMs` above the last bucket. Zero without requests. */
+  p50: number;
+  p90: number;
+  p99: number;
+  /** the number of requests per bucket, by its upper bound in milliseconds, and `+Inf` for the slower ones. Not cumulative. */
+  buckets: Record<string, number>;
+};
+
+export interface LatencyHistogram {
+  record: (durationMs: number) => void;
+  read: () => LatencySnapshot;
+}
 
 /** a part of a streamed request body as it travels to the worker, `null` ends it */
 export type RequestBodyEvent = { body: Buffer | null };
@@ -56,7 +77,12 @@ export type WorkerInputEvent =
       event: ServerMetrics;
     }
   | {
-      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
+      type: WORKER_EVENT.REQUEST;
+      requestId: string;
+      event: RequestMessage;
+    }
+  | {
+      type: Exclude<WORKER_EVENT, WORKER_EVENT.REQUEST | WORKER_EVENT.REQUEST_BODY | WORKER_EVENT.METRICS | WORKER_EVENT.WS_MESSAGE_RECEIVE>;
       requestId: string;
       event?: RequestEvent;
     };
@@ -136,9 +162,14 @@ export interface MiddlewareOptions {
   root: string;
   /** names the worker pool in the metrics, as `workers:<name>`. Defaults to the root folder. */
   name?: string;
+  /** how many workers this server may run for all its paths together, 0 for no limit. When it is reached, an idle worker is stopped to make room for the first worker of a path. */
   limit?: number;
   /** workers started per path, requests are spread over them. Defaults to the available CPU cores, 0 or 1 keeps a single worker. */
   limitPerPath?: number | ((path: string) => number);
+  /** a worker that has not had a request for this long is stopped, in milliseconds, the next request for its path starts one again. 0 keeps idle workers running. Defaults to 300000. */
+  limitWorkerIdleTimeout?: number;
+  /** a limit on the workers of this server together with the other servers that are given the same budget (`createWorkerBudget`), on top of `limit` */
+  workerBudget?: WorkerBudget;
   /** start a worker for static files when the middleware is created, so the first request for a file does not wait for a process to start. Defaults to true. */
   warmStaticWorker?: boolean;
   /**
@@ -179,6 +210,52 @@ export interface MiddlewareOptions {
   onForbiddenPath?: (request: Request, response: Response) => unknown;
   index?: string[];
   env?: object;
+  /**
+   * the worker file for the paths that no worker answers. With the default one, a path that does not exist is answered with 404 by the middleware itself, without a worker:
+   * another one is asked for those too, as it may answer them in its own way.
+   */
   staticWorker?: string;
   cwd?: string;
+}
+
+export type StreamBody = Readable | AsyncIterable<Buffer | Uint8Array | string>;
+
+export interface StreamResponseOptions {
+  statusCode?: number;
+  headers?: ResponseEvent['headers'];
+  /** how many parts may wait to be written to the client while the next ones are produced. Not limited by default. */
+  window?: number;
+  /** how many bytes may wait to be written to the client while the next ones are produced, so the pipe stays full. Defaults to 4 MiB. */
+  windowBytes?: number;
+}
+
+/** an idle worker that a pool can stop to make room for another one */
+export interface IdleWorker {
+  /** the path has other workers, so stopping this one leaves the path with one */
+  spare: boolean;
+  /** when the worker finished its last request, or started when it had none, as `Date.now()` */
+  lastUsed: number;
+  stop: () => void;
+}
+
+/** a pool of workers as a budget sees it */
+export interface WorkerBudgetMember {
+  getWorkerCount: () => number;
+  /** the idle worker the pool gives up first, undefined when all of its workers are busy */
+  findIdleWorker: () => IdleWorker | undefined;
+  /** the requests that wait for a worker in the pool look again whether they can get one */
+  wakeUp: () => void;
+}
+
+/** A limit on the workers of several pools together, so that the processes of many servers and paths stay bounded. Made by `createWorkerBudget`. */
+export interface WorkerBudget {
+  /** how many workers the pools may run together, 0 for no limit */
+  readonly limit: number;
+  join: (member: WorkerBudgetMember) => void;
+  hasRoom: () => boolean;
+  /** the idle worker of all the pools that is given up first */
+  findIdleWorker: () => IdleWorker | undefined;
+  /** a worker stopped or became idle, the requests that wait in the other pools may get one now */
+  wakeUp: (except?: WorkerBudgetMember) => void;
+  getStats: () => { limit: number; workers: number };
 }

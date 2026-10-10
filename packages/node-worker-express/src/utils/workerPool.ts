@@ -9,7 +9,9 @@ import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
 import WorkerAbandonedError from './workerAbandonedError';
-import type { HandOffMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';
+import createWorkerBudget from './create-worker-budget';
+import pickIdleWorker from './pick-idle-worker';
+import type { HandOffMessage, IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const pools: WorkerPool[] = [];
 
@@ -22,7 +24,7 @@ const createWorkerCommand = (workerPath) => {
   switch (ext) {
     case '.js':
     default:
-      return `node --expose-gc ${path.resolve(__dirname, './workerInvoke.js')} ${workerPath}`;
+      return `node --expose-gc ${path.resolve(__dirname, '../workerInvoke.js')} ${workerPath}`;
   }
 };
 
@@ -38,6 +40,10 @@ interface WorkerPoolParams {
   onStderr?: (data: Buffer) => void;
   /** when a worker that crashed is started again, see `WorkerRestartBackoff` and `WorkerMinUptime` */
   restartBackoff?: { minUptime: number; base: number; max: number };
+  /** a worker that has not had a request for this long is stopped, in milliseconds. 0 keeps idle workers running. */
+  idleTimeout?: number;
+  /** a limit shared with other pools, on top of `overallLimit` */
+  budget?: WorkerBudget;
 }
 
 /** the options to spawn a worker with, or a function that makes them: building them can be costly (the environment is copied), and it is only needed when a worker is started */
@@ -69,13 +75,22 @@ interface Waiter {
   timer: NodeJS.Timeout;
 }
 
+/** what the pool knows about a worker besides its requests */
+interface WorkerEntry {
+  workerPath: string;
+  id: string;
+  lastUsed: number;
+  /** restarted whenever the worker finishes its last request, it stops the worker when it fires */
+  idleTimer?: NodeJS.Timeout;
+}
+
 interface LeaseState {
   requestId?: string;
   onMessage?: (message: WorkerOutputEvent) => void;
   onExit?: (code: number | null) => void;
 }
 
-class WorkerPool {
+class WorkerPool implements WorkerBudgetMember {
   protected readonly overallLimit: number;
   protected readonly acquireTimeout: number;
   protected readonly onExit: (code: number, workerPath: string, id: string) => void;
@@ -97,6 +112,11 @@ class WorkerPool {
   /** how many requests were refused because too many waited, and how many gave up after waiting too long, since the pool started */
   private refused = { queueFull: 0, timedOut: 0 };
   private abandoned = 0;
+  private readonly idleTimeout: number;
+  private readonly budget: WorkerBudget;
+  private readonly entries: Map<Worker, WorkerEntry> = new Map();
+  /** the workers stopped as they had no request for the idle timeout, and the ones stopped to make room for the first worker of another path, since the pool started */
+  private evicted = { idle: 0, forRoom: 0 };
 
   constructor({
     overallLimit = 0,
@@ -106,6 +126,8 @@ class WorkerPool {
     onStdout,
     onStderr,
     restartBackoff = { minUptime: WorkerMinUptime, ...WorkerRestartBackoff },
+    idleTimeout = 0,
+    budget = createWorkerBudget(),
   }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
     this.acquireTimeout = acquireTimeout;
@@ -121,6 +143,9 @@ class WorkerPool {
     this.channels = new Map();
     this.subscriptions = new Map();
     this.cursors = new Map();
+    this.idleTimeout = idleTimeout;
+    this.budget = budget;
+    budget.join(this);
     pools.push(this);
   }
 
@@ -146,6 +171,8 @@ class WorkerPool {
 
   private belowOverallLimit = () => this.overallLimit <= 0 || this.getWorkerCount() < this.overallLimit;
 
+  private hasRoom = () => this.belowOverallLimit() && this.budget.hasRoom();
+
   /** the worker with the fewest running requests, the ones tied on load take turns */
   private pickLeastLoaded = (workerPath: string, candidates: Worker[]): Worker | undefined => {
     const lowest = Math.min(...candidates.map(this.getLoad));
@@ -156,29 +183,49 @@ class WorkerPool {
     return tied[cursor % tied.length];
   };
 
+  /** takes the worker out of the registry right away, the close event is asynchronous and the slot is free now */
+  private evict = (worker: Worker, reason: 'idle' | 'forRoom') => {
+    const entry = this.entries.get(worker);
+    const current = this.workers.get(entry.workerPath);
+    current?.delete(entry.id);
+    if (current?.size === 0) this.forgetPath(entry.workerPath);
+    this.evicted[reason] += 1;
+    this.stop(worker);
+  };
+
+  /** a path without workers keeps no state, so that many paths that were asked for once do not add up */
+  private forgetPath = (workerPath: string) => {
+    this.workers.delete(workerPath);
+    this.cursors.delete(workerPath);
+  };
+
   /**
-   * Makes room under the overall limit for the first worker of a path, by stopping an idle worker of the path that has the most.
-   * Paths are never left without a worker this way, so one busy path cannot starve the others.
+   * The idle worker this pool gives up first to make room: a spare worker of a path before the last worker of one, the one used longest ago first.
+   * The last worker of a path that still has requests is never taken, as only busy workers are left for it then, so one busy path cannot starve the others.
    */
-  private evictIdleWorker = (excludedPath: string): boolean => {
-    const victim = Array.from(this.workers.entries())
-      .filter(([workerPath, current]) => workerPath !== excludedPath && current.size > 1)
-      .sort(([, a], [, b]) => b.size - a.size)
-      .flatMap(([, current]) =>
-        Array.from(current.entries())
-          .filter(([, worker]) => this.getLoad(worker) === 0)
-          .slice(0, 1)
-          .map(([id, worker]) => ({ current, id, worker }))
-      )[0];
+  findIdleWorker = (): IdleWorker | undefined =>
+    pickIdleWorker(
+      Array.from(this.workers.values()).flatMap((current) =>
+        Array.from(current.values())
+          .filter((worker) => this.getLoad(worker) === 0)
+          .map((worker) => ({ spare: current.size > 1, lastUsed: this.entries.get(worker).lastUsed, stop: () => this.evict(worker, 'forRoom') }))
+      )
+    );
 
-    if (victim === undefined) {
-      return false;
-    }
+  /** Makes room for the first worker of a path by stopping an idle worker: of this pool when its own limit is used up, of any pool of the budget otherwise. */
+  private makeRoom = (): boolean => {
+    const victim = this.belowOverallLimit() ? this.budget.findIdleWorker() : this.findIdleWorker();
+    victim?.stop();
 
-    // the close event is asynchronous, so the registry is updated right away to free the slot
-    victim.current.delete(victim.id);
-    this.stop(victim.worker);
-    return true;
+    return victim !== undefined && this.hasRoom();
+  };
+
+  private onIdleTimeout = (worker: Worker) => {
+    // a worker that is busy again is timed anew when it finishes, one that is gone already has nothing to stop
+    if (this.getLoad(worker) > 0 || !this.entries.has(worker) || this.stopping.has(worker)) return;
+
+    // no request waits for the slot: one that could use it would have taken this worker when it became idle
+    this.evict(worker, 'idle');
   };
 
   /** a second crash in a row, and every one after it, holds back the next start for longer */
@@ -208,6 +255,13 @@ class WorkerPool {
     const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
     this.workers.set(workerPath, workersForPath);
     this.leases.set(instance, new Set());
+    const entry: WorkerEntry = { workerPath, id, lastUsed: Date.now() };
+    if (this.idleTimeout > 0) {
+      // a worker that gets no request at all is stopped as well
+      entry.idleTimer = setTimeout(() => this.onIdleTimeout(instance), this.idleTimeout);
+      entry.idleTimer.unref();
+    }
+    this.entries.set(instance, entry);
 
     // a single listener dispatches the messages of all requests of the worker
     this.channels.set(
@@ -229,20 +283,24 @@ class WorkerPool {
 
     instance.addEventListenerOnce('close', (code: number) => {
       clearTimeout(stableTimer);
+      clearTimeout(entry.idleTimer);
       if (!this.stopping.has(instance) && (!stable || code)) {
         this.recordFailure(workerPath);
       }
       const states = Array.from(this.leases.get(instance) ?? []);
       workersForPath.delete(id);
+      if (workersForPath.size === 0 && this.workers.get(workerPath) === workersForPath) this.forgetPath(workerPath);
       this.leases.delete(instance);
       this.channels.delete(instance);
+      this.entries.delete(instance);
       states.forEach((state) => {
         this.subscriptions.delete(state.requestId);
         state.onExit?.(code);
       });
       this.onExit(code, workerPath, id);
-      // there is room for another worker now, and the requests that wait may get one
+      // there is room for another worker now, and the requests that wait may get one, also in the other pools of the budget
       this.wakeUp();
+      this.budget.wakeUp(this);
     });
 
     workersForPath.set(id, instance);
@@ -269,14 +327,14 @@ class WorkerPool {
 
     // another worker is only started when all the running ones are busy
     const belowPathLimit = candidates.length < Math.max(limit, 1);
-    const hasRoom = this.belowOverallLimit() || (candidates.length === 0 && this.evictIdleWorker(workerPath));
+    const hasRoom = this.hasRoom() || (candidates.length === 0 && this.makeRoom());
 
     return belowPathLimit && hasRoom ? this.createWorker(workerPath, options) : leastLoaded;
   };
 
   /** Starts workers for the path ahead of its first request, so that one does not have to wait for a process to start. */
   warm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
-    while (this.getWorkerCountForPath(workerPath) < count && this.belowOverallLimit() && this.getBackoff(workerPath) === 0) {
+    while (this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.getBackoff(workerPath) === 0) {
       this.createWorker(workerPath, options);
     }
     this.wakeUp();
@@ -307,8 +365,14 @@ class WorkerPool {
         if (state.requestId !== undefined && this.subscriptions.get(state.requestId) === state) {
           this.subscriptions.delete(state.requestId);
         }
-        // a worker has room again, for the request that has waited longest
+        const entry = this.entries.get(leased);
+        if (entry !== undefined && this.getLoad(leased) === 0) {
+          entry.lastUsed = Date.now();
+          entry.idleTimer?.refresh();
+        }
+        // a worker has room again, for the request that has waited longest, and an idle one can make room in the other pools of the budget
         this.wakeUp();
+        this.budget.wakeUp(this);
       },
     };
   };
@@ -330,7 +394,7 @@ class WorkerPool {
   };
 
   /** looks at the requests that wait, in the order they came in, whenever a worker could have become available: a request that is finished, a worker that stopped or started */
-  private wakeUp = () => {
+  wakeUp = () => {
     if (this.queue.length === 0) return;
 
     this.queue.splice(0).forEach(this.serve);
@@ -387,6 +451,8 @@ class WorkerPool {
     refused: { ...this.refused },
     /** requests that stopped waiting because their client went away, since the pool started */
     abandoned: this.abandoned,
+    /** workers stopped as they had no request for the idle timeout, and ones stopped to make room for the first worker of another path, since the pool started */
+    evicted: { ...this.evicted },
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
     failing: Object.fromEntries(
       Array.from(this.failures.entries()).map(([workerPath, { count }]) => [workerPath, { crashes: count, retryInMs: this.getBackoff(workerPath) }])
