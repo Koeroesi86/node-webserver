@@ -138,6 +138,20 @@ k6 run -e HTTPS_PORT=8443 tools/src/k6/tls.ts
 
 Options: `VUS`, `PLAIN_RATE`, `DURATION`, `MAX_PLAIN_P95_MS`, `MAX_HANDSHAKE_P95_MS`.
 
+### Lambdas that fail
+
+`lambda.ts` works the `lambda` server type where it can go wrong, against three servers of the load test configuration that run `examples/lambda-failures/exampleLambda.js` (`/ok`, `/slow?ms=`, `/crash`, `/throw`):
+
+- **a crashing lambda** (`lambda-crash.localhost`, 1 user hits `/crash`): the request that was running on the lambda is answered with 502 and a generic body, while 2 users on the same server get 200 all the time,
+- **overload** (`lambda-overload.localhost`, 8 users, 2 lambdas that need 1.5 seconds, `acquireTimeout` of half a second): every request is answered with 200 or 503, a 503 after the acquire timeout and less than `MARGIN_MS` (1000) later, none hangs (the scenario also fails when there was no 503 at all, or no 200),
+- **the `file` communication** (`lambda-file.localhost`): answered like the default one.
+
+It runs on its own after the binary one, is left out of the comparison with the base (a base without the servers answers with errors) and takes `DURATION` (10s) and `MARGIN_MS`.
+
+```sh
+k6 run tools/src/k6/lambda.ts
+```
+
 ### Websocket flow control
 
 `websocket.ts` works the flow control of websockets (`examples/websocket-flow/exampleWorker.js`, `web.localhost/websocket-flow/exampleWorker.js`) with 5 + 5 users and one that samples the memory of the server through `health.localhost/metrics`:
