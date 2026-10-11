@@ -132,7 +132,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * `proxied.localhost` is a proxy server in front of a static file server on PORT_UPSTREAM (8081), which the server starts as a child.
  * `health.localhost` serves a worker with /health and /metrics, from the metrics the server gives to workers.
  * `routes.localhost` finds its worker in a table of routes, where `/items/<id>` is the last of 401, and answers anything else with 404 itself.
- * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests.
+ * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests. The https port serves HTTP/2 (`http2: true`).
  * WORKERS_PER_PATH overrides the number of workers started per path.
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
@@ -159,6 +159,7 @@ const configuration = {
     proxiedServer,
     ...secureServers,
   ].map(withWorkerLimit),
+  http2: true,
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

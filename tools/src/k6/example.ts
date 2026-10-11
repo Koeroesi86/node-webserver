@@ -179,6 +179,14 @@ const routes: Record<string, Route> = {
   },
   ...(httpsPort && {
     secure: { method: 'GET', url: `https://${secureHostname}:${httpsPort}/`, status: 200, validate: (r) => bodyIncludes(r, 'It works!'), maxP95: 20 },
+    // k6 offers HTTP/2 during the handshake, a server that has it switched on answers with it. A base without it fails the check of this route, which the comparison lists as not served
+    http2: {
+      method: 'GET',
+      url: `https://${secureHostname}:${httpsPort}/`,
+      status: 200,
+      validate: (r) => r.proto === 'HTTP/2.0' && bodyIncludes(r, 'It works!'),
+      maxP95: 20,
+    },
   }),
 };
 
