@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import type RequestEvent from './RequestEvent';
 import type ResponseEvent from './ResponseEvent';
 import type { StorageInstance } from '../types';
+import { bindStorageMethods } from '../utils/bind-storage-methods';
 
 const serializer = {
   serialize: (data: unknown) => JSON.stringify(data),
@@ -20,11 +21,7 @@ class FileStorage {
     if (folder === undefined) throw new Error('The file storage needs the folder of the lambda.');
 
     this.folder = folder;
-    this.setResponse = this.setResponse.bind(this);
-    this.getResponse = this.getResponse.bind(this);
-    this.setRequest = this.setRequest.bind(this);
-    this.getRequest = this.getRequest.bind(this);
-    this.destroy = this.destroy.bind(this);
+    bindStorageMethods(this);
   }
 
   get requestPath(): string {

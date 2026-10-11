@@ -3,6 +3,17 @@ import { uncachedProbe } from './createProbe';
 import type { Probe } from './createProbe';
 import { Stats } from 'fs';
 
+/** the stats of a path that is there, a path that is gone since `exists` said so counts as missing */
+const statExisting = async (probe: Probe, currentPath: string) => ((await probe.exists(currentPath)) ? probe.stat(currentPath) : undefined);
+
+const findIndexFile = async (directory: string, indexFiles: string[], probe: Probe) => {
+  for (const indexFile of indexFiles) {
+    if (await probe.exists(path.join(directory, indexFile))) return indexFile;
+  }
+
+  return undefined;
+};
+
 async function resolvePath(rootPath: string, pathFragments: string[], indexFiles: string[], probe: Probe = uncachedProbe) {
   const currentPathFragments = pathFragments.slice();
   let indexPath = path.join(rootPath, ...currentPathFragments);
@@ -11,43 +22,19 @@ async function resolvePath(rootPath: string, pathFragments: string[], indexFiles
   let stats: Stats | undefined;
 
   for (let i = currentPathFragments.length; i >= 0 && !pathExists; i--) {
-    if (pathExists) continue;
     currentPathFragments.splice(i);
     const currentPath = path.join(rootPath, ...currentPathFragments);
-    pathExists = await probe.exists(currentPath);
-    if (!pathExists) continue;
-    stats = await probe.stat(currentPath);
-    // gone since it was found
-    if (stats === undefined) {
-      pathExists = false;
-      continue;
-    }
+    stats = await statExisting(probe, currentPath);
+    pathExists = stats !== undefined;
+    if (!stats) continue;
 
-    if (stats.isDirectory()) {
-      // index fallback
-      let checkIndexFilePath: string = '';
-      for (let indexFile of indexFiles) {
-        if (checkIndexFilePath) {
-          continue;
-        }
-
-        const current = path.join(currentPath, indexFile);
-        if (await probe.exists(current)) {
-          checkIndexFilePath = indexFile;
-        }
-      }
-
-      // a directory without an index worker is served by the static worker, which also answers with the 404
-      if (checkIndexFilePath) {
-        isWorker = true;
-        indexPath = path.join(currentPath, checkIndexFilePath);
-      }
+    const indexFile = stats.isDirectory() ? await findIndexFile(currentPath, indexFiles, probe) : undefined;
+    // a directory without an index worker is served by the static worker, which also answers with the 404
+    if (indexFile) {
+      isWorker = true;
+      indexPath = path.join(currentPath, indexFile);
     } else if (stats.isFile() && indexFiles.includes(currentPathFragments[currentPathFragments.length - 1])) {
       isWorker = true;
-    }
-
-    if (isWorker) {
-      break;
     }
   }
 

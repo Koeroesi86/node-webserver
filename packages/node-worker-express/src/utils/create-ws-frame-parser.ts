@@ -16,26 +16,40 @@ const unmask = (payload: Buffer, mask: Buffer) => {
   return unmasked;
 };
 
-/** the frame at the start of the buffer, or how many bytes are needed to tell more of it */
-const readFrame = (buffer: Buffer, maxPayload: number): { frame: WsFrame; length: number } | { needed: number } => {
-  if (buffer.length < 2) return { needed: 2 };
+/** how many bytes follow the two of the header for a length that does not fit its 7 bits */
+const extendedLengthBytes: Record<number, number | undefined> = { 126: 2, 127: 8 };
 
+/** a frame of a client that the connection can not go on with */
+const assertValidHeader = (buffer: Buffer) => {
   const opcode = buffer[0] & 0x0f;
   const isControl = opcode >= WebSocketOpcode.close;
-  const lengthCode = buffer[1] & 0x7f;
 
   // nothing was negotiated that would use the reserved bits
   if (buffer[0] & 0x70) throw new WsProtocolError(WebSocketCloseCode.protocolError, 'Reserved bits are set.');
   if (!opcodes.includes(opcode)) throw new WsProtocolError(WebSocketCloseCode.protocolError, 'Unknown opcode.');
   if (!(buffer[1] & 0x80)) throw new WsProtocolError(WebSocketCloseCode.protocolError, 'A frame of a client has to be masked.');
-  if (isControl && (!(buffer[0] & 0x80) || lengthCode > 125))
+  if (isControl && (!(buffer[0] & 0x80) || (buffer[1] & 0x7f) > 125))
     throw new WsProtocolError(WebSocketCloseCode.protocolError, 'A control frame is whole and short.');
+};
 
-  const lengthBytes = lengthCode === 126 ? 2 : lengthCode === 127 ? 8 : 0;
+const readPayloadLength = (buffer: Buffer, lengthBytes: number) => {
+  if (lengthBytes === 0) return buffer[1] & 0x7f;
+  if (lengthBytes === 2) return buffer.readUInt16BE(2);
+
+  return buffer.readUInt32BE(2) * 2 ** 32 + buffer.readUInt32BE(6);
+};
+
+/** the frame at the start of the buffer, or how many bytes are needed to tell more of it */
+const readFrame = (buffer: Buffer, maxPayload: number): { frame: WsFrame; length: number } | { needed: number } => {
+  if (buffer.length < 2) return { needed: 2 };
+
+  assertValidHeader(buffer);
+
+  const lengthBytes = extendedLengthBytes[buffer[1] & 0x7f] ?? 0;
   const headerLength = 2 + lengthBytes + 4;
   if (buffer.length < headerLength) return { needed: headerLength };
 
-  const payloadLength = lengthBytes === 0 ? lengthCode : lengthBytes === 2 ? buffer.readUInt16BE(2) : buffer.readUInt32BE(2) * 2 ** 32 + buffer.readUInt32BE(6);
+  const payloadLength = readPayloadLength(buffer, lengthBytes);
 
   // refused from the header, before the payload is waited for
   if (payloadLength > Number.MAX_SAFE_INTEGER || (maxPayload > 0 && payloadLength > maxPayload)) {
@@ -49,7 +63,7 @@ const readFrame = (buffer: Buffer, maxPayload: number): { frame: WsFrame; length
   return {
     frame: {
       fin: Boolean(buffer[0] & 0x80),
-      opcode,
+      opcode: buffer[0] & 0x0f,
       payload: unmask(buffer.subarray(headerLength, length), mask),
     },
     length,
