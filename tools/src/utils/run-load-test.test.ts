@@ -89,7 +89,7 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
     process.env.FAKE_K6_FAIL = 'tls.ts';
 
     expect(await run()).toBe(1);
-    expect(calls()).toHaveLength(7);
+    expect(calls()).toHaveLength(8);
   });
 
   it('is 2 when neither k6 nor Docker can be used', async () => {
