@@ -136,7 +136,7 @@ describe('workerInvoke', () => {
     const smallerLimit = (source: string) => source.replace(/ChannelMaxFrameLength = [^;]+;/, `ChannelMaxFrameLength = ${4 * 1024 * 1024};`);
     // what the worker process loads, as the build puts it together
     await Promise.all(
-      ['workerInvoke', 'constants/index', 'utils/createChannel', 'utils/frames'].map(async (file) =>
+      ['workerInvoke', 'constants/index', 'utils/createChannel', 'utils/create-hand-off-requests', 'utils/frames'].map(async (file) =>
         fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8'))))
       )
     );
