@@ -4,13 +4,14 @@ import type { FileCoverage, PackageCoverage } from '../types/coverage';
 import { buildCoverageReport } from '../utils/build-coverage-report';
 import { summarizeFileCoverage } from '../utils/summarize-file-coverage';
 
-// Merges the istanbul output of `pnpm test:coverage` (`coverage/coverage-final.json` of every package) into one markdown report and one json file.
+// Merges the istanbul output of `pnpm test:coverage` (`coverage/coverage-final.json` of every published package, the tools are not published) into one markdown report and one json file.
 //   node coverage-report.js [workspace-root]
 
 const root = resolve(process.argv[2] ?? resolve(__dirname, '../../..'));
 const outputDirectory = resolve(root, 'coverage');
 
-const packages = [...readdirSync(resolve(root, 'packages')).map((name) => resolve(root, 'packages', name)), resolve(root, 'tools')]
+const packages = readdirSync(resolve(root, 'packages'))
+  .map((name) => resolve(root, 'packages', name))
   .map((path) => ({ name: path.slice(root.length + 1), coveragePath: resolve(path, 'coverage/coverage-final.json') }))
   .filter(({ coveragePath }) => existsSync(coveragePath))
   .map<PackageCoverage>(({ name, coveragePath }) => ({
