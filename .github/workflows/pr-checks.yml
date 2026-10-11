@@ -44,6 +44,28 @@ jobs:
         timeout-minutes: 5
         run: pnpm -r publish --dry-run --no-git-checks
 
+  # the findings that the change itself introduces, now that complexity is an error: the whole-repository check runs in the test job, this one names the files of the pull request
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # the audit compares the files with the base branch
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - name: Setup
+        timeout-minutes: 10
+        run: pnpm install --frozen-lockfile
+      - name: Code quality of the changed files
+        timeout-minutes: 5
+        run: pnpm exec fallow audit --base origin/master
+
   # the load test (and its comparison with the base) only runs when the tests and the build passed
   load-test:
     needs: [test, build]
@@ -52,15 +74,15 @@ jobs:
   security:
     uses: ./.github/workflows/security.yml
 
-  # the one check that master requires: it fails unless the tests, the build, the load test and the security scans all passed,
+  # the one check that master requires: it fails unless the tests, the build, the audit, the load test and the security scans all passed,
   # so the jobs and the operating systems can change without touching the branch protection
   required-checks:
     if: always()
-    needs: [test, build, load-test, security]
+    needs: [test, build, audit, load-test, security]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Tests, build, load test and security scans passed
+      - name: Tests, build, audit, load test and security scans passed
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
