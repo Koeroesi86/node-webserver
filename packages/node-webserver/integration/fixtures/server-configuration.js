@@ -16,6 +16,20 @@ const lambda = (hostname, file, communication) => ({
   lambdaOptions: { lambda: resolve(__dirname, file), handler: 'handler', communication },
 });
 
+// one file with two handlers on two routes, and a second file on a third; a path that none of them matches is not answered by a lambda at all
+const lambdaRoutes = (hostname) => ({
+  hostname,
+  protocol: 'http',
+  type: 'lambda',
+  lambdaOptions: {
+    routes: [
+      { path: '/orders', lambda: resolve(__dirname, 'lambda-routes.js'), handler: 'list' },
+      { pattern: '/orders/(?<id>[0-9]+)', lambda: resolve(__dirname, 'lambda-routes.js'), handler: 'get', limit: 1 },
+      { pattern: '/other/.*', lambda: resolve(__dirname, 'lambda.js') },
+    ],
+  },
+});
+
 module.exports = {
   fileLogPath: false,
   // the tests of the reload read the lines of the system log
@@ -45,6 +59,7 @@ module.exports = {
     }),
     lambda('lambda-ipc.localhost', 'lambda.js', 'ipc'),
     lambda('lambda-file.localhost', 'lambda-file.js', 'file'),
+    lambdaRoutes('lambda-routes.localhost'),
     {
       hostname: 'child.localhost',
       protocol: 'http',

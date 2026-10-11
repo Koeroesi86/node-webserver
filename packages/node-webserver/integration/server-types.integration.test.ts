@@ -171,6 +171,37 @@ describe('the server', () => {
     });
   });
 
+  describe('of the type lambda with routes', () => {
+    const host = 'lambda-routes.localhost';
+
+    it('runs the handler of the route, also for two handlers of one file', async () => {
+      const list = await server.get(host, '/orders');
+      const item = await server.get(host, '/orders/42?x=1');
+      const again = await server.get(host, '/orders');
+
+      expect(list.json()).toMatchObject({ handler: 'list', path: '/orders' });
+      expect(item.json()).toMatchObject({ handler: 'get', path: '/orders/42', pathParameters: { id: '42' } });
+      expect(again.json()).toMatchObject({ handler: 'list' });
+      // each handler has a lambda of its own, so a request never gets the process of the other
+      expect(item.headers['x-pid']).not.toBe(list.headers['x-pid']);
+      expect(again.headers['x-pid']).toBe(list.headers['x-pid']);
+    });
+
+    it('runs the lambda of another file for another route', async () => {
+      const reply = await server.get(host, '/other/thing');
+
+      expect(reply.status).toBe(201);
+      expect(reply.headers['x-handled-by']).toBe('lambda');
+    });
+
+    it('answers 404 itself for a path that no route matches', async () => {
+      const reply = await server.get(host, '/orders/42/items');
+
+      expect(reply.status).toBe(404);
+      expect(reply.json()).toEqual({ message: 'Not Found' });
+    });
+  });
+
   describe('of the type child', () => {
     it('proxies the request to the application and its answer back', async () => {
       const reply = await server.get('child.localhost', '/some/path?q=1');
