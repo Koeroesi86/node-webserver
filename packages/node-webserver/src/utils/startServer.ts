@@ -1,7 +1,7 @@
 import express from 'express';
 import type { Express, RequestHandler } from 'express';
 import http from 'http';
-import https from 'https';
+import type net from 'net';
 import type { SecureContext } from 'tls';
 import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
@@ -10,6 +10,8 @@ import accessLogsMiddleware from '../middlewares/accessLogs';
 import { RELOAD_DEBOUNCE, RETIRE_TIMEOUT } from '../constants';
 import addExitListeners from './exitHandler';
 import configureServer from './configureServer';
+import createHttp2App from './create-http2-app';
+import createHttpsServer from './create-https-server';
 import debounce from './debounce';
 import getDate from './getDate';
 import getWatchedFiles from './get-watched-files';
@@ -22,11 +24,13 @@ import type { Configuration, LoadedInstance } from '../types';
 
 const httpApp = express();
 const httpsApp = express();
+// the requests of HTTP/2 on the https port, which express 4 cannot serve with the app of HTTP/1
+const http2App = createHttp2App();
 
 httpApp.disable('x-powered-by');
 httpsApp.disable('x-powered-by');
 
-const listen = (server: http.Server | https.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
+const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
 const startServer = async (configuration: Partial<Configuration>): Promise<{ httpApp: Express; httpsApp: Express; reload: () => void }> => {
   const hydratedConfiguration: Configuration = {
@@ -36,7 +40,7 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   const { servers, watchServers = true, reloadOnSighup = false, trustedProxies = [] } = hydratedConfiguration;
   // before the hosts are set up, as the client address and the protocol of every request depend on it
   httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.http ?? []);
-  httpsApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.https ?? []);
+  [httpsApp, http2App].forEach((app) => app.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.https ?? []));
   // one for the whole process, so that the workers of the servers that are loaded again count against the same limit
   const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
   registerMetricsSource('workers', workerBudget.getStats);
@@ -89,26 +93,19 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
 
   /** access logs */
   httpApp.use(accessLogsMiddleware({ alias: 'http' }));
-  httpsApp.use(accessLogsMiddleware({ alias: 'https' }));
+  const logHttps = accessLogsMiddleware({ alias: 'https' });
+  [httpsApp, http2App].forEach((app) => app.use(logHttps));
 
   /** overall stats endpoint */
   setupStatsHandler(() => loaded.map(({ instance }) => instance), httpApp, configuration);
 
   httpApp.use((request, response, next) => hosts.http(request, response, next));
-  httpsApp.use((request, response, next) => hosts.https(request, response, next));
+  // the hosts are the same for HTTP/1 and HTTP/2, so a worker pool is not started twice
+  [httpsApp, http2App].forEach((app) => app.use((request, response, next) => hosts.https(request, response, next)));
 
   const httpServer = http.createServer(httpApp);
-  const httpsServer = https.createServer(
-    {
-      SNICallback: (domain, callback) => {
-        const secureContext = contexts[domain];
-        if (secureContext) {
-          callback(null, secureContext);
-        }
-      },
-    },
-    httpsApp
-  );
+  // the certificates of the servers that are loaded again are looked up when a client connects
+  const httpsServer = createHttpsServer((domain) => contexts[domain], { http1: httpsApp, http2: http2App }, hydratedConfiguration);
 
   configureServer(httpServer, 'http', hydratedConfiguration);
   configureServer(httpsServer, 'https', hydratedConfiguration);

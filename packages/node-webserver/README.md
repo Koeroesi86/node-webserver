@@ -22,7 +22,7 @@ Please enter in a console/terminal:
     pnpm install
     pnpm start
 
-`pnpm start` compiles the TypeScript sources in `src/` to `dist/` and restarts on changes. `pnpm build` creates the published `dist/` output once, `pnpm test` runs the Jest suite, `pnpm test:integration` starts the built server (run `pnpm build` first) with a worker, a lambda (both communications) and a child server from [integration/fixtures](integration/fixtures) and sends requests to them, and `pnpm lint` checks formatting.
+`pnpm start` compiles the TypeScript sources in `src/` to `dist/` and restarts on changes. `pnpm build` creates the published `dist/` output once, `pnpm test` runs the Jest suite, `pnpm test:integration` starts the built server (run `pnpm build` first) with a worker, a lambda (both communications) and a child server, and HTTP/2 and websockets on the https port, from [integration/fixtures](integration/fixtures) and sends requests to them, and `pnpm lint` checks formatting.
 
 
 ### Compression
@@ -70,6 +70,25 @@ A `worker` server finds the worker of a request in the files under `root`. `rout
 
 The first route that matches the path wins, and a pattern has to match the whole path. A configuration with a route that is not valid (a missing worker, a broken pattern) stops the server from starting.
 The patterns run in the front process for every request, so keep them simple. See the README of `@koeroesi86/node-worker-express` for the details.
+
+### HTTP/2
+
+The https port serves HTTP/1.1 only. Switch HTTP/2 on in the top level of the configuration, next to the ports:
+
+```javascript
+{
+  portHttps: 443,
+  http2: true, // off by default
+  servers: [{ hostname: 'web.localhost', protocol: 'https', key: '/path/to/privkey.pem', cert: '/path/to/cert.pem', type: 'worker', options: { root: '/path/to/files' } }],
+}
+```
+
+Clients that offer `h2` during the TLS handshake get HTTP/2, the others keep getting HTTP/1.1 on the same port, and so do websockets, which stay on HTTP/1.1. The plain http port is not affected.
+The same servers answer both, they are set up once: a worker pool is not started twice. What differs for a handler is that the `host` header is the authority of the request, and that the pseudo headers (`:path`, `:authority`, ...) are not among the headers.
+Headers that only HTTP/1 has (`Connection`, `Keep-Alive`, `Transfer-Encoding`, `Upgrade`) are dropped from the responses of HTTP/2, as the protocol does not allow them. An idle connection is closed after `keepAliveTimeout`.
+
+Express 4 builds its requests and responses on the classes of HTTP/1, which the objects of HTTP/2 are not, so the requests of HTTP/2 go to a second express app with the same methods on top of the classes of HTTP/2 (`src/utils/create-http2-app.ts`).
+A certificate is needed for every host, a handshake for a host without one is refused.
 
 ### Request bodies
 
