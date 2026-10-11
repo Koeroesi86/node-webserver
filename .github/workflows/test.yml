@@ -47,9 +47,23 @@ jobs:
       - name: Unused code
         timeout-minutes: 5
         run: pnpm fallow
-      - name: Unit tests
+      - name: Unit tests with coverage
         timeout-minutes: 10
-        run: pnpm test
+        run: pnpm test:coverage
+      - name: Coverage summary
+        if: runner.os == 'Linux' && !cancelled()
+        run: cat coverage/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage
+        if: runner.os == 'Linux' && !cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: coverage
+          path: |
+            coverage/report.md
+            coverage/report.json
+            packages/*/coverage/lcov-report
+          if-no-files-found: ignore
+          retention-days: 14
       # one server of every type, started from the bundle
       - name: Integration tests
         timeout-minutes: 5

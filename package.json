@@ -7,6 +7,7 @@
   },
   "scripts": {
     "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test --coverage && node tools/dist/scripts/coverage-report.js",
     "test:integration": "pnpm -r --if-present test:integration",
     "start": "pnpm --filter @koeroesi86/node-webserver start",
     "build": "pnpm -r --if-present build",

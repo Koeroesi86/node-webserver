@@ -8,3 +8,4 @@ configuration.json
 *.log
 .certificates
 dist
+coverage

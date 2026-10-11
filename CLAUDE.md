@@ -11,6 +11,7 @@ pnpm build              # every package, in dependency order; the scripts and th
 pnpm lint               # eslint with prettier, `--ext .ts`
 pnpm fallow             # unused files, exports and dependencies (errors), duplication and complexity, configured in `.fallowrc.jsonc`
 pnpm test               # unit tests
+pnpm test:coverage      # unit tests with coverage: html per package in `packages/*/coverage/lcov-report`, merged `coverage/report.md` and `report.json` in the root
 pnpm test:integration   # starts the built server with one server of every type
 pnpm load-test          # k6 against the example server, needs k6 or Docker
 ```

@@ -6,6 +6,7 @@ module.exports = {
   cacheDirectory: resolve(__dirname, '../../.cache/jest/node-lambda-invoke'),
   testEnvironment: 'node',
   setupFilesAfterEnv: [resolve(__dirname, '../../jest-retry.js')],
+  ...require('../../jest-coverage.js'),
   testTimeout: 20000,
   transform: {
     '^.+\\.ts$': 'ts-jest',
