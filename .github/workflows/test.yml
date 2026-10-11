@@ -60,8 +60,10 @@ jobs:
             packages/*/coverage/lcov-report
           if-no-files-found: ignore
           retention-days: 14
-      # unused code, duplication and complexity, which eslint does not see across the packages, with the coverage of the tests for the exact CRAP scores
+      # unused code, duplication and complexity, which eslint does not see across the packages. It reads the source, so one system is enough, and the coverage
+      # of another one has other tests skipped (the load test runner is not tested on Windows), which would make its functions look untested.
       - name: Code quality
+        if: matrix.os == 'ubuntu-latest'
         timeout-minutes: 5
         run: |
           pnpm coverage:merge
