@@ -42,6 +42,7 @@ jobs:
           # comparison-limits: the limits of the comparison with the base (see tools/README.md) that differ from the defaults. The identical code measured up to 40% apart on these systems.
           # comparison-rounds: runs of each side, the median of which is compared. The systems with the large spread between runs of the same side get more of them.
           # access-logs-comparison: also compares the base with the pull request with the access logs on (informational), where the logger shows in the numbers. One system is enough for that.
+          # hand-off-responses: the size in bytes from which the worker writes a response to the client itself, empty for the default (off on Windows, where it is being tried here)
           # p95-factor: multiplies the p95 allowed for every route, where everything is slower and shared runners are noisier.
           # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
           - os: ubuntu-latest
@@ -54,6 +55,7 @@ jobs:
             comparison-informational: false
             comparison-rounds: 3
             access-logs-comparison: true
+            hand-off-responses: ''
             p95-factor: 1
           - os: windows-latest
             requests-per-core: 100
@@ -65,6 +67,7 @@ jobs:
             comparison-informational: true
             comparison-rounds: 5
             access-logs-comparison: false
+            hand-off-responses: '8388608'
             p95-factor: 2
           - os: macos-latest
             requests-per-core: 100
@@ -76,6 +79,7 @@ jobs:
             comparison-informational: true
             comparison-rounds: 5
             access-logs-comparison: false
+            hand-off-responses: ''
             p95-factor: 2
     defaults:
       run:
@@ -92,6 +96,7 @@ jobs:
       COMPARISON_ROUNDS: ${{ matrix.comparison-rounds }}
       P95_OVERRIDES: ${{ matrix.p95-overrides }}
       P95_FACTOR: ${{ matrix.p95-factor }}
+      HAND_OFF_RESPONSES: ${{ matrix.hand-off-responses }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -302,7 +307,8 @@ jobs:
         timeout-minutes: 5
         if: always()
         run: |
-          [ "${RUNNER_OS}" = 'Windows' ] && require_handoff=0 || require_handoff=1
+          # on Windows only when the handoff was switched on for the server
+          [ "${RUNNER_OS}" = 'Windows' ] && [ -z "${HAND_OFF_RESPONSES}" ] && require_handoff=0 || require_handoff=1
           # shellcheck disable=SC2086
           $K6_PREFIX k6 run \
             --summary-export=k6-download-summary.json \

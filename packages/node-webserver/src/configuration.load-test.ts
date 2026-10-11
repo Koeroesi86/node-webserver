@@ -141,6 +141,11 @@ const secureServers: ServerInstance[] =
 const withWorkerLimit = (server: ServerInstance): ServerInstance =>
   server.options && process.env.WORKERS_PER_PATH ? { ...server, options: { ...server.options, limitPerPath: Number(process.env.WORKERS_PER_PATH) } } : server;
 
+const withHandOff = (server: ServerInstance): ServerInstance =>
+  server.options && process.env.HAND_OFF_RESPONSES
+    ? { ...server, options: { ...server.options, handOffResponses: Number(process.env.HAND_OFF_RESPONSES) } }
+    : server;
+
 /**
  * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
@@ -157,6 +162,7 @@ const withWorkerLimit = (server: ServerInstance): ServerInstance =>
  * `routes.localhost` finds its worker in a table of routes, where `/items/<id>` is the last of 401, and answers anything else with 404 itself.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests. The https port serves HTTP/2 (`http2: true`).
  * WORKERS_PER_PATH overrides the number of workers started per path.
+ * HAND_OFF_RESPONSES overrides the size in bytes from which the worker writes a response to the client itself (0 turns it off), where the default is off on Windows.
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {
@@ -183,7 +189,9 @@ const configuration = {
     upstreamServer,
     proxiedServer,
     ...secureServers,
-  ].map(withWorkerLimit),
+  ]
+    .map(withWorkerLimit)
+    .map(withHandOff),
   http2: true,
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
