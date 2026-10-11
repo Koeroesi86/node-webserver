@@ -16,7 +16,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 | Folder | What is in it |
 | --- | --- |
 | `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
-| `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
+| `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
 | `constants/` | the limits and defaults of the load test |
@@ -192,6 +192,20 @@ and `routed` and `single` side by side in the summary show whether matching the 
 ```sh
 k6 run tools/src/k6/lambda-routes.ts
 ```
+
+### Big downloads
+
+`download.ts` downloads `web.localhost/download/?mib=32` (`examples/download/exampleWorker.js`: 32 MiB with a `Content-Length`, generated while it is sent) with 8 users at once. A body that big is what the server hands to the worker (`handOffResponses`, 8 MiB by default in `node-worker-express`),
+which writes it to the client itself, so the front process does not carry the bytes. Every download is checked whole (size and one byte of the first, the middle and the last MiB), and its speed is the metric `download_mb_per_s`, with a floor on the slowest tenth (`MIN_MB_PER_S`, 50, which the workflow divides by `P95_FACTOR`).
+`REQUIRE_HANDOFF=1` (the workflow and `pnpm load-test` set it) also requires that more than half of the requests after the first of a user opened a new connection (`download_new_connection`, from `timings.connecting` above 0; k6 does not show the `Connection: close` of a handed over response in its headers), which only a handed over response causes, so that the scenario fails when the handoff stops happening. Not all of them: on Windows 23% of the requests read a connecting time of 0 with the handoff working.
+The floor is far below what a build measures (a 4 core box: about 1,100 MB/s for one download and 3,400 MB/s for 8 at once with the handoff, against 760 MB/s for 8 without it), as it has to hold on any runner: it catches a collapse, the new connection check catches the handoff going away.
+It runs on its own after the routes one, and is left out of the comparison with the base, which has no such route.
+
+```sh
+k6 run -e REQUIRE_HANDOFF=1 tools/src/k6/download.ts
+```
+
+Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
 
 ### CPU bound worker
 

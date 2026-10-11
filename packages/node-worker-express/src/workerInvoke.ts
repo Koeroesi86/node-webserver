@@ -1,8 +1,19 @@
 import net from 'net';
 import { Readable } from 'stream';
 import { ChannelMaxFrameLength, Protocols, WORKER_EVENT } from './constants';
-import { InvokableWorker, RequestBodyEvent, RequestEvent, ResponseEvent, WorkerInputEvent, WorkerOutputEvent, WorkerRequestEvent, WSFrameEvent } from './types';
+import {
+  HandOffEvent,
+  InvokableWorker,
+  RequestBodyEvent,
+  RequestEvent,
+  ResponseEvent,
+  WorkerInputEvent,
+  WorkerOutputEvent,
+  WorkerRequestEvent,
+  WSFrameEvent,
+} from './types';
 import createChannel from './utils/createChannel';
+import createHandOffRequests from './utils/create-hand-off-requests';
 import type { ServerMetrics } from './utils/metrics';
 
 const worker = require(process.argv.pop()) as InvokableWorker;
@@ -31,6 +42,11 @@ const receiving = new Map<string, Promise<void>>();
 /** the socket pair to the server, which the pool opens as the fourth stdio of the worker */
 const channelSocket = new net.Socket({ fd: 3, readable: true, writable: true });
 const channel = createChannel<WorkerInputEvent, WorkerOutputEvent>(channelSocket, messageListener);
+
+const handOffs = createHandOffRequests((requestId, { statusCode, headers }) =>
+  channel.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, event: { statusCode, headers } })
+);
+process.on('message', handOffs.receive);
 
 /** the body goes over the channel as bytes, which spares the server decoding base64 */
 const toMessage = ({ isBase64Encoded, body, ...rest }: ResponseEvent) => ({
@@ -164,6 +180,7 @@ type MessageOf<Type extends WORKER_EVENT> = Extract<WorkerInputEvent, { type: Ty
 
 /** the request is over for the worker: what it waits for will not come, and the rest of the request body is dropped */
 const abortRequest = (requestId: string) => {
+  handOffs.settle(requestId);
   uploads.get(requestId)?.stream.destroy(new Error('The request was aborted.'));
   const stream = streams.get(requestId);
   if (!stream) return;
@@ -220,8 +237,10 @@ const sendResponsePart = (requestId: string, stream: Stream, responseEvent: Resp
 };
 
 /** what the worker answers a request with: the response, a part of it, or a message to a websocket client */
-const createResponseCallback = (requestId: string, stream: Stream, onResponded: () => void) => (responseEvent: ResponseEvent | WSFrameEvent) => {
+const createResponseCallback = (requestId: string, stream: Stream, onResponded: () => void) => (responseEvent: ResponseEvent | HandOffEvent | WSFrameEvent) => {
   onResponded();
+
+  if ('handOff' in responseEvent) return handOffs.request(requestId, stream.aborted, responseEvent);
 
   if ('sendWsMessage' in responseEvent) return sendWsMessage(requestId, stream, responseEvent);
 
@@ -289,7 +308,10 @@ function closeConnection(requestId: string, request: RequestEvent | undefined) {
   closeWsConnection(requestId);
   invoke(
     toWorkerEvent({ ...request, closed: true }, requestId, createEmptyBody()),
-    (responseEvent: ResponseEvent) => {
+    (responseEvent: ResponseEvent | HandOffEvent) => {
+      // the connection is gone, there is nothing to hand over
+      if ('handOff' in responseEvent) return;
+
       channel.send({
         type: WORKER_EVENT.WS_CONNECTION_CLOSE_ACKNOWLEDGE,
         requestId,
@@ -302,16 +324,23 @@ function closeConnection(requestId: string, request: RequestEvent | undefined) {
   );
 }
 
+const acknowledgePart = (requestId: string) => streams.get(requestId)?.waiting.shift()?.(true);
+
+const receiveMetrics = (requestId: string, metrics: ServerMetrics) => metricsWaiting.get(requestId)?.shift()?.(metrics);
+
 function messageListener(message: WorkerInputEvent) {
   switch (message.type) {
     case WORKER_EVENT.RESPONSE_ACKNOWLEDGE:
-      streams.get(message.requestId)?.waiting.shift()?.(true);
+      acknowledgePart(message.requestId);
       break;
     case WORKER_EVENT.REQUEST_BODY:
       uploads.get(message.requestId)?.receive(message.event);
       break;
     case WORKER_EVENT.METRICS:
-      metricsWaiting.get(message.requestId)?.shift()?.(message.event);
+      receiveMetrics(message.requestId, message.event);
+      break;
+    case WORKER_EVENT.RESPONSE_HANDOFF_REFUSE:
+      handOffs.settle(message.requestId);
       break;
     case WORKER_EVENT.REQUEST_ABORT:
       abortRequest(message.requestId);

@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { WebSocketCloseCode, WORKER_EVENT } from '../constants';
 import type { ResponseMessage, WorkerOutputEvent, WSMessage } from '../types';
+import type createResponseHandOff from './create-response-hand-off';
 import type createWsConnection from './create-ws-connection';
 import { getServerMetrics } from './metrics';
 import type { WorkerLease } from './workerPool';
@@ -12,6 +13,8 @@ interface WorkerMessageListenerParams {
   requestId: string;
   /** the connection of an upgrade request, once the worker accepted it it carries the messages */
   webSocket: ReturnType<typeof createWsConnection> | undefined;
+  /** gives the connection to the worker when it asks for it */
+  handOff: ReturnType<typeof createResponseHandOff>;
   armResponseTimeout: () => void;
   /** the worker took a part of the request body */
   onBodyPartTaken: () => void;
@@ -26,6 +29,7 @@ const createWorkerMessageListener = ({
   lease,
   requestId,
   webSocket,
+  handOff,
   armResponseTimeout,
   onBodyPartTaken,
   cleanup,
@@ -55,6 +59,16 @@ const createWorkerMessageListener = ({
   };
 
   const emit = (event: ResponseMessage) => {
+    // the worker has written the body to the client and ended the connection, it waits for the acknowledgement of the end
+    if (handOff.isActive()) {
+      if (event.body !== null) return;
+
+      acknowledge();
+      handOff.finish();
+      cleanup();
+      return;
+    }
+
     if (!response.headersSent) response.writeHead(event.statusCode, event.headers);
 
     if (event.body === null) {
@@ -91,6 +105,9 @@ const createWorkerMessageListener = ({
         break;
       case WORKER_EVENT.RESPONSE_EMIT:
         emit(responseEvent.event);
+        break;
+      case WORKER_EVENT.RESPONSE_HANDOFF:
+        if (responseEvent.event) void handOff.start(responseEvent.event);
         break;
       case WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE:
         webSocket?.acknowledge();
