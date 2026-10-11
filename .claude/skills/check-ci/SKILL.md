@@ -1,6 +1,7 @@
 ---
 name: check-ci
 description: Find why CI failed (or whether it passed) for the current branch or a run link, and report the cause. Trigger "ci failed", "check ci", "/check-ci", or a github.com/.../actions/runs/... link.
+model: sonnet
 allowed-tools: Read, Bash
 ---
 

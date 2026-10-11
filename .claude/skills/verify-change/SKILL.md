@@ -1,6 +1,7 @@
 ---
 name: verify-change
 description: Run the checks the repository requires before a change counts as done (lint, build, quality with unit tests, integration test, load test when the request path changed), verify the issue with verify-task, and report what ran and what did not. Trigger "verify", "verify change", "/verify-change".
+model: sonnet
 allowed-tools: Read, Bash, Skill
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: open-pr
 description: Open a pull request for the current branch with the repository template filled in, the packages that publish worked out, and only the checks that were run ticked. Trigger "open pr", "create pr", "/open-pr".
+model: sonnet
 allowed-tools: Read, Bash
 ---
 

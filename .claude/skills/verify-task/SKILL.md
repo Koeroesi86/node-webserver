@@ -1,6 +1,7 @@
 ---
 name: verify-task
 description: Compare the current branch with the GitHub issue(s) it closes and report what is done, partial or missing, with test coverage. Trigger "verify task", "/verify-task", optional issue number, URL or commit hash.
+model: opus
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
