@@ -87,7 +87,7 @@
     "ignoredClones": ["dup:b6c38f85:3"],
     // examples, fixtures and k6 scenarios are standalone on purpose: each is run on its own, by a user, by a child process or by k6
     "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
-    // 0 would switch the limit off. 1.6 % is left (the unused static worker of node-webserver, which repeats the content type table), so duplication can not grow
-    "threshold": 2
+    // nothing is duplicated now beyond the reviewed clone above; 0 would switch the limit off, so 1 % is the strictest limit, and duplication can not grow
+    "threshold": 1
   }
 }

@@ -202,12 +202,6 @@ export interface LoadedInstance extends InstanceHandler {
   fingerprint?: string;
 }
 
-export interface StorageDriver {
-  save: (path: string, data: string) => Promise<void>;
-  restore: (path: string) => Promise<string>;
-  destroy: (path: string) => Promise<void>;
-}
-
 /** the target of a `proxy` server that the service behind it sets */
 export interface TargetStore {
   /** the target, unless none was set or it expired */

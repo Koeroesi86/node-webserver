@@ -23,7 +23,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 
 | Folder | What it is |
 |---|---|
-| `packages/node-webserver` | the front server: `src/utils/startServer.ts` builds two express apps (http, https with SNI) from the configuration, `src/middlewares/` has one middleware per server type (`staticWorker`, `lambda`, `proxy`) plus access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one example per server type, `integration/` the integration test |
+| `packages/node-webserver` | the front server: `src/utils/startServer.ts` builds two express apps (http, https with SNI) from the configuration, `src/middlewares/` has the middlewares for the `lambda` and `proxy` server types (the static worker is the one of `node-worker-express`) plus access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one example per server type, `integration/` the integration test |
 | `packages/node-webserver-cli`, `node-webserver-service` | thin wrappers around `node-webserver`: a command line runner and an OS service (`os-service`) |
 | `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each in its own process |
 | `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node and the express middleware that uses it, which is what the worker pools of the server are built on |
