@@ -43,10 +43,6 @@ jobs:
       - name: Lint
         timeout-minutes: 5
         run: pnpm lint
-      # unused code, duplication and complexity, which eslint does not see across the packages
-      - name: Code quality
-        timeout-minutes: 5
-        run: pnpm fallow
       - name: Unit tests with coverage
         timeout-minutes: 10
         run: pnpm test:coverage
@@ -64,6 +60,12 @@ jobs:
             packages/*/coverage/lcov-report
           if-no-files-found: ignore
           retention-days: 14
+      # unused code, duplication and complexity, which eslint does not see across the packages, with the coverage of the tests for the exact CRAP scores
+      - name: Code quality
+        timeout-minutes: 5
+        run: |
+          pnpm coverage:merge
+          pnpm fallow:ci
       # one server of every type, started from the bundle
       - name: Integration tests
         timeout-minutes: 5

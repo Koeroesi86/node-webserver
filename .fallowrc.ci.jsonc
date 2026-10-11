@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  // the configuration of the code quality step of the pipeline, and of `pnpm quality` locally: .fallowrc.jsonc with the exact CRAP scores
+  "extends": ["./.fallowrc.jsonc"],
+  "rules": {
+    "complexity-crap": "error"
+  },
+  "health": {
+    // the coverage of jest in every package, merged by `pnpm coverage:merge` after `pnpm test:coverage`
+    "coverage": "coverage/coverage-final.json"
+  }
+}

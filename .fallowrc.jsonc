@@ -28,9 +28,10 @@
     // a suppression comment says why, and goes when what it hides is gone
     "stale-suppressions": "error",
     "require-suppression-reason": "error",
-    // warnings: there are findings from before the check, they are reported and fixed with the code they are in
-    "complexity-cyclomatic": "warn",
-    "complexity-cognitive": "warn",
+    // complexity stops the build as well. CRAP is only exact with the coverage of the tests: here, without it, the scores are estimates and a finding is a warning,
+    // .fallowrc.ci.jsonc reads the coverage and makes it an error
+    "complexity-cyclomatic": "error",
+    "complexity-cognitive": "error",
     "complexity-crap": "warn"
   },
   // the packages may only import the ones they depend on (the `workspace:*` dependencies), tools none of them
@@ -57,10 +58,24 @@
   },
   // proves who uses an export of a package, which the syntactic pass can only guess
   "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "packages/node-webserver-service/tsconfig.json", "tools/tsconfig.json"] },
+  "health": {
+    // run by node, a browser or k6 on their own and not measured by the unit tests, they are examples and test fixtures, not the product
+    "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
+    "thresholdOverrides": [
+      {
+        "files": ["packages/node-worker-express/src/workerInvoke.ts"],
+        "functions": ["messageListener", "sendWsMessage"],
+        "maxCrap": 120,
+        "reason": "runs in the process of a worker, which jest does not measure: workerInvoke.test.ts starts it and checks what it answers"
+      }
+    ]
+  },
   "duplicates": {
     // the same parseArgv in the three entry packages: they are published on their own and share no package, so it stays a copy
     "ignoredClones": ["dup:b6c38f85:3"],
-    // the rest was 2.7 % when the check was added, so duplication can not grow past 3 %
-    "threshold": 3
+    // examples, fixtures and k6 scenarios are standalone on purpose: each is run on its own, by a user, by a child process or by k6
+    "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
+    // no other clone is left, so none can be added
+    "threshold": 0
   }
 }
