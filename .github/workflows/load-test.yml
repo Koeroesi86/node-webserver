@@ -76,7 +76,7 @@ jobs:
             comparison-informational: true
             comparison-rounds: 5
             access-logs-comparison: false
-                        p95-factor: 2
+            p95-factor: 2
     defaults:
       run:
         # also on Windows, where the steps are scripts for bash
