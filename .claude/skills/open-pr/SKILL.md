@@ -1,20 +1,19 @@
 ---
 name: open-pr
 description: Open a pull request for the current branch with the repository template filled in, the packages that publish worked out, and only the checks that were run ticked. Trigger "open pr", "create pr", "/open-pr".
+model: sonnet
 allowed-tools: Read, Bash
 ---
 
-Open a pull request for the current branch. `CLAUDE.md` has the rules, this is the order to apply them in.
+Open a pull request for the current branch, applying the rules of `CLAUDE.md` in this order.
 
-## Before anything is pushed
-
-1. Refuse on `master`. The branch must come off `master` and hold one change. If it holds more, say so and stop.
-2. Find what changed: `git diff --name-only origin/master...HEAD`.
-3. A pull request stacked on another branch has that branch as its base (`--base`), and "What and why" says so.
+## Before pushing
+1. Refuse on `master`. The branch must come off `master` and hold one change; if more, say so and stop.
+2. Changed files: `git diff --name-only origin/master...HEAD`.
+3. Stacked on another branch: use it as `--base` and say so in "What and why".
 
 ## Which packages publish
-
-A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and every package that depends on it:
+A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and its dependents:
 
 | Changed | Publishes |
 |---|---|
@@ -22,39 +21,34 @@ A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and 
 | `node-worker-express`, `node-lambda-invoke` | itself, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
 | `node-webserver` | itself, `node-webserver-cli`, `node-webserver-service` |
 | `node-webserver-cli`, `node-webserver-service` | itself |
-| `pnpm-lock.yaml` | every package whose dependencies changed in it, plus the ones that depend on them |
+| `pnpm-lock.yaml` | packages whose dependencies changed, plus their dependents |
 
-Check the table against the `workspace:*` dependencies in the `package.json` files, as it goes stale when they change. Then say whether the change is breaking for the users of the package. A change only in `tools/`, docs or `.github/` publishes nothing, and the Release section is deleted.
+Check the table against the `workspace:*` dependencies (it goes stale), and say whether the change is breaking. Only `tools/`, docs or `.github/` publishes nothing: delete Release.
 
-## The body
+## Body
+Fill `.github/pull_request_template.md` section by section:
+- **What and why**: a few sentences; `Closes #N` (`gh issue view N`) or the PR it is stacked on.
+- **Changes**: one line each.
+- **Behaviour changes**: config, API, defaults, output users notice; delete if none.
+- **Release**: packages above, breaking or not.
+- **Verification**: tick only what ran this session, after reading the output. `pnpm lint`, `build`, `quality`/`test`, `test:integration` are one box: all four must pass. The load test is required when the request path changed; CI counts only once it has run.
+- **Not verified**: everything not run or tried by hand, with the reason (no k6/Docker is one); "nothing" only when everything was.
+- **Not in this pull request**: limits and follow-ups with issue numbers.
 
-Fill in `.github/pull_request_template.md`, section by section, no free-form summary:
+Run missing checks before opening with `verify-change` (it lists what ran) unless told not to; workflow changes also need `zizmor .github`.
 
-- **What and why**: the reason, in a few sentences. `Closes #N` for the GitHub issue (the tickets live there, `gh issue view N`), or the pull request it is stacked on.
-- **Changes**: one line for each.
-- **Behaviour changes**: config, API, defaults or output the users notice. Delete the section if there are none.
-- **Release**: the packages from above and whether it is breaking.
-- **Verification**: tick only what was run in this session, and read the output before ticking. `pnpm lint`, `pnpm build`, `pnpm test` and `pnpm test:integration` are one box, so tick it only when all four passed. The load test is required when the request path, workers, logging or proxying changed, and CI counts for it only once it has run.
-- **Not verified**: everything that was not run or not tried by hand, with the reason (no k6 or Docker on the machine is a reason). Write "nothing" only when everything was.
-- **Not in this pull request**: known limits and follow-ups with issue numbers.
-
-Run the checks that are missing before opening (the `verify-change` skill does that and gives the list for the two sections), unless the user said not to. A workflow change also needs `zizmor .github`.
-
-When the request path, workers, logging or proxying changed, also compare with the base locally, as CI does (`tools/README.md`, "Comparison with the base"). It needs k6 and a built worktree of `master`:
-
+When the request path changed, also compare with the base as CI does (`tools/README.md`, "Comparison with the base"; needs k6 and a built `master` worktree):
 ```sh
 git worktree add ../base master && (cd ../base && pnpm install --frozen-lockfile && pnpm build)
 SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s
 ```
+`SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` repeats it with access logs on. Report the result under Verification, or under Not verified if it did not run.
 
-`SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` repeats the pass with the access logs on, as CI does on Ubuntu. Put the result under Verification, and under **Not verified** when it did not run (no k6 on the machine is a reason).
+## Opening
+1. Title = squash commit: imperative sentence, no prefix, no number.
+2. `git push -u origin HEAD`; never push to `master`.
+3. `gh pr create --base <base> --title ... --body-file <file>` with the body in the scratchpad directory; end it with the attribution line from the conversation, if any.
+4. Do not merge or change repository settings.
+5. Give the user the link and the Not verified list.
 
-## Opening it
-
-1. The title is the squash commit: an imperative sentence without a prefix ("Add ...", "Cancel a request that ..."), without the number.
-2. Push the branch with `git push -u origin HEAD`. Never push to `master`.
-3. `gh pr create --base <base> --title ... --body-file <file>`, with the body written to a file in the scratchpad directory. End the body with the attribution line from the conversation, when there is one.
-4. Do not merge, and do not change the settings of the repository.
-5. Give the user the link and the list of what was not verified.
-
-Never comment on the pull request. When the change moves, update the description with `gh pr edit --body-file`, keeping the template sections, so it stays true.
+Never comment on the PR; when the change moves, update it with `gh pr edit --body-file`, keeping the template.
