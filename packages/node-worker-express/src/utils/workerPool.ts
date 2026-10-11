@@ -111,6 +111,12 @@ class WorkerPool implements WorkerBudgetMember {
   private readonly entries: Map<Worker, WorkerEntry> = new Map();
   /** the workers stopped as they had no request for the idle timeout, and the ones stopped to make room for the first worker of another path, since the pool started */
   private evicted = { idle: 0, forRoom: 0 };
+  /** the paths that keep a number of workers running, see `keepWarm` */
+  private readonly minimums = new Map<string, { options: SpawnOptions; count: number }>();
+  /** a path that is held back after crashes is warmed again when it may be, one timer per path */
+  private readonly refillTimers = new Map<string, NodeJS.Timeout>();
+  /** no worker is started after the pool was closed, as the process is on its way out */
+  private closed = false;
 
   constructor({
     overallLimit = 0,
@@ -149,7 +155,16 @@ class WorkerPool implements WorkerBudgetMember {
     worker.terminate();
   };
 
+  /** forgets the paths that are kept warm, the workers that run stay until they are stopped */
+  private stopKeepingWarm = () => {
+    this.minimums.clear();
+    this.refillTimers.forEach((timer) => clearTimeout(timer));
+    this.refillTimers.clear();
+  };
+
   onClose = () => {
+    this.closed = true;
+    this.stopKeepingWarm();
     this.workers.forEach((current) => current.forEach(this.stop));
   };
 
@@ -162,6 +177,7 @@ class WorkerPool implements WorkerBudgetMember {
    */
   dispose = (timeout = 0) =>
     new Promise<void>((resolve) => {
+      this.stopKeepingWarm();
       const timer = setTimeout(this.onClose, timeout);
       // the server may stop before, which stops the workers anyway
       timer.unref();
@@ -250,6 +266,13 @@ class WorkerPool implements WorkerBudgetMember {
     // a worker that is busy again is timed anew when it finishes, one that is gone already has nothing to stop
     if (this.getLoad(worker) > 0 || !this.entries.has(worker) || this.stopping.has(worker)) return;
 
+    // the workers a path is kept warm with stay, and are looked at again later as the path can have more workers by then
+    const entry = this.entries.get(worker);
+    if (this.getWorkerCountForPath(entry.workerPath) <= (this.minimums.get(entry.workerPath)?.count ?? 0)) {
+      entry.idleTimer?.refresh();
+      return;
+    }
+
     // no request waits for the slot: one that could use it would have taken this worker when it became idle
     this.evict(worker, 'idle');
   };
@@ -327,6 +350,9 @@ class WorkerPool implements WorkerBudgetMember {
       this.wakeUp();
       this.budget.wakeUp(this);
       this.checkDisposed();
+      // the requests that waited came first, also those of the other pools of the budget, the paths that are kept warm take what room is left, which can be the room of another path.
+      // a worker that the pool stopped itself is not replaced: it made room for another worker, or the pool is going away
+      if (!this.stopping.has(instance)) this.minimums.forEach((_, warmPath) => this.refill(warmPath));
     });
 
     workersForPath.set(id, instance);
@@ -363,10 +389,38 @@ class WorkerPool implements WorkerBudgetMember {
 
   /** Starts workers for the path ahead of its first request, so that one does not have to wait for a process to start. */
   warm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
-    while (this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.getBackoff(workerPath) === 0) {
+    while (!this.closed && this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.getBackoff(workerPath) === 0) {
       this.createWorker(workerPath, options);
     }
     this.wakeUp();
+  };
+
+  /**
+   * Like `warm`, and starts workers again whenever the path has fewer than `count`: after one stopped itself when it was idle, crashed, or was stopped to make room for another path.
+   * The overall limit still holds and requests that wait for a worker come first, so the workers kept warm only take room that nothing else needs.
+   */
+  keepWarm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
+    this.minimums.set(workerPath, { options, count });
+    this.refill(workerPath);
+  };
+
+  private refill = (workerPath: string) => {
+    const minimum = this.minimums.get(workerPath);
+    if (minimum === undefined || this.closed || this.onDisposed !== undefined || this.refillTimers.has(workerPath)) return;
+
+    const backoff = this.getBackoff(workerPath);
+    if (backoff === 0) {
+      this.warm(workerPath, minimum.options, minimum.count);
+      return;
+    }
+
+    // a path whose workers keep crashing is tried again when the backoff is over, not by every worker that stops in the meantime
+    const timer = setTimeout(() => {
+      this.refillTimers.delete(workerPath);
+      this.refill(workerPath);
+    }, backoff);
+    timer.unref();
+    this.refillTimers.set(workerPath, timer);
   };
 
   /** counts the request as a load of the worker right away, before anything else can look at the worker */

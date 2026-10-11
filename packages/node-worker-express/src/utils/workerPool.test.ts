@@ -557,6 +557,131 @@ describe('WorkerPool', () => {
     });
   });
 
+  describe('keepWarm', () => {
+    const restartBackoff = { minUptime: 5000, base: 100, max: 400 };
+
+    beforeEach(() => {
+      jest.useFakeTimers({ now: 1000000, doNotFake: ['setImmediate', 'nextTick'] });
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('starts a worker again when one stopped itself while it was idle', () => {
+      const pool = createPool({ restartBackoff });
+      pool.keepWarm(pathA, {}, 2);
+      jest.advanceTimersByTime(5000);
+
+      FakeWorker.instances[0].exit(0);
+
+      expect(FakeWorker.instances).toHaveLength(3);
+      expect(pool.getWorkerCountForPath(pathA)).toBe(2);
+    });
+
+    it('starts the workers with the options it was given', () => {
+      const pool = createPool({ restartBackoff });
+      const options = { cwd: '/somewhere' };
+      pool.keepWarm(pathA, options);
+
+      FakeWorker.instances[0].exit(0);
+
+      expect(FakeWorker.instances[1].options).toMatchObject(options);
+    });
+
+    it('waits for the backoff of a path whose workers keep crashing, and tries once when it is over', () => {
+      const pool = createPool({ restartBackoff });
+      pool.keepWarm(pathA, {});
+      FakeWorker.instances[0].exit(1);
+      FakeWorker.instances[1].exit(1);
+
+      expect(FakeWorker.instances).toHaveLength(2);
+      jest.advanceTimersByTime(100);
+
+      expect(FakeWorker.instances).toHaveLength(3);
+    });
+
+    it('leaves the room under the overall limit to a request that waits for a worker', async () => {
+      const pool = createPool({ restartBackoff, overallLimit: 1, acquireTimeout: 1000 });
+      pool.keepWarm(pathA, {});
+      const waiting = pool.acquire(pathB, {}, 1);
+
+      FakeWorker.instances[0].exit(0);
+      const lease = await waiting;
+
+      expect(lease.worker).toBe(FakeWorker.instances[1]);
+      expect(pool.getWorkerCountForPath(pathA)).toBe(0);
+      expect(FakeWorker.instances).toHaveLength(2);
+    });
+
+    it('takes the room again once the worker of the other path stopped', async () => {
+      const pool = createPool({ restartBackoff, overallLimit: 1, acquireTimeout: 1000 });
+      pool.keepWarm(pathA, {});
+      const waiting = pool.acquire(pathB, {}, 1);
+      FakeWorker.instances[0].exit(0);
+      (await waiting).release();
+
+      FakeWorker.instances[1].exit(0);
+
+      expect(pool.getWorkerCountForPath(pathA)).toBe(1);
+    });
+
+    it('is not stopped for being idle, however long it has had no request', () => {
+      const idleTimeout = 60000;
+      const pool = createPool({ restartBackoff, idleTimeout });
+      pool.keepWarm(pathA, {});
+
+      jest.advanceTimersByTime(idleTimeout * 3);
+
+      expect(pool.getWorkerCountForPath(pathA)).toBe(1);
+      expect(pool.getStats().evicted).toEqual({ idle: 0, forRoom: 0 });
+    });
+
+    it('stops the idle workers above the minimum, and keeps the minimum', async () => {
+      const idleTimeout = 60000;
+      const pool = createPool({ restartBackoff, idleTimeout });
+      pool.keepWarm(pathA, {});
+      const leases = await acquireAll(pool, pathA, 3, 3);
+      leases.forEach((lease) => lease.release());
+
+      jest.advanceTimersByTime(idleTimeout * 2);
+
+      expect(pool.getWorkerCountForPath(pathA)).toBe(1);
+      expect(pool.getStats().evicted).toEqual({ idle: 2, forRoom: 0 });
+    });
+
+    it('gives up an idle worker for the first worker of another path', async () => {
+      const pool = createPool({ restartBackoff, overallLimit: 1 });
+      pool.keepWarm(pathA, {});
+
+      const lease = await pool.acquire(pathB, {}, 1);
+
+      expect(lease.worker).toBe(FakeWorker.instances[1]);
+      expect(pool.getWorkerCountForPath(pathA)).toBe(0);
+    });
+
+    it('stops keeping a path warm once the pool is disposed of', async () => {
+      const pool = createPool({ restartBackoff });
+      pool.keepWarm(pathA, {});
+      const disposed = pool.dispose(1000);
+
+      FakeWorker.instances[0].exit(0);
+      await disposed;
+
+      expect(FakeWorker.instances).toHaveLength(1);
+    });
+
+    it('starts nothing once the pool is closed', () => {
+      const pool = createPool({ restartBackoff });
+      pool.keepWarm(pathA, {});
+
+      pool.onClose();
+
+      expect(FakeWorker.instances).toHaveLength(1);
+      expect(pool.getWorkerCount()).toBe(0);
+    });
+  });
+
   describe('getStats', () => {
     it('counts the workers, the requests they handle and the ones that wait, per path', async () => {
       const pool = createPool({ overallLimit: 3 });
