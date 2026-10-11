@@ -58,8 +58,9 @@ corepack enable
 pnpm install
 pnpm build   # compile every package, in dependency order
 pnpm lint
-pnpm fallow   # unused code and duplication, see .fallowrc.jsonc
+pnpm fallow   # code quality: unused code, duplication and complexity, see .fallowrc.jsonc
 pnpm test               # unit tests of every package
+pnpm quality            # unit tests with coverage, then the code quality check with exact CRAP scores (`.fallowrc.ci.jsonc`)
 pnpm test:integration   # starts the built server with one server of every type (worker, lambda, child) and sends requests to them
 pnpm start   # run the web server with the example configuration
 ```

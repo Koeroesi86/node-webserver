@@ -19,6 +19,17 @@ let compressing = 0;
 const lowerCased = (headers: Headers) => Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
 const asString = (value: unknown) => (Array.isArray(value) ? value.join(', ') : `${value ?? ''}`);
 
+/** caches have to know that the answer depends on what the client accepts, also when this one is not compressed */
+const varyOnEncoding = (isCompressible: boolean, vary: string): Headers =>
+  isCompressible && !/(^|,)\s*(\*|accept-encoding)\s*(,|$)/i.test(vary) ? { Vary: vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding' } : {};
+
+/** a status that has a body, an answer that is not encoded yet and that the origin does not ask to leave as it is */
+const isOpenToEncoding = (statusCode: number, headers: Headers) =>
+  statusCode >= 200 &&
+  !bodylessStatuses.includes(statusCode) &&
+  (headers['content-encoding'] === undefined || headers['content-encoding'] === 'identity') &&
+  !/(^|,)\s*no-transform\s*(,|$)/i.test(asString(headers['cache-control']));
+
 /** The encoding to use: what the client accepts with the highest weight, the order of the options settles ties. */
 export function chooseEncoding(acceptEncoding: string, supported: CompressionEncoding[]): CompressionEncoding | undefined {
   const weights = new Map<string, number>(
@@ -104,17 +115,12 @@ const compression =
       const length = headers['content-length'] === undefined ? bodySize : Number(headers['content-length']);
       const isCompressible = compressibleTypes.test(type);
       const vary = asString(headers.vary);
-      // caches have to know that the answer depends on what the client accepts, also when this one is not compressed
-      const varied =
-        isCompressible && !/(^|,)\s*(\*|accept-encoding)\s*(,|$)/i.test(vary) ? { Vary: vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding' } : {};
+      const varied = varyOnEncoding(isCompressible, vary);
       const mayCompress =
         encoding !== undefined &&
         isCompressible &&
         request.method !== 'HEAD' &&
-        statusCode >= 200 &&
-        !bodylessStatuses.includes(statusCode) &&
-        (headers['content-encoding'] === undefined || headers['content-encoding'] === 'identity') &&
-        !/(^|,)\s*no-transform\s*(,|$)/i.test(asString(headers['cache-control'])) &&
+        isOpenToEncoding(statusCode, headers) &&
         (length === undefined || Number.isNaN(length) || length >= threshold) &&
         (concurrency === 0 || compressing < concurrency);
 

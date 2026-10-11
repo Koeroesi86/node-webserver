@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import IPCStorage from './IPCStorage';
+import Lambda from './Lambda';
 import type RequestEvent from './RequestEvent';
 import type { StorageInstance } from '../types';
 
@@ -127,5 +128,55 @@ describe('IPCStorage', () => {
     new IPCStorage('abc', instance).getResponse();
 
     expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESONSE', id: 'abc' });
+  });
+
+  describe('attached to a lambda', () => {
+    /** the lambda the storage is attached to: a fake with the parts of it the storage uses, the messages of the lambda go to `receive` */
+    const createLambda = () => {
+      const postMessage = jest.fn();
+      const addEventListener = jest.fn();
+      const lambda = Object.assign(Object.create(Lambda.prototype), { postMessage, addEventListener, removeEventListener: jest.fn() }) as Lambda;
+      const receive = (message: unknown) => addEventListener.mock.calls[0][1](message);
+      return { lambda, postMessage, receive };
+    };
+
+    it('hands a request over to the process that asks for it', () => {
+      new IPCStorage('abc', createEndpoint().instance).setRequest(request);
+      const { lambda, postMessage, receive } = createLambda();
+      new IPCStorage('abc', lambda as unknown as StorageInstance);
+
+      receive({ type: 'GW_GET_REQUEST', id: 'abc' });
+
+      expect(postMessage).toHaveBeenCalledWith({ type: 'GW_SET_REQUEST', id: 'abc', payload: request });
+    });
+
+    it('does not answer a request it does not have', () => {
+      const { lambda, postMessage, receive } = createLambda();
+      new IPCStorage('abc', lambda as unknown as StorageInstance);
+
+      receive({ type: 'GW_GET_REQUEST', id: 'abc' });
+
+      expect(postMessage).not.toHaveBeenCalled();
+    });
+
+    it('keeps the response of the process and confirms it', async () => {
+      const { lambda, postMessage, receive } = createLambda();
+      const storage = new IPCStorage('abc', lambda as unknown as StorageInstance);
+
+      receive({ type: 'GW_SET_RESONSE', id: 'abc', payload: { statusCode: 201 } });
+
+      expect(postMessage).toHaveBeenCalledWith({ type: 'GW_SET_RESONSE_FINISHED', id: 'abc' });
+      await expect(storage.getResponse()).resolves.toEqual({ statusCode: 201 });
+    });
+
+    it('ignores what is not a message of the storage', () => {
+      const { lambda, postMessage, receive } = createLambda();
+      new IPCStorage('abc', lambda as unknown as StorageInstance);
+
+      receive('text');
+      receive({ type: 'other' });
+
+      expect(postMessage).not.toHaveBeenCalled();
+    });
   });
 });

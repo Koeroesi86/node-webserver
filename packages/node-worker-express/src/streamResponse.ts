@@ -2,6 +2,11 @@ import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions
 
 const proceeds = (result: unknown) => result !== false;
 
+/** leaving the loop early makes an async generator run its cleanup, a stream has to be told */
+const destroyBody = (body: StreamBody) => {
+  if ('destroy' in body && typeof body.destroy === 'function') body.destroy();
+};
+
 /**
  * Streams the body of a response in parts through the emit protocol of the worker, instead of answering in one message.
  * Parts are only sent a few at a time: the middleware acknowledges a part once it was written to the client, so a slow client
@@ -22,6 +27,15 @@ async function streamResponse(
   let inFlight = 0;
   const send = (part: Partial<ResponseEvent>) => Promise.resolve(callback({ statusCode, headers, emit: true, ...part }));
   let completed = true;
+  // the oldest part is awaited until both the number of parts and the bytes in flight are within the window, false when the client went away
+  const drain = async () => {
+    while (written.length > 0 && (written.length >= window || inFlight >= windowBytes)) {
+      inFlight -= sizes.shift() ?? 0;
+      if (!proceeds(await written.shift())) return false;
+    }
+
+    return true;
+  };
 
   try {
     for await (const chunk of body) {
@@ -33,21 +47,16 @@ async function streamResponse(
       written.push(send({ body: buffer }));
       sizes.push(buffer.length);
       inFlight += buffer.length;
-      // the oldest part is awaited until both the number of parts and the bytes in flight are within the window
-      while (written.length > 0 && (written.length >= window || inFlight >= windowBytes)) {
-        inFlight -= sizes.shift() ?? 0;
-        if (!proceeds(await written.shift())) {
-          completed = false;
-          return false;
-        }
+      if (!(await drain())) {
+        completed = false;
+        return false;
       }
     }
   } catch (error) {
     console.error(error);
     completed = false;
   } finally {
-    // leaving the loop early makes an async generator run its cleanup, a stream has to be told
-    if ('destroy' in body && typeof body.destroy === 'function') body.destroy();
+    destroyBody(body);
   }
 
   // the last part, without a body, ends the response

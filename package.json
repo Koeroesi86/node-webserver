@@ -8,13 +8,16 @@
   "scripts": {
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test --coverage && node tools/dist/scripts/coverage-report.js",
+    "coverage:merge": "node tools/dist/scripts/merge-coverage.js",
     "test:integration": "pnpm -r --if-present test:integration",
     "start": "pnpm --filter @koeroesi86/node-webserver start",
     "build": "pnpm -r --if-present build",
     "generate-version": "pnpm --filter @koeroesi86/tools generate-version",
     "load-test": "pnpm build && node tools/dist/scripts/load-test.js",
     "lint": "eslint --ext .ts --cache --cache-strategy content --cache-location .cache/eslint/ .",
-    "fallow": "fallow"
+    "fallow": "fallow",
+    "fallow:ci": "fallow --config .fallowrc.ci.jsonc",
+    "quality": "pnpm test:coverage && pnpm coverage:merge && pnpm fallow:ci"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",

@@ -4,6 +4,7 @@ import sendToParent from '../utils/sendToParent';
 import type RequestEvent from './RequestEvent';
 import type ResponseEvent from './ResponseEvent';
 import type { StorageInstance } from '../types';
+import { bindStorageMethods } from '../utils/bind-storage-methods';
 
 const MESSAGES = {
   GET_RESONSE: 'GW_GET_RESONSE',
@@ -62,13 +63,18 @@ const toEndpoint = (instance: Worker | NodeJS.Process): MessageEndpoint => {
   };
 };
 
+/** the request the invoker sends is kept, and the invoker is told */
+const storeRequest = (message: IpcMessage) => {
+  if (message.type !== MESSAGES.SET_REQUEST) return;
+
+  requests[getRequestKey(message.id)] = message.payload;
+  sendToParent({ type: MESSAGES.SET_REQUEST_FINISHED, id: message.id });
+};
+
 process.on('message', (message) => {
   if (!isIpcMessage(message)) return;
 
-  if (message.type === MESSAGES.SET_REQUEST) {
-    requests[getRequestKey(message.id)] = message.payload;
-    sendToParent({ type: MESSAGES.SET_REQUEST_FINISHED, id: message.id });
-  }
+  storeRequest(message);
 
   if (message.type === MESSAGES.SET_RESONSE) {
     responses[getResponseKey(message.id)] = message.payload;
@@ -91,11 +97,7 @@ class IPCStorage {
   }
 
   constructor(readonly id: string, readonly instance: StorageInstance) {
-    this.setResponse = this.setResponse.bind(this);
-    this.getResponse = this.getResponse.bind(this);
-    this.setRequest = this.setRequest.bind(this);
-    this.getRequest = this.getRequest.bind(this);
-    this.destroy = this.destroy.bind(this);
+    bindStorageMethods(this);
     this.invoker = this.invoker.bind(this);
     this.executor = this.executor.bind(this);
     this.invokerMessageListener = this.invokerMessageListener.bind(this);
@@ -144,10 +146,7 @@ class IPCStorage {
   executorMessageListener(message: unknown) {
     if (!isIpcMessage(message)) return;
 
-    if (message.type === MESSAGES.SET_REQUEST) {
-      requests[getRequestKey(message.id)] = message.payload;
-      sendToParent({ type: MESSAGES.SET_REQUEST_FINISHED, id: message.id });
-    }
+    storeRequest(message);
 
     if (message.type === MESSAGES.GET_RESONSE) {
       const item = responses[getResponseKey(message.id)];

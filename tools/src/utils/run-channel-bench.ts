@@ -2,12 +2,9 @@ import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { resolve } from 'node:path';
-import { Duplex } from 'node:stream';
 import { channelBenchCases, channelBenchWarmUp } from '../constants/channel-bench';
 import type { ChannelBenchCase, ChannelBenchResult, ChannelMode } from '../types/channel-bench';
-import { loadCreateChannel } from './load-create-channel';
-
-const headers = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`x-header-${index}`, 'value '.repeat(4)]));
+import { connectBenchChild } from './connect-bench-child';
 
 /**
  * Sends messages to a child process that echoes them and measures how fast they come back, over the channel a worker is given:
@@ -20,17 +17,7 @@ export const runChannelBench = async (mode: ChannelMode, scale = 1, cases: Chann
   });
   const waiting = new Map<string, () => void>();
   const answered = (message: { requestId: string }) => waiting.get(message.requestId)?.();
-  let send: (requestId: string, body: Buffer | undefined) => void;
-
-  if (mode === 'ipc') {
-    child.on('message', answered);
-    send = (requestId, body) => child.send({ type: 'REQUEST', requestId, event: { headers, ...(body && { inlineBody: body.toString('base64') }) } });
-  } else {
-    const socket = child.stdio[3];
-    if (!(socket instanceof Duplex)) throw new Error('The child has no channel.');
-    const channel = loadCreateChannel()(socket, answered);
-    send = (requestId, body) => channel.send({ type: 'REQUEST', requestId, event: { headers, ...(body && { body }) } });
-  }
+  const send = connectBenchChild(child, mode, answered);
 
   let counter = 0;
   const roundTrip = (body: Buffer | undefined) =>
