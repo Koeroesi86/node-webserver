@@ -73,8 +73,7 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
     const lambda = await scenario('lambda.ts', []);
     const routes = await scenario('routes.ts', []);
     const lambdaRoutes = await scenario('lambda-routes.ts', []);
-    // the handoff of big responses to the worker is off on Windows
-    const downloads = await scenario('download.ts', process.platform === 'win32' ? [] : ['-e', 'REQUIRE_HANDOFF=1']);
+    const downloads = await scenario('download.ts', ['-e', 'REQUIRE_HANDOFF=1']);
 
     return [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads].every((code) => code === 0) ? 0 : 1;
   } finally {

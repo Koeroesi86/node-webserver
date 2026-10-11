@@ -239,7 +239,7 @@ export interface MiddlewareOptions {
   limitResponseTimeout?: number;
   /**
    * a streamed response of at least this many bytes (by its `Content-Length`) on a plain HTTP/1 connection is written to the client by the worker itself: the server hands the socket over,
-   * so the body does not pass through it, and the connection is closed after the body. 0 disables it. Defaults to 8 MiB, and to 0 on Windows.
+   * so the body does not pass through it, and the connection is closed after the body. 0 disables it. Defaults to 8 MiB.
    * Disable it when a middleware in front of this one changes the body other than by setting `Content-Encoding` (as compression does), the body would bypass it.
    */
   handOffResponses?: number;

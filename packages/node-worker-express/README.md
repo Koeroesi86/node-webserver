@@ -47,7 +47,7 @@ you set a `Content-Length`. Static files above 1 MiB are streamed the same way.
 
 ### Big responses skip the server
 
-A response with a `Content-Length` of at least `handOffResponses` bytes (8 MiB by default, 0 turns it off, and it is off on Windows, where handing sockets over is not verified) is written by the worker itself:
+A response with a `Content-Length` of at least `handOffResponses` bytes (8 MiB by default, 0 turns it off) is written by the worker itself:
 the server hands the connection of the client to the worker, which writes the body to it, so the bytes do not pass through the one process that all downloads would share.
 `streamResponse` does this by itself, a worker that calls `callback` on its own can ask with `callback({ statusCode, headers, handOff: true })`, which resolves with the socket or with `undefined` when the server keeps the connection.
 Things to know:

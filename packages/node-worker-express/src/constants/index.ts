@@ -121,8 +121,7 @@ export const DefaultOptions: MiddlewareOptions = {
   inlineRequestBody: 64 * 1024,
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
-  // handing a socket over is not verified on Windows yet
-  handOffResponses: process.platform === 'win32' ? 0 : 8 * 1024 * 1024,
+  handOffResponses: 8 * 1024 * 1024,
   limitQueue: 1000,
   limitWebSocketMessage: 1024 * 1024,
   limitWebSocketConnections: 1000,

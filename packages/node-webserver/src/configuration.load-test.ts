@@ -162,7 +162,7 @@ const withHandOff = (server: ServerInstance): ServerInstance =>
  * `routes.localhost` finds its worker in a table of routes, where `/items/<id>` is the last of 401, and answers anything else with 404 itself.
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests. The https port serves HTTP/2 (`http2: true`).
  * WORKERS_PER_PATH overrides the number of workers started per path.
- * HAND_OFF_RESPONSES overrides the size in bytes from which the worker writes a response to the client itself (0 turns it off), where the default is off on Windows.
+ * HAND_OFF_RESPONSES overrides the size in bytes from which the worker writes a response to the client itself (0 turns it off), to compare the server with and without it.
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {
