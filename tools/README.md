@@ -6,6 +6,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | --- | --- | --- |
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
 | [Channel benchmark](#channel-benchmark) | the channel between the server and a worker on its own: messages and bytes per second, the old IPC against the socket pair | `node tools/dist/scripts/channel-bench.js` |
+| [Coverage report](#coverage-report) | merges the unit test coverage of the packages into one markdown and json report | `pnpm test:coverage` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
 ### Layout
@@ -40,6 +41,11 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 A child process echoes every message, the parent keeps a number of them in flight (1 or 64, 16 and 4 for the bigger bodies) and measures messages per second, megabytes of body per second, its own CPU time per message and the latency, for requests without a body and with bodies of 4 KiB, 64 KiB and 1 MiB.
 `socket` is the `createChannel` of `node-worker-express`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
 Pin it like the load test to compare runs, for example `taskset -c 0-2 node tools/dist/scripts/channel-bench.js`; on 3 cores the socket was 2-10 times faster with a body from 4 KiB and not faster without one.
+
+## Coverage report
+
+`pnpm test:coverage` in the root runs the unit tests of every package with coverage (needs `pnpm build`, the tools are run from `dist`) and then `scripts/coverage-report.ts`.
+Developers open the html of a package (`packages/<name>/coverage/lcov-report/index.html`); `coverage/report.md` in the root is the same for reading as text, with a table of the packages and, for every file that is not fully covered, the line numbers that never ran, and `coverage/report.json` is that data for scripts. A line counts as covered when every statement on it ran. Nothing fails below a limit, and the output is not committed (`coverage` is ignored).
 
 ## Load tests
 
