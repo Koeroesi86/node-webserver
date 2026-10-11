@@ -57,6 +57,8 @@ module.exports = {
     { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'integration-token', allowPrivate: true } } },
     // nothing listens on the port the tests give it
     { hostname: 'proxy-down.localhost', protocol: 'http', type: 'proxy', proxyOptions: { target: `http://127.0.0.1:${process.env.PORT_CLOSED}` } },
+    // a worker server kept warm, the test gives the file in which its worker writes down its starts
+    ...(process.env.WARM_MARKER ? [worker('warm.localhost', { options: { root: resolve(__dirname, 'warm'), index: ['worker.js'], warmPaths: ['/'] } })] : []),
     // a server in a file of its own, which the test of the reload changes
     ...(process.env.RELOADED_SERVER ? [process.env.RELOADED_SERVER] : []),
   ],
