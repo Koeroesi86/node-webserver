@@ -1,7 +1,7 @@
 # node-webserver
 
 pnpm workspace: a web server hosting workers, lambdas and proxied apps by virtual host, plus its libraries, published to npm as `@koeroesi86/*`.
-`README.md` has the design and packages (read the design section before changing the request path), `tools/README.md` the versions and load tests.
+`README.md` has the design and packages (read the design section before changing the request path), `tools/README.md` the versions and load tests. The READMEs are long (`packages/node-webserver/README.md` ~5900 words, `tools/README.md` ~4800): grep for the heading and read that section, not the whole file.
 
 ## Commands
 
@@ -69,17 +69,10 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 - The front process is a single, cheap proxy (design in `README.md`). Do nothing per request there that can be done behind it, and measure with the load test when you touch that path. Do not propose several front servers, and do not serve files from it: that is the static worker's job. Rank performance work by what was measured, not guessed.
 - After a refactor or dependency swap, check changed files for lost behaviour before calling it done.
 
-## Versions and publishing
+## Context
 
-- Never edit a package's `version` or `gitHead`; the pipeline stamps them (`tools/src/scripts/version.ts`).
-- A change in a package folder publishes it and its dependents: keep unrelated edits out of `packages/**`.
-- `publish.yml` runs twice a day and by hand, builds and packs without the provenance permission, and a job that runs no repository code publishes the tarballs. Keep it that way.
-
-## Workflows (`.github/`)
-
-- Pin every action to a full commit SHA with the version as a comment (`uses: owner/action@<sha> # v1.2.3`). Dependabot updates them after a 7 day wait.
-- `permissions: contents: read` at the top, wider on the job that needs it with a comment why. `persist-credentials: false` on every checkout. Never interpolate `${{ ... }}` of untrusted input into `run:`; pass it through `env:`.
-- Run `zizmor .github` (offline works) before a PR that touches a workflow. The only check master requires is `required-checks` in `pr-checks.yml`: a new must-pass job goes into its `needs`.
+- Filter output before it reaches the context: `tail`/`grep` test, build and CI logs (`gh run view <run> --job <job> --log-failed | tail -150`), read the failing part of a diff, not all of it. Hand wide searches to a subagent and ask for the answer.
 - The goal is for every load test (also the Windows and macOS comparison with the base, informational today because of runner noise) to block on failure: do not propose dropping, demoting or deferring them to speed up CI; stabilise the noisy runs instead.
 - When CI fails, read the log (`gh pr checks`, `gh run view <run> --job <job> --log-failed`) and fix the cause, with the `check-ci` skill.
-- No bypass flags or skipped checks (`--no-verify`, `continue-on-error`) to make something pass; find out why it fails. `continue-on-error` stays only where a comment explains it (informational comparisons).
+
+Rules that only matter for some files load on demand from `.claude/rules/`: `versions-and-publishing.md` (`packages/**`, publishing) and `workflows.md` (`.github/**`). Read them before such a change if they did not load.
