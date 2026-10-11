@@ -6,6 +6,7 @@ module.exports = {
   cacheDirectory: resolve(__dirname, '../../.cache/jest/node-webserver-service'),
   testEnvironment: 'node',
   setupFilesAfterEnv: [resolve(__dirname, '../../jest-retry.js')],
+  ...require('../../jest-coverage.js'),
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },
