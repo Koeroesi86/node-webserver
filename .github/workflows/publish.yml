@@ -118,7 +118,8 @@ jobs:
       - name: Publish packages
         timeout-minutes: 10
         # the `./` is needed: npm reads `tarballs/name.tgz` as the GitHub repository `tarballs/name.tgz` and tries to clone it
+        # the versions end in the branch name (`26.10.123-master`), which npm takes for a prerelease and refuses to publish without a tag
         run: |
           for file in ./tarballs/*.tgz; do
-            npm publish "${file}" --access public --provenance
+            npm publish "${file}" --access public --provenance --tag latest
           done
