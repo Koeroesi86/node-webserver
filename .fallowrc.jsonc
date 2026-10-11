@@ -67,6 +67,12 @@
         "functions": ["messageListener", "sendWsMessage"],
         "maxCrap": 120,
         "reason": "runs in the process of a worker, which jest does not measure: workerInvoke.test.ts starts it and checks what it answers"
+      },
+      {
+        "files": ["packages/node-lambda-invoke/src/middlewares/http.ts"],
+        "functions": ["createHttpMiddleware", "handleRequest", "<arrow>"],
+        "maxCrap": 60,
+        "reason": "http.test.ts runs the compiled dist of the middleware with real lambda processes, so jest does not instrument the source, but it checks what the middleware answers"
       }
     ]
   },
