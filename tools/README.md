@@ -44,7 +44,7 @@ Pin it like the load test to compare runs, for example `taskset -c 0-2 node tool
 
 ## Coverage report
 
-`pnpm test:coverage` in the root runs the unit tests of the published packages with coverage (only the code that is published: no tests, test helpers, examples or load test scripts; the tools are left out) (needs `pnpm build`, the tools are run from `dist`) and then `scripts/coverage-report.ts`.
+`pnpm test:coverage` in the root runs the unit tests of the packages and of the tools with coverage (not counted: tests, test helpers, examples, the k6 scenarios and the load test scripts of node-webserver that are not published) (needs `pnpm build`, the tools are run from `dist`) and then `scripts/coverage-report.ts`.
 Developers open the html of a package (`packages/<name>/coverage/lcov-report/index.html`); `coverage/report.md` in the root is the same for reading as text, with a table of the packages and, for every file that is not fully covered, the line numbers that never ran, and `coverage/report.json` is that data for scripts. A line counts as covered when every statement on it ran. Nothing fails below a limit, and the output is not committed (`coverage` is ignored).
 
 ## Load tests
