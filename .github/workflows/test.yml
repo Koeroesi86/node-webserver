@@ -47,13 +47,7 @@ jobs:
       - name: Unused code
         timeout-minutes: 5
         run: pnpm fallow
-      - name: Unit tests
-        if: runner.os != 'Linux'
-        timeout-minutes: 10
-        run: pnpm test
-      # the unit tests again, with coverage, on Linux only: the single quotes of the script do not survive cmd on Windows
       - name: Unit tests with coverage
-        if: runner.os == 'Linux'
         timeout-minutes: 10
         run: pnpm test:coverage
       - name: Coverage summary
