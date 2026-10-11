@@ -61,21 +61,29 @@ const requestHandOff = (requestId: string, { statusCode, headers }: HandOffEvent
     channel.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, event: { statusCode, headers } });
   });
 
+const readRequestId = (message: unknown) =>
+  message instanceof Object && 'requestId' in message && typeof message.requestId === 'string' ? message.requestId : undefined;
+
+const readTimeout = (message: unknown) => (message instanceof Object && 'timeout' in message && typeof message.timeout === 'number' ? message.timeout : 0);
+
+// the server does not watch the connection any more, a client that stops taking the body would hold the worker forever
+const limitIdleTime = (socket: net.Socket, timeout: number) => {
+  if (timeout > 0) socket.setTimeout(timeout, () => socket.destroy());
+};
+
 // the connections arrive over the IPC channel of node, which can carry them, the socket pair cannot
 process.on('message', (message: unknown, socket: unknown) => {
-  if (typeof message !== 'object' || message === null || !('requestId' in message) || typeof message.requestId !== 'string') return;
   if (!(socket instanceof net.Socket)) return;
 
-  const take = handOffs.get(message.requestId);
+  const requestId = readRequestId(message);
+  const take = requestId === undefined ? undefined : handOffs.get(requestId);
   if (!take) {
     // nobody waits for it any more, the request was aborted in the meantime
     socket.destroy();
     return;
   }
 
-  const timeout = 'timeout' in message && typeof message.timeout === 'number' ? message.timeout : 0;
-  // the server does not watch the connection any more, a client that stops taking the body would hold the worker forever
-  if (timeout > 0) socket.setTimeout(timeout, () => socket.destroy());
+  limitIdleTime(socket, readTimeout(message));
   take(socket);
 });
 
@@ -261,11 +269,14 @@ const sendResponsePart = (requestId: string, stream: Stream, responseEvent: Resp
   });
 };
 
+const handOffResponse = (requestId: string, stream: Stream, responseEvent: HandOffEvent) =>
+  stream.aborted ? Promise.resolve(undefined) : requestHandOff(requestId, responseEvent);
+
 /** what the worker answers a request with: the response, a part of it, or a message to a websocket client */
 const createResponseCallback = (requestId: string, stream: Stream, onResponded: () => void) => (responseEvent: ResponseEvent | HandOffEvent | WSFrameEvent) => {
   onResponded();
 
-  if ('handOff' in responseEvent) return stream.aborted ? Promise.resolve(undefined) : requestHandOff(requestId, responseEvent);
+  if ('handOff' in responseEvent) return handOffResponse(requestId, stream, responseEvent);
 
   if ('sendWsMessage' in responseEvent) return sendWsMessage(requestId, stream, responseEvent);
 
@@ -351,23 +362,31 @@ function closeConnection(requestId: string, request: RequestEvent | undefined) {
 
 function messageListener(message: WorkerInputEvent) {
   switch (message.type) {
-    case WORKER_EVENT.RESPONSE_ACKNOWLEDGE:
-      streams.get(message.requestId)?.waiting.shift()?.(true);
-      break;
     case WORKER_EVENT.REQUEST_BODY:
       uploads.get(message.requestId)?.receive(message.event);
       break;
     case WORKER_EVENT.METRICS:
       metricsWaiting.get(message.requestId)?.shift()?.(message.event);
       break;
-    case WORKER_EVENT.RESPONSE_HANDOFF_REFUSE:
-      handOffs.get(message.requestId)?.();
-      break;
     case WORKER_EVENT.REQUEST_ABORT:
       abortRequest(message.requestId);
       break;
     case WORKER_EVENT.REQUEST:
       startRequest(message);
+      break;
+    default:
+      responseListener(message);
+  }
+}
+
+/** the messages that go on while a response is being written, and the ones of websockets */
+function responseListener(message: WorkerInputEvent) {
+  switch (message.type) {
+    case WORKER_EVENT.RESPONSE_ACKNOWLEDGE:
+      streams.get(message.requestId)?.waiting.shift()?.(true);
+      break;
+    case WORKER_EVENT.RESPONSE_HANDOFF_REFUSE:
+      handOffs.get(message.requestId)?.();
       break;
     case WORKER_EVENT.WS_MESSAGE_RECEIVE:
       receiveWsMessage(message);
