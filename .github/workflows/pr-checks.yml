@@ -62,9 +62,18 @@ jobs:
       - name: Setup
         timeout-minutes: 10
         run: pnpm install --frozen-lockfile
+      - name: Package bundle
+        timeout-minutes: 10
+        run: pnpm build
+      # the coverage of the tests makes the CRAP scores of the changed functions exact, and a score of 30 or more fails the audit
+      - name: Unit tests with coverage
+        timeout-minutes: 10
+        run: |
+          pnpm test:coverage
+          pnpm coverage:merge
       - name: Code quality of the changed files
         timeout-minutes: 5
-        run: pnpm exec fallow audit --base origin/master
+        run: pnpm exec fallow audit --base origin/master --coverage coverage/coverage-final.json --max-crap 30
 
   # the load test (and its comparison with the base) only runs when the tests and the build passed
   load-test:
