@@ -197,8 +197,8 @@ k6 run tools/src/k6/lambda-routes.ts
 
 `download.ts` downloads `web.localhost/download/?mib=32` (`examples/download/exampleWorker.js`: 32 MiB with a `Content-Length`, generated while it is sent) with 8 users at once. A body that big is what the server hands to the worker (`handOffResponses`, 8 MiB by default in `node-worker-express`),
 which writes it to the client itself, so the front process does not carry the bytes. Every download is checked whole (size and one byte of the first, the middle and the last MiB), and its speed is the metric `download_mb_per_s`, with a floor on the slowest tenth (`MIN_MB_PER_S`, 50, which the workflow divides by `P95_FACTOR`).
-`REQUIRE_HANDOFF=1` (the workflow sets it everywhere but Windows, where the handoff is off) also checks that the response says `Connection: close`, which only a handed over response does, so that the scenario fails when the handoff stops happening.
-The floor is far below what a build measures (a 4 core box: about 1,100 MB/s for one download and 3,400 MB/s for 8 at once with the handoff, against 760 MB/s for 8 without it), as it has to hold on any runner: it catches a collapse, the `Connection: close` check catches the handoff going away.
+`REQUIRE_HANDOFF=1` (the workflow sets it everywhere but Windows, where the handoff is off) also checks that the next request of a user had to open a new connection (`timings.connecting` is above 0; k6 does not show the `Connection: close` of a handed over response in its headers), which only a handed over response causes, so that the scenario fails when the handoff stops happening.
+The floor is far below what a build measures (a 4 core box: about 1,100 MB/s for one download and 3,400 MB/s for 8 at once with the handoff, against 760 MB/s for 8 without it), as it has to hold on any runner: it catches a collapse, the new connection check catches the handoff going away.
 It runs on its own after the routes one, and is left out of the comparison with the base, which has no such route.
 
 ```sh
