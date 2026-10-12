@@ -58,6 +58,34 @@ Things to know:
 
 Producing very small chunks is wasteful, as every part takes a message to the main process: collect them into parts of some KiB.
 
+## Static files
+
+A path that no worker answers is served by the static worker, `GET` and `HEAD` only, with an `ETag`, `Last-Modified` and conditional requests (`304`). Files above 1 MiB are streamed, smaller ones are kept in memory.
+All of it runs in the worker, not in the server. The `static` option tunes it:
+
+```js
+middleware({
+  root,
+  static: {
+    cacheControl: [
+      { folder: '/assets/', extension: 'js', value: 'public, max-age=31536000, immutable' },
+      { extension: '.css', value: 'public, max-age=3600' },
+    ],
+    listDirectories: true,
+    precompressed: ['br', 'gzip'],
+  },
+});
+```
+
+- **Range requests** are always answered: a single range (`bytes=2-4`, `bytes=7-`, `bytes=-3`) with `206`, `Content-Range` and `Accept-Ranges: bytes`, `416` with `Content-Range: bytes */size` for one outside of the file.
+  `If-Range` is compared with the `ETag` (also without its weak prefix, as it derives from the size and the modification time) or the `Last-Modified` date, a file that changed is sent whole.
+  Several ranges, another unit and a header that is not valid are ignored and the whole file is sent. A range of a big file is streamed from the file, a small one is cut from memory. A `206` is not compressed by `compression`.
+- **`cacheControl`**: rules of a `folder` of the request path, an `extension` or both (both must match), the first match sets `Cache-Control`. Without a match it is `public, max-age=0`.
+- **`listDirectories`** (off by default): a folder without an index file (`index.html`) is answered with a list of it instead of 404, folders first. Names are escaped, files starting with a dot are left out.
+  A folder requested without the closing slash is redirected to it (`301`).
+- **`precompressed`** (off by default): for `app.js` the worker looks for `app.js.br` (`br`) and `app.js.gz` (`gzip`) and sends the first one in the list that the client accepts, with `Content-Encoding`, its own `ETag` and `Content-Type` of the original.
+  `Vary: Accept-Encoding` is set for every file that has a variant. The compression of the server leaves such a response alone. Build the variants yourself, they are not made or refreshed here.
+
 ## Reading the body of a request
 
 The body is not part of the event a worker is called with: the worker is called at once, and reads the body from `event.bodyStream`, a `Readable` (empty for requests without a body):

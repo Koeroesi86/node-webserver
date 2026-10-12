@@ -23,10 +23,11 @@ const asString = (value: unknown) => (Array.isArray(value) ? value.join(', ') : 
 const varyOnEncoding = (isCompressible: boolean, vary: string): Headers =>
   isCompressible && !/(^|,)\s*(\*|accept-encoding)\s*(,|$)/i.test(vary) ? { Vary: vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding' } : {};
 
-/** a status that has a body, an answer that is not encoded yet and that the origin does not ask to leave as it is */
+/** a status that has a body, an answer that is not encoded yet, not a part of one (its range is of the bytes as they are) and that the origin does not ask to leave as it is */
 const isOpenToEncoding = (statusCode: number, headers: Headers) =>
   statusCode >= 200 &&
   !bodylessStatuses.includes(statusCode) &&
+  headers['content-range'] === undefined &&
   (headers['content-encoding'] === undefined || headers['content-encoding'] === 'identity') &&
   !/(^|,)\s*no-transform\s*(,|$)/i.test(asString(headers['cache-control']));
 

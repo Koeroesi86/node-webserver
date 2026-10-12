@@ -2,9 +2,9 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { StaticStreamThreshold } from './constants';
+import { StaticOptionsEnv, StaticStreamThreshold } from './constants';
 import staticWorker from './staticWorker';
-import type { ResponseEvent, WorkerRequestEvent } from './types';
+import type { InvokableWorker, ResponseEvent, StaticOptions, WorkerRequestEvent } from './types';
 
 jest.mock('./utils/getCharset', () => ({ __esModule: true, default: jest.fn().mockResolvedValue('utf-8') }));
 
@@ -23,6 +23,18 @@ describe('staticWorker', () => {
     await fs.writeFile(path.join(root, 'a..b.txt'), 'dots');
     await fs.writeFile(path.join(root, 'big.bin'), big);
     await fs.writeFile(path.join(root, 'icon.ico'), Buffer.from([1, 2, 3]));
+    await fs.writeFile(path.join(root, 'digits.txt'), '0123456789');
+    await fs.mkdir(path.join(root, 'assets'));
+    await fs.writeFile(path.join(root, 'assets', 'app.js'), 'console.log(1);');
+    await fs.writeFile(path.join(root, 'assets', 'app.js.br'), 'brotli bytes');
+    await fs.writeFile(path.join(root, 'assets', 'app.js.gz'), 'gzip bytes');
+    await fs.writeFile(path.join(root, 'assets', 'plain.css'), 'a{}');
+    await fs.mkdir(path.join(root, 'listed', 'inner'), { recursive: true });
+    await fs.writeFile(path.join(root, 'listed', 'b <&>.txt'), 'b');
+    await fs.writeFile(path.join(root, 'listed', 'a.txt'), 'a');
+    await fs.writeFile(path.join(root, 'listed', '.hidden'), 'secret');
+    await fs.mkdir(path.join(root, 'withIndex'));
+    await fs.writeFile(path.join(root, 'withIndex', 'index.html'), 'index');
     await fs.writeFile(path.join(parent, 'secret.txt'), 'classified content');
   });
 
@@ -233,6 +245,266 @@ describe('staticWorker', () => {
       const all = await stream();
       expect(parts.length).toBeLessThan(all.length - 2);
       expect(parts[parts.length - 1].body).not.toBeNull();
+    });
+  });
+
+  describe('range requests', () => {
+    const ranged = (requestPath: string, range: string, headers: Record<string, string> = {}) => request(requestPath, 'GET', { range, ...headers });
+
+    it('announces that it takes ranges', async () => {
+      expect((await request('/digits.txt')).headers['Accept-Ranges']).toBe('bytes');
+    });
+
+    it.each([
+      ['start and end', 'bytes=2-4', '234', 'bytes 2-4/10'],
+      ['an open end', 'bytes=7-', '789', 'bytes 7-9/10'],
+      ['a suffix', 'bytes=-3', '789', 'bytes 7-9/10'],
+      ['a suffix longer than the file', 'bytes=-50', '0123456789', 'bytes 0-9/10'],
+      ['an end beyond the file', 'bytes=8-50', '89', 'bytes 8-9/10'],
+    ])('answers %s with 206 from a cached file', async (_, range, expected, contentRange) => {
+      await request('/digits.txt');
+      const response = await ranged('/digits.txt', range);
+
+      expect(response.statusCode).toBe(206);
+      expect(bodyOf(response)).toBe(expected);
+      expect(response.headers).toMatchObject({ 'Content-Range': contentRange, 'Content-Length': String(expected.length) });
+    });
+
+    it.each(['bytes=10-', 'bytes=20-30', 'bytes=-0'])('answers %s, which is outside of the file, with 416', async (range) => {
+      const response = await ranged('/digits.txt', range);
+
+      expect(response).toMatchObject({ statusCode: 416, body: '', headers: { 'Content-Range': 'bytes */10', 'Content-Length': '0' } });
+    });
+
+    it.each([
+      ['several ranges', 'bytes=0-1,4-5'],
+      ['another unit', 'items=0-1'],
+      ['a start after the end', 'bytes=5-2'],
+      ['nonsense', 'bytes=a-b'],
+    ])('sends the whole file for %s', async (_, range) => {
+      const response = await ranged('/digits.txt', range);
+
+      expect(response.statusCode).toBe(200);
+      expect(bodyOf(response)).toBe('0123456789');
+    });
+
+    it('uses the range when If-Range has the ETag of the file', async () => {
+      const { headers } = await request('/digits.txt');
+
+      expect((await ranged('/digits.txt', 'bytes=0-1', { 'if-range': headers.ETag })).statusCode).toBe(206);
+      expect((await ranged('/digits.txt', 'bytes=0-1', { 'if-range': headers['Last-Modified'] })).statusCode).toBe(206);
+    });
+
+    it('sends the whole file when If-Range is not the one of the file', async () => {
+      const response = await ranged('/digits.txt', 'bytes=0-1', { 'if-range': '"other"' });
+
+      expect(response.statusCode).toBe(200);
+      expect(bodyOf(response)).toBe('0123456789');
+      expect((await ranged('/digits.txt', 'bytes=0-1', { 'if-range': 'Thu, 01 Jan 1970 00:00:00 GMT' })).statusCode).toBe(200);
+    });
+
+    it('answers HEAD with the headers of the range', async () => {
+      const response = await request('/digits.txt', 'HEAD', { range: 'bytes=2-4' });
+
+      expect(response).toMatchObject({ statusCode: 206, body: '', headers: { 'Content-Range': 'bytes 2-4/10', 'Content-Length': '3' } });
+    });
+
+    it('answers 304 before it looks at the range', async () => {
+      const { headers } = await request('/digits.txt');
+
+      expect((await ranged('/digits.txt', 'bytes=0-1', { 'if-none-match': headers.ETag })).statusCode).toBe(304);
+    });
+
+    it('streams the range of a big file, and only that', async () => {
+      const parts: ResponseEvent[] = [];
+      const start = 1024 * 1024 + 5;
+      const end = 3 * 1024 * 1024 + 99;
+
+      await staticWorker(event('/big.bin', 'GET', { range: `bytes=${start}-${end}` }), (part) => {
+        if ('handOff' in part) return Promise.resolve(undefined);
+        parts.push(part);
+        return Promise.resolve(true);
+      });
+
+      expect(parts[0]).toMatchObject({
+        statusCode: 206,
+        headers: { 'Content-Range': `bytes ${start}-${end}/${big.length}`, 'Content-Length': String(end - start + 1) },
+      });
+      expect(Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer)).equals(big.subarray(start, end + 1))).toBe(true);
+    });
+  });
+
+  describe('with options', () => {
+    /** the worker as a process gets it: the options are read from its environment when it loads */
+    const workerWith = (options: StaticOptions) => {
+      let worker: InvokableWorker;
+      process.env[StaticOptionsEnv] = JSON.stringify(options);
+      jest.isolateModules(() => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        worker = require('./staticWorker');
+      });
+      delete process.env[StaticOptionsEnv];
+
+      return (requestPath: string, headers: Record<string, string> = {}, httpMethod = 'GET') =>
+        new Promise<ResponseEvent>((resolve) => {
+          worker(event(requestPath, httpMethod, headers), resolve);
+        });
+    };
+
+    describe('cacheControl', () => {
+      const get = workerWith({
+        cacheControl: [
+          { folder: '/assets/', extension: 'JS', value: 'public, max-age=31536000, immutable' },
+          { extension: '.css', value: 'public, max-age=60' },
+          { folder: 'listed', value: 'no-store' },
+        ],
+      });
+
+      it('uses the first rule that matches', async () => {
+        expect((await get('/assets/app.js')).headers['Cache-Control']).toBe('public, max-age=31536000, immutable');
+        expect((await get('/assets/plain.css')).headers['Cache-Control']).toBe('public, max-age=60');
+        expect((await get('/listed/a.txt')).headers['Cache-Control']).toBe('no-store');
+      });
+
+      it('needs both the folder and the extension of a rule', async () => {
+        expect((await get('/index.html')).headers['Cache-Control']).toBe('public, max-age=0');
+        expect((await get('/digits.txt')).headers['Cache-Control']).toBe('public, max-age=0');
+      });
+
+      it('keeps max-age=0 without options', async () => {
+        expect((await request('/assets/app.js')).headers['Cache-Control']).toBe('public, max-age=0');
+      });
+    });
+
+    describe('listDirectories', () => {
+      const get = workerWith({ listDirectories: true });
+
+      it('lists a folder without an index file, folders first, and not the hidden files', async () => {
+        const response = await get('/listed/');
+        const body = bodyOf(response);
+
+        expect(response).toMatchObject({ statusCode: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        expect(body.indexOf('inner/')).toBeLessThan(body.indexOf('a.txt'));
+        expect(body.indexOf('a.txt')).toBeLessThan(body.indexOf('b '));
+        expect(body).not.toContain('hidden');
+      });
+
+      it('escapes the names', async () => {
+        const body = bodyOf(await get('/listed/'));
+
+        expect(body).toContain('>b &lt;&amp;&gt;.txt</a>');
+        expect(body).toContain('href="b%20%3C%26%3E.txt"');
+        expect(body).not.toContain('<&>');
+      });
+
+      it('escapes the path in the title', async () => {
+        const unusual = path.join(root, 'x"><i>');
+        await fs.mkdir(unusual);
+
+        expect(bodyOf(await get('/x"><i>/'))).not.toContain('<i>');
+      });
+
+      it('lists the root, without a link to the folder above it', async () => {
+        await fs.rm(path.join(root, 'index.html'));
+        const body = bodyOf(await get('/'));
+        await fs.writeFile(path.join(root, 'index.html'), '<h1>home</h1>');
+
+        expect(body).toContain('digits.txt');
+        expect(body).not.toContain('../');
+      });
+
+      it('prefers the index file', async () => {
+        expect(bodyOf(await get('/withIndex/'))).toBe('index');
+      });
+
+      it('redirects a folder to the path with a slash, on this host', async () => {
+        expect(await get('/listed')).toMatchObject({ statusCode: 301, headers: { Location: '/listed/' } });
+        expect((await get('//listed')).headers.Location).toBe('/listed/');
+      });
+
+      it('answers HEAD without the list', async () => {
+        const response = await get('/listed/', {}, 'HEAD');
+
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toBe('');
+      });
+
+      it('does not list what is outside of the root, or other methods', async () => {
+        expect((await get('/../')).statusCode).toBe(404);
+        expect((await get('/listed/', {}, 'POST')).statusCode).toBe(404);
+      });
+
+      it('answers a missing folder with 404', async () => {
+        expect((await get('/nothing/')).statusCode).toBe(404);
+      });
+
+      it('does not list without the option', async () => {
+        expect((await request('/listed/')).statusCode).toBe(404);
+      });
+    });
+
+    describe('precompressed', () => {
+      const get = workerWith({ precompressed: ['br', 'gzip'] });
+
+      it('sends the first variant the client accepts', async () => {
+        const response = await get('/assets/app.js', { 'accept-encoding': 'gzip, br' });
+
+        expect(response).toMatchObject({
+          statusCode: 200,
+          headers: { 'Content-Encoding': 'br', Vary: 'Accept-Encoding', 'Content-Type': 'text/javascript; charset=utf-8', 'Content-Length': '12' },
+        });
+        expect(bodyOf(response)).toBe('brotli bytes');
+      });
+
+      it('falls back to the next encoding', async () => {
+        const response = await get('/assets/app.js', { 'accept-encoding': 'gzip' });
+
+        expect(response.headers['Content-Encoding']).toBe('gzip');
+        expect(bodyOf(response)).toBe('gzip bytes');
+      });
+
+      it('respects a refused encoding and a wildcard', async () => {
+        expect((await get('/assets/app.js', { 'accept-encoding': 'br;q=0, gzip' })).headers['Content-Encoding']).toBe('gzip');
+        expect((await get('/assets/app.js', { 'accept-encoding': '*' })).headers['Content-Encoding']).toBe('br');
+      });
+
+      it('sends the file as it is to a client that accepts neither, but still varies', async () => {
+        const response = await get('/assets/app.js', { 'accept-encoding': 'deflate' });
+
+        expect(bodyOf(response)).toBe('console.log(1);');
+        expect(response.headers['Content-Encoding']).toBeUndefined();
+        expect(response.headers.Vary).toBe('Accept-Encoding');
+        expect((await get('/assets/app.js')).headers['Content-Encoding']).toBeUndefined();
+      });
+
+      it('does not vary for a file that has no variant', async () => {
+        const response = await get('/assets/plain.css', { 'accept-encoding': 'br' });
+
+        expect(response.headers).not.toHaveProperty('Content-Encoding');
+        expect(response.headers).not.toHaveProperty('Vary');
+      });
+
+      it('has an ETag of its own for each variant, and answers 304 for it', async () => {
+        const plain = await get('/assets/app.js');
+        const variant = await get('/assets/app.js', { 'accept-encoding': 'br' });
+
+        expect(variant.headers.ETag).not.toBe(plain.headers.ETag);
+        expect((await get('/assets/app.js', { 'accept-encoding': 'br', 'if-none-match': variant.headers.ETag })).statusCode).toBe(304);
+      });
+
+      it('takes ranges of the variant', async () => {
+        const response = await get('/assets/app.js', { 'accept-encoding': 'br', range: 'bytes=0-5' });
+
+        expect(response).toMatchObject({ statusCode: 206, headers: { 'Content-Range': 'bytes 0-5/12', 'Content-Encoding': 'br' } });
+        expect(bodyOf(response)).toBe('brotli');
+      });
+
+      it('does nothing without the option', async () => {
+        const response = await request('/assets/app.js', 'GET', { 'accept-encoding': 'br' });
+
+        expect(response.headers).not.toHaveProperty('Content-Encoding');
+        expect(response.headers).not.toHaveProperty('Vary');
+      });
     });
   });
 });

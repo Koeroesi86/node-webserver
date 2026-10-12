@@ -1,18 +1,15 @@
 import path from 'path';
 import fs from 'fs/promises';
-import { createReadStream } from 'fs';
-import { StaticStreamThreshold } from './constants';
-import { InvokableWorker, ResponseCallback, ResponseEvent } from './types';
-import streamResponse from './streamResponse';
-import getFileInfo from './utils/getFileInfo';
+import { StaticOptionsEnv } from './constants';
+import { InvokableWorker } from './types';
+import findCacheControl from './utils/find-cache-control';
 import isInside from './utils/isInside';
-import isNotModified from './utils/isNotModified';
-import readSmallFile from './utils/read-small-file';
+import normalizeStaticOptions from './utils/normalize-static-options';
 import notFoundResponse from './utils/not-found-response';
+import serveDirectory from './utils/serve-directory';
+import serveStaticFile from './utils/serve-static-file';
 
 let timer: NodeJS.Timeout | undefined;
-
-const chunkSize = 1024 * 1024;
 
 function debounce(fn = () => {}, timeout = 0) {
   if (timer) clearTimeout(timer);
@@ -22,9 +19,8 @@ function debounce(fn = () => {}, timeout = 0) {
   }, timeout);
 }
 
-/** Sends the file in parts and waits for the client to take them, it stops when the client is gone. */
-const streamFile = (fileName: string, { statusCode, headers }: ResponseEvent, callback: ResponseCallback) =>
-  streamResponse(callback, { statusCode, headers }, createReadStream(fileName, { highWaterMark: chunkSize }));
+// given by the middleware, the same for the life of the worker
+const options = normalizeStaticOptions(process.env[StaticOptionsEnv] ? JSON.parse(process.env[StaticOptionsEnv]) : undefined);
 
 const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
   debounce(() => {
@@ -32,39 +28,26 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
     process.exit(0);
   }, 1000 * 60 * 30);
 
-  const currentPath = `${event.path}${/\/$/.test(event.path) ? 'index.html' : ''}`;
-  const fileName = path.resolve(event.rootPath, `.${currentPath}`);
-  // only files below the root are served, a directory or anything outside of it is answered as missing
-  const stats = ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, fileName) ? await fs.stat(fileName).catch(() => undefined) : undefined;
+  const requested = path.resolve(event.rootPath, `.${event.path}`);
+  // only files below the root are served, anything outside of it is answered as missing
+  const isServable = ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, requested);
+  const fileName = event.path.endsWith('/') ? path.join(requested, 'index.html') : requested;
+  const stats = isServable ? await fs.stat(fileName).catch(() => undefined) : undefined;
 
-  if (!stats?.isFile()) {
-    callback(notFoundResponse());
+  if (stats?.isFile()) {
+    await serveStaticFile({ event, fileName, stats, options, callback });
     return;
   }
 
-  // TODO: range request
-  const { etag, contentType, charset } = await getFileInfo(fileName, stats);
-  const notModified = isNotModified(event.headers, etag, stats.mtimeMs);
-  const response: ResponseEvent = {
-    statusCode: notModified ? 304 : 200,
-    headers: {
-      'Content-Type': `${contentType}${charset ? `; charset=${charset}` : ''}`,
-      'Cache-Control': 'public, max-age=0',
-      ...(!notModified && { 'Content-Length': String(stats.size) }),
-      ETag: etag,
-      'Last-Modified': stats.mtime.toUTCString(),
-    },
-    body: '',
-    isBase64Encoded: false,
-  };
+  // a folder without an index file is listed when that is asked for, otherwise it is answered as missing
+  const isFolder = isServable && options.listDirectories && (await fs.stat(requested).catch(() => undefined))?.isDirectory();
 
-  if (notModified || event.httpMethod === 'HEAD') {
-    callback(response);
-  } else if (stats.size > StaticStreamThreshold) {
-    await streamFile(fileName, response, callback);
-  } else {
-    callback({ ...response, body: await readSmallFile(fileName, stats) });
+  if (isFolder) {
+    await serveDirectory(event, requested, findCacheControl(options.cacheControl, event.path), callback);
+    return;
   }
+
+  callback(notFoundResponse());
 };
 
 /** loaded by file path in the workers, so it has to stay a CommonJS `module.exports` */
