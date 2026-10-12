@@ -8,6 +8,13 @@ export interface NormalizedStaticOptions {
 
 const encodings: readonly string[] = ['br', 'gzip'];
 
+/** `assets`, `/assets` and `/assets/` are the same folder, without a pattern that backtracks on a long run of slashes */
+const normalizeFolder = (folder: string) => {
+  const segments = folder.split('/').filter(Boolean);
+
+  return segments.length === 0 ? '/' : `/${segments.join('/')}/`;
+};
+
 const normalizeRule = (rule: CacheControlRule) => {
   if (!rule.value || (!rule.folder && !rule.extension)) {
     throw new Error('A cache rule needs a value and a folder or an extension.');
@@ -15,7 +22,7 @@ const normalizeRule = (rule: CacheControlRule) => {
 
   return {
     value: rule.value,
-    ...(rule.folder && { folder: `/${rule.folder.replace(/^\/+|\/+$/g, '')}/`.replace(/^\/\/$/, '/') }),
+    ...(rule.folder && { folder: normalizeFolder(rule.folder) }),
     ...(rule.extension && { extension: `.${rule.extension.replace(/^\./, '').toLowerCase()}` }),
   };
 };
