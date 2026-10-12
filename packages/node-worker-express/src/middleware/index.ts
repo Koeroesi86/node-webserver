@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import path from 'path';
 import url from 'url';
-import { DefaultOptions, ForbiddenPaths, Protocols } from '../constants';
+import { DefaultOptions, ForbiddenPaths, Protocols, StaticOptionsEnv } from '../constants';
 import WorkerPool from '../utils/workerPool';
 import WorkerUnavailableError from '../utils/workerUnavailableError';
 import WorkerAbandonedError from '../utils/workerAbandonedError';
@@ -13,6 +13,7 @@ import { MiddlewareOptions, WorkerMiddleware } from '../types';
 import resolvePath from '../utils/resolvePath';
 import createProbe from '../utils/createProbe';
 import notFoundResponse from '../utils/not-found-response';
+import normalizeStaticOptions from '../utils/normalize-static-options';
 import createRouteTable from '../utils/create-route-table';
 import TtlCache from '../utils/ttlCache';
 import createPathLatency from '../utils/create-path-latency';
@@ -58,7 +59,9 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     env: { ...process.env, ...config.env },
     cwd: config.cwd,
   });
-  const staticWorkerOptions = { cwd: process.cwd() };
+  // validated before anything is started, the worker reads them from its environment
+  const staticOptions = config.static && JSON.stringify(normalizeStaticOptions(config.static));
+  const staticWorkerOptions = { cwd: process.cwd(), ...(staticOptions && { env: { ...process.env, [StaticOptionsEnv]: staticOptions } }) };
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
   }

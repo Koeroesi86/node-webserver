@@ -102,6 +102,9 @@ export const RoutePathLimit = 2048;
 /** the flags a route may give its pattern, the ones that keep a state between matches (`g`, `y`) would make a match depend on the requests before */
 export const RoutePatternFlags: readonly string[] = ['i', 's', 'u', 'v'];
 
+/** the environment variable the static worker is given its options in, as JSON */
+export const StaticOptionsEnv = 'NODE_WORKER_STATIC_OPTIONS';
+
 export const ForbiddenPaths: readonly string[] = ['..'] as const;
 
 export enum Protocols {

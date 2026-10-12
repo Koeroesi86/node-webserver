@@ -282,6 +282,28 @@ describe('workerMiddleware', () => {
       expect(FakePool.last.warm).not.toHaveBeenCalled();
     });
 
+    it('gives the options of the static worker through its environment, normalized', async () => {
+      await start({ static: { listDirectories: true, cacheControl: [{ extension: 'JS', value: 'long' }] } });
+
+      const [, options] = FakePool.last.warm.mock.calls[0];
+
+      expect(JSON.parse(options.env.NODE_WORKER_STATIC_OPTIONS)).toEqual({
+        listDirectories: true,
+        cacheControl: [{ extension: '.js', value: 'long' }],
+        precompressed: [],
+      });
+    });
+
+    it('does not touch the environment of the static worker without options', async () => {
+      await start({});
+
+      expect(FakePool.last.warm.mock.calls[0][1].env).toBeUndefined();
+    });
+
+    it('refuses options of the static worker that are not valid before it starts anything', () => {
+      expect(() => workerMiddleware({ root, static: { cacheControl: [{ value: 'x' }] } })).toThrow('A cache rule needs');
+    });
+
     it('asks for the static worker with the same options when a file is requested, so the started one is used', async () => {
       await start({ staticWorker: '/static-worker.js' });
       mockLease((handlers, requestId) =>

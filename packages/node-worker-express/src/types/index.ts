@@ -205,6 +205,28 @@ export type WorkerRoute =
       worker: string;
     };
 
+/** the first rule that matches a request path sets its `Cache-Control`. A rule needs a `folder`, an `extension` or both, and then both must match. */
+export interface CacheControlRule {
+  /** a folder of the request paths, like `/assets/` */
+  folder?: string;
+  /** a file extension, with or without the dot, not case sensitive */
+  extension?: string;
+  /** the header value, like `public, max-age=31536000, immutable` */
+  value: string;
+}
+
+export type PrecompressedEncoding = 'br' | 'gzip';
+
+/** what the static worker does besides sending files, all of it in the worker and not in the server */
+export interface StaticOptions {
+  /** `Cache-Control` per request path, in order. Without a match it is `public, max-age=0`. */
+  cacheControl?: CacheControlRule[];
+  /** answer a folder without an index file with a list of it, hidden files (starting with a dot) left out. Off by default. */
+  listDirectories?: boolean;
+  /** look for `file.br` (`br`) and `file.gz` (`gzip`) next to a file, and send the first one the client accepts, in this order. Off by default. */
+  precompressed?: PrecompressedEncoding[];
+}
+
 export interface MiddlewareOptions {
   root: string;
   /** names the worker pool in the metrics, as `workers:<name>`. Defaults to the root folder. */
@@ -273,6 +295,8 @@ export interface MiddlewareOptions {
    * another one is asked for those too, as it may answer them in its own way.
    */
   staticWorker?: string;
+  /** the options of the default static worker: cache headers per path, directory listings and precompressed files. Range requests are always answered. */
+  static?: StaticOptions;
   cwd?: string;
 }
 

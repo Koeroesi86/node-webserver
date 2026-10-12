@@ -341,6 +341,8 @@ a file is kept warm with. They count towards `limit` and `workerLimit`, and requ
 which starts again when there is room. A file whose workers keep crashing is tried again when its backoff is over. The static worker is started with the server
 unless `warmStaticWorker` is `false`.
 
+The static worker answers range requests, and `options.static` sets `Cache-Control` per folder or extension, lists folders (`listDirectories`) and serves `.br` / `.gz` files that exist next to a file (`precompressed`): see "Static files" in the README of `@koeroesi86/node-worker-express`.
+
 ### Workers that crash
 
 A worker that stops with an error, or at all within 5 seconds of starting, has crashed. The first crash is answered by starting another worker for the next request, as before.

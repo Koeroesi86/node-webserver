@@ -114,6 +114,7 @@ describe('compression', () => {
     it.each([
       ['an image', explicit('image/png')],
       ['a response that has an encoding', explicit('text/html', { 'Content-Encoding': 'br' })],
+      ['a part of a response', explicit('text/html', { 'Content-Range': 'bytes 0-9/100' })],
       ['a response that must not be transformed', explicit('text/html', { 'Cache-Control': 'public, no-transform' })],
       [
         'a response below the threshold',
