@@ -30,7 +30,7 @@ describe('staticWorker', () => {
     await fs.writeFile(path.join(root, 'assets', 'app.js.gz'), 'gzip bytes');
     await fs.writeFile(path.join(root, 'assets', 'plain.css'), 'a{}');
     await fs.mkdir(path.join(root, 'listed', 'inner'), { recursive: true });
-    await fs.writeFile(path.join(root, 'listed', 'b <&>.txt'), 'b');
+    await fs.writeFile(path.join(root, 'listed', "b & 'c'.txt"), 'b');
     await fs.writeFile(path.join(root, 'listed', 'a.txt'), 'a');
     await fs.writeFile(path.join(root, 'listed', '.hidden'), 'secret');
     await fs.mkdir(path.join(root, 'withIndex'));
@@ -392,16 +392,9 @@ describe('staticWorker', () => {
       it('escapes the names', async () => {
         const body = bodyOf(await get('/listed/'));
 
-        expect(body).toContain('>b &lt;&amp;&gt;.txt</a>');
-        expect(body).toContain('href="b%20%3C%26%3E.txt"');
-        expect(body).not.toContain('<&>');
-      });
-
-      it('escapes the path in the title', async () => {
-        const unusual = path.join(root, 'x"><i>');
-        await fs.mkdir(unusual);
-
-        expect(bodyOf(await get('/x"><i>/'))).not.toContain('<i>');
+        // characters that file names may not have on Windows (< > ") are escaped the same way, see render-directory-listing.test.ts
+        expect(body).toContain('>b &amp; &#39;c&#39;.txt</a>');
+        expect(body).toContain('href="b%20%26%20&#39;c&#39;.txt"');
       });
 
       it('lists the root, without a link to the folder above it', async () => {
