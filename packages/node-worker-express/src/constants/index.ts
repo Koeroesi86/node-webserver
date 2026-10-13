@@ -24,6 +24,12 @@ export enum WORKER_EVENT {
    */
   RESPONSE_HANDOFF = 'WORKER_RESPONSE_HANDOFF',
   RESPONSE_HANDOFF_REFUSE = 'WORKER_RESPONSE_HANDOFF_REFUSE',
+  /**
+   * the server hands the connection of a client with a big request body to the worker, over the IPC channel, with the request and what had arrived of the body. The worker reads the rest of
+   * the body and writes the response to the connection itself, and tells the server with `REQUEST_HANDOFF_DONE` when the connection is closed.
+   */
+  REQUEST_HANDOFF = 'WORKER_REQUEST_HANDOFF',
+  REQUEST_HANDOFF_DONE = 'WORKER_REQUEST_HANDOFF_DONE',
   WS_MESSAGE_RECEIVE = 'WS_MESSAGE_RECEIVE',
   /** the worker is done with a received message, the server may pass on another one */
   WS_MESSAGE_ACKNOWLEDGE = 'WS_MESSAGE_ACK',
@@ -125,6 +131,7 @@ export const DefaultOptions: MiddlewareOptions = {
   limitRequestTimeout: 5000,
   limitResponseTimeout: 30000,
   handOffResponses: 8 * 1024 * 1024,
+  handOffRequests: 0,
   limitQueue: 1000,
   limitWebSocketMessage: 1024 * 1024,
   limitWebSocketConnections: 1000,

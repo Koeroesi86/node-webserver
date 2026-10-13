@@ -105,6 +105,18 @@ Only a few parts are on their way to the worker before it has read the earlier o
 `const body = await text(event.bodyStream)` (also `json` and `buffer`). **`event.body` does not exist any more.** Read the body before you answer, as the rest of it is dropped once the response is complete.
 A client that goes away during the upload destroys the stream with an error. `limitRequestBody` (bytes, 0 for none, the default) answers a bigger body with 413. Websockets and static files never have a body.
 
+### Big uploads skip the server
+
+A request with a `Content-Length` of at least `handOffRequests` bytes (0, which turns it off, by default) is read by the worker itself: once the head of the request has been read, the server hands the connection of the client to the worker
+together with the request and the part of the body that had arrived, so the bytes of a big upload do not pass through the one process that all uploads would share. `event.bodyStream` is the same stream as before, a worker does not change.
+Things to know:
+- Only plain HTTP/1 connections with a known length qualify: not HTTPS (the TLS state lives in the server), chunked bodies (`Transfer-Encoding`), websockets and bodies that arrived with the request (`inlineRequestBody`): those stream through the server as before.
+  A body that is announced bigger than `limitRequestBody` is not handed over, it is answered with 413 by the server as before.
+- The worker writes the response to the client itself, after reading the body or before (an early 413 for example). A middleware in front does not see it: no compression, no headers it would add. The access log has the status and the length of the body the worker wrote.
+  The connection is closed after the response (`Connection: close`), a client opens a new one for its next request. Bytes that follow the body on the connection are dropped.
+- The worker closes the connection of a client that sends or takes nothing for `limitResponseTimeout`. There is no 504 for a worker that stays silent: the connection stays open as long as the client keeps it active. A worker that dies leaves the client with a closed connection instead of a 502.
+- A client that goes away during the upload destroys `bodyStream` with an error, as before.
+
 ## Routes
 
 By default the worker of a request is found in the files under `root`: the middleware walks up from the path and looks for a folder or file with an `index` worker. `routes` names the worker of some paths instead,

@@ -89,13 +89,29 @@ export type WorkerInputEvent =
       event?: RequestEvent;
     };
 
-/** what goes along with the connection of a client that is handed to a worker, over the IPC channel */
-export type HandOffMessage = {
+/** what goes along with the connection of a client that is handed to a worker to write a big response, over the IPC channel */
+export type ResponseHandOffMessage = {
   type: WORKER_EVENT.RESPONSE_HANDOFF;
   requestId: string;
   /** how long the client may take nothing before the worker closes the connection, in milliseconds, 0 for no limit */
   timeout: number;
 };
+
+/** what goes along with the connection of a client that is handed to a worker to read a big request body and answer it, over the IPC channel */
+export type RequestHandOffMessage = {
+  type: WORKER_EVENT.REQUEST_HANDOFF;
+  requestId: string;
+  /** the request, without its body */
+  event: RequestEvent;
+  /** the part of the body that had arrived already, as base64 as the IPC channel carries JSON */
+  prefix: string;
+  /** the length of the whole body in bytes, by its `Content-Length` */
+  length: number;
+  /** how long the client may take nothing before the worker closes the connection, in milliseconds, 0 for no limit */
+  timeout: number;
+};
+
+export type HandOffMessage = ResponseHandOffMessage | RequestHandOffMessage;
 
 /** a response as it travels from the worker to the server: the body is raw bytes, and null ends a streamed response */
 export type ResponseMessage = Omit<ResponseEvent, 'body' | 'isBase64Encoded'> & { body?: Buffer | null };
@@ -265,6 +281,13 @@ export interface MiddlewareOptions {
    * Disable it when a middleware in front of this one changes the body other than by setting `Content-Encoding` (as compression does), the body would bypass it.
    */
   handOffResponses?: number;
+  /**
+   * a request with a body of at least this many bytes (by its `Content-Length`) on a plain HTTP/1 connection is read by the worker itself: the server hands the socket over after the head of the request,
+   * so the body does not pass through it, and the worker writes the response to the client, after which the connection is closed. Not for chunked bodies, websockets, HTTPS or HTTP/2, those stream through the server.
+   * The worker keeps the limits that can be kept: `limitRequestBody` is checked against the `Content-Length` before the hand over, and the client may take nothing for `limitResponseTimeout` at most.
+   * A middleware in front does not see the response, so there is no compression of it. 0 disables it, which is the default.
+   */
+  handOffRequests?: number;
   /** @deprecated nothing polls for a worker any more, requests that wait are woken when one is free. Has no effect. */
   idleCheckTimeout?: number;
   /**

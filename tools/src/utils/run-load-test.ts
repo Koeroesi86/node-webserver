@@ -25,7 +25,7 @@ const runVisible = ([command, ...args]: string[]) =>
 
 /**
  * Starts the example server, warms it up and runs the scenarios of the workflow against it (the example load test, then the CPU bound one, the one with big binary responses,
- * with a certificate the one with new TLS connections, the one with the lambdas that fail, the one of the table of routes and the one with big downloads, each on its own), with the installed k6 or else the official Docker image.
+ * with a certificate the one with new TLS connections, the one with the lambdas that fail, the one of the table of routes, the one with big downloads and the one with big uploads, each on its own), with the installed k6 or else the official Docker image.
  * Resolves with the exit code: 0 when the thresholds of all held.
  */
 export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner = chooseK6Runner() }: LoadTestOptions) => {
@@ -74,8 +74,9 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
     const routes = await scenario('routes.ts', []);
     const lambdaRoutes = await scenario('lambda-routes.ts', []);
     const downloads = await scenario('download.ts', ['-e', 'REQUIRE_HANDOFF=1']);
+    const uploads = await scenario('big-upload.ts', ['-e', 'REQUIRE_HANDOFF=1']);
 
-    return [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads].every((code) => code === 0) ? 0 : 1;
+    return [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads, uploads].every((code) => code === 0) ? 0 : 1;
   } finally {
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);

@@ -207,6 +207,20 @@ k6 run -e REQUIRE_HANDOFF=1 tools/src/k6/download.ts
 
 Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
 
+### Big uploads
+
+`big-upload.ts` posts 16 MiB (`MIB`) with a `Content-Length` to `web.localhost/upload/` (`examples/upload/exampleWorker.js`: answers with the size and sha256 of what it received) with 8 users at once, the request side of the downloads one. The load test server switches
+`handOffRequests` on for its worker servers (8 MiB, `HAND_OFF_REQUESTS` overrides it, 0 turns it off), which makes the worker read the body from the client itself, so the front process does not carry the bytes. Every upload is checked by the size and the sha256 in the answer,
+and its speed is the metric `big_upload_mb_per_s`, with a floor on the slowest tenth (`MIN_MB_PER_S`, 50, which the workflow divides by `P95_FACTOR`). `REQUIRE_HANDOFF=1` (the workflow and `pnpm load-test` set it) also requires that more than half of the requests
+after the first of a user opened a new connection (`big_upload_new_connection`, from `timings.connecting` above 0), which only a handed over request causes as the worker closes the connection after its response. It runs on its own after the downloads one and is left out of the comparison with the base.
+The speed floor is a guess until the first runs of the pipeline show what the runners reach.
+
+```sh
+k6 run -e REQUIRE_HANDOFF=1 tools/src/k6/big-upload.ts
+```
+
+Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
+
 ### CPU bound worker
 
 `cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow

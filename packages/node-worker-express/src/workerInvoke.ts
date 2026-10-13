@@ -6,6 +6,7 @@ import {
   InvokableWorker,
   RequestBodyEvent,
   RequestEvent,
+  RequestHandOffMessage,
   ResponseEvent,
   WorkerInputEvent,
   WorkerOutputEvent,
@@ -13,7 +14,9 @@ import {
   WSFrameEvent,
 } from './types';
 import createChannel from './utils/createChannel';
+import createHandedRequest from './utils/create-handed-request';
 import createHandOffRequests from './utils/create-hand-off-requests';
+import isRequestHandOff from './utils/is-request-hand-off';
 import type { ServerMetrics } from './utils/metrics';
 
 const worker = require(process.argv.pop()) as InvokableWorker;
@@ -46,7 +49,10 @@ const channel = createChannel<WorkerInputEvent, WorkerOutputEvent>(channelSocket
 const handOffs = createHandOffRequests((requestId, { statusCode, headers }) =>
   channel.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, event: { statusCode, headers } })
 );
-process.on('message', handOffs.receive);
+process.on('message', (message: unknown, socket: unknown) => {
+  if (isRequestHandOff(message) && socket instanceof net.Socket) startHandedRequest(message, socket);
+  else handOffs.receive(message, socket);
+});
 
 /** the body goes over the channel as bytes, which spares the server decoding base64 */
 const toMessage = ({ isBase64Encoded, body, ...rest }: ResponseEvent) => ({
@@ -275,6 +281,25 @@ function startRequest({ requestId, event: { body, ...request } }: MessageOf<WORK
       return !webSockets.has(requestId) && stream.waiting.length === 0 && streams.delete(requestId);
     }
   );
+}
+
+/** a request whose connection the server handed over: the worker reads the body from the connection and writes the response to it, the channel only tells the server when it is done */
+function startHandedRequest(message: RequestHandOffMessage, socket: net.Socket) {
+  const { requestId, event } = message;
+  const handed = createHandedRequest({
+    message,
+    socket,
+    onClosed: (summary) => {
+      metricsWaiting.delete(requestId);
+      channel.send({ type: WORKER_EVENT.REQUEST_HANDOFF_DONE, requestId, event: summary });
+    },
+  });
+
+  invoke(toWorkerEvent({ ...event, hasBody: true }, requestId, handed.bodyStream), handed.respond, (error) => {
+    console.error(error);
+    // a failing worker answers the request instead of leaving it waiting, unless it already did
+    if (!handed.hasResponded()) handed.respond(internalServerError);
+  });
 }
 
 function receiveWsMessage({ requestId, event: { body } }: MessageOf<WORKER_EVENT.WS_MESSAGE_RECEIVE>) {

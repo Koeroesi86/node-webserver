@@ -8,7 +8,13 @@ import type { WorkerLease } from './workerPool';
 const event = { protocol: Protocols.http, path: '/a' } as unknown as RequestEvent;
 
 const setup = ({ streamsBody = false, inlineBody }: { streamsBody?: boolean; inlineBody?: Buffer } = {}) => {
-  const request = Object.assign(new EventEmitter(), { socket: Object.assign(new EventEmitter(), { destroy: jest.fn() }), resume: jest.fn(), pause: jest.fn() });
+  const request = Object.assign(new EventEmitter(), {
+    headers: {},
+    httpVersionMajor: 1,
+    socket: Object.assign(new EventEmitter(), { destroy: jest.fn() }),
+    resume: jest.fn(),
+    pause: jest.fn(),
+  });
   const response = Object.assign(new EventEmitter(), {
     headersSent: false,
     writableFinished: false,

@@ -146,6 +146,10 @@ const withHandOff = (server: ServerInstance): ServerInstance =>
     ? { ...server, options: { ...server.options, handOffResponses: Number(process.env.HAND_OFF_RESPONSES) } }
     : server;
 
+// off by default in the middleware, on here for the big upload scenario: the body of the upload of the example scenario is far below the size
+const withHandOffRequests = (server: ServerInstance): ServerInstance =>
+  server.options ? { ...server, options: { ...server.options, handOffRequests: Number(process.env.HAND_OFF_REQUESTS ?? 8 * 1024 * 1024) } } : server;
+
 /**
  * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
@@ -163,6 +167,7 @@ const withHandOff = (server: ServerInstance): ServerInstance =>
  * `secure.localhost` is only served when a certificate exists in `.certificates/localhost`, see tools/README.md#load-tests. The https port serves HTTP/2 (`http2: true`).
  * WORKERS_PER_PATH overrides the number of workers started per path.
  * HAND_OFF_RESPONSES overrides the size in bytes from which the worker writes a response to the client itself (0 turns it off), to compare the server with and without it.
+ * HAND_OFF_REQUESTS overrides the size in bytes from which the worker reads a request body from the client itself (0 turns it off), 8 MiB by default here.
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {
@@ -191,7 +196,8 @@ const configuration = {
     ...secureServers,
   ]
     .map(withWorkerLimit)
-    .map(withHandOff),
+    .map(withHandOff)
+    .map(withHandOffRequests),
   http2: true,
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
