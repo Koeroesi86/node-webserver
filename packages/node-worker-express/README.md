@@ -77,6 +77,7 @@ middleware({
 });
 ```
 
+- **Percent-encoded paths** are decoded once before the file is looked up, so `/a%20b.txt` serves `a b.txt` (and the links of a directory listing open). A malformed escape (`%zz`, a lone `%`) is answered with 404, and the decoded path must still be below `root`: `%2e%2e`, `%2f` and `%5c` cannot lead out of it. `cacheControl` rules still match the path as sent.
 - **Range requests** are always answered: a single range (`bytes=2-4`, `bytes=7-`, `bytes=-3`) with `206`, `Content-Range` and `Accept-Ranges: bytes`, `416` with `Content-Range: bytes */size` for one outside of the file.
   `If-Range` is compared with the `ETag` (also without its weak prefix, as it derives from the size and the modification time) or the `Last-Modified` date, a file that changed is sent whole.
   Several ranges, another unit and a header that is not valid are ignored and the whole file is sent. A range of a big file is streamed from the file, a small one is cut from memory. A `206` is not compressed by `compression`.
