@@ -58,8 +58,7 @@ jest.mock('@koeroesi86/node-worker', () => {
   return { __esModule: true, default: FakeWorker };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const FakeWorker = require('@koeroesi86/node-worker').default;
+const FakeWorker = jest.requireMock('@koeroesi86/node-worker').default;
 
 const pathA = '/root/a/exampleWorker.js';
 const pathB = '/root/b/exampleWorker.js';

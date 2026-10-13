@@ -8,7 +8,7 @@ pnpm workspace: a web server hosting workers, lambdas and proxied apps by virtua
 ```sh
 pnpm install --frozen-lockfile
 pnpm build              # every package in dependency order; scripts and tests of other packages run the compiled dist
-pnpm lint               # eslint with prettier, `--ext .ts`
+pnpm lint               # eslint with prettier (flat config in `eslint.config.js`)
 pnpm fallow             # unused files/exports/dependencies, duplication, complexity (`.fallowrc.jsonc`)
 pnpm quality            # fallow with test coverage for exact CRAP scores, as the pipeline runs it (`.fallowrc.ci.jsonc`)
 pnpm test               # unit tests
@@ -40,7 +40,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 ## Local pitfalls
 
 - `node` and `pnpm` can be missing from a non-interactive shell's PATH (nvm and pnpm home are set in the profile). Prefix: `export PATH=$HOME/.nvm/versions/node/<node 24>/bin:$HOME/.local/share/pnpm/bin:$PATH`.
-- Never run `prettier --write` (it ignores the 160 columns and reformats whole files). Use `pnpm exec eslint --fix --ext .ts <paths>` and read `git diff` for hunks in code you did not change.
+- Never run `prettier --write` (it ignores the 160 columns and reformats whole files). Use `pnpm exec eslint --fix <paths>` and read `git diff` for hunks in code you did not change.
 - k6, Docker and podman are not installed on the author's machine, so the load test cannot run there: say so under **Not verified**.
 
 ## Pull requests

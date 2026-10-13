@@ -25,7 +25,7 @@ From the root, in order, fixing a failure before going on (later steps run the `
 ## Failures
 - Find the cause; never skip a check, add `continue-on-error` or use `--no-verify`.
 - A test that passes only on a retry is flaky (`jest-retry.js` hides it): check the retry log, fix the test, no dependence on machine speed.
-- Fix lint with `pnpm exec eslint --fix --ext .ts <paths>`, never `prettier --write`; read `git diff` for hunks in code you did not change.
+- Fix lint with `pnpm exec eslint --fix <paths>`, never `prettier --write`; read `git diff` for hunks in code you did not change.
 
 ## Report
 One list, nothing rounded up:
