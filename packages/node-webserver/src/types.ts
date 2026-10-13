@@ -199,6 +199,12 @@ export interface Configuration {
   servers: Array<string | ServerInstance>;
   /** load the servers given as paths again when their files, or the certificates they point to, change. Defaults to true. */
   watchServers?: boolean;
+  /**
+   * how long the server waits for the requests in flight when the process is stopped (SIGINT, SIGTERM, SIGHUP), in milliseconds, before the rest is cut. Defaults to 30000.
+   * It stops listening at once, tells the clients on open connections to move on, closes websockets with 1001 and stops the workers, lambdas and child processes after the requests.
+   * A second signal ends the process at once, as does an uncaught exception, SIGUSR1 and SIGUSR2.
+   */
+  shutdownTimeout?: number;
   /** load the servers again on SIGHUP, instead of stopping. Defaults to false. */
   reloadOnSighup?: boolean;
 }

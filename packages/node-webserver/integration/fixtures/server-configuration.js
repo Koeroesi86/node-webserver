@@ -43,6 +43,7 @@ module.exports = {
   trustedProxies: ['loopback'],
   ...(process.env.WATCH_SERVERS === 'false' && { watchServers: false }),
   ...(process.env.RELOAD_ON_SIGHUP === 'true' && { reloadOnSighup: true }),
+  ...(process.env.SHUTDOWN_TIMEOUT && { shutdownTimeout: Number(process.env.SHUTDOWN_TIMEOUT) }),
   statsDomain: false,
   statsRefreshInterval: 10000,
   servers: [
