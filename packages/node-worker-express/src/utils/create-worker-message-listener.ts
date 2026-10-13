@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { WebSocketCloseCode, WORKER_EVENT } from '../constants';
 import type { ResponseMessage, WorkerOutputEvent, WSMessage } from '../types';
+import type createRequestHandOff from './create-request-hand-off';
 import type createResponseHandOff from './create-response-hand-off';
 import type createWsConnection from './create-ws-connection';
 import { getServerMetrics } from './metrics';
@@ -15,6 +16,8 @@ interface WorkerMessageListenerParams {
   webSocket: ReturnType<typeof createWsConnection> | undefined;
   /** gives the connection to the worker when it asks for it */
   handOff: ReturnType<typeof createResponseHandOff>;
+  /** the worker that was given the connection with the request tells when it is done with it */
+  requestHandOff: ReturnType<typeof createRequestHandOff>;
   armResponseTimeout: () => void;
   /** the worker took a part of the request body */
   onBodyPartTaken: () => void;
@@ -30,6 +33,7 @@ const createWorkerMessageListener = ({
   requestId,
   webSocket,
   handOff,
+  requestHandOff,
   armResponseTimeout,
   onBodyPartTaken,
   cleanup,
@@ -108,6 +112,10 @@ const createWorkerMessageListener = ({
         break;
       case WORKER_EVENT.RESPONSE_HANDOFF:
         if (responseEvent.event) void handOff.start(responseEvent.event);
+        break;
+      case WORKER_EVENT.REQUEST_HANDOFF_DONE:
+        if (responseEvent.event) requestHandOff.finish(responseEvent.event);
+        cleanup();
         break;
       case WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE:
         webSocket?.acknowledge();

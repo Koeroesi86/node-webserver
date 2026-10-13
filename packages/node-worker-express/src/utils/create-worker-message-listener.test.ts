@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { WebSocketCloseCode, WORKER_EVENT } from '../constants';
 import type { WorkerOutputEvent } from '../types';
+import type createRequestHandOff from './create-request-hand-off';
 import createResponseHandOff from './create-response-hand-off';
 import createWorkerMessageListener from './create-worker-message-listener';
 import type createWsConnection from './create-ws-connection';
@@ -19,6 +20,7 @@ const setup = ({ withWebSocket = false, headersSent = false } = {}) => {
   const lease = { send: jest.fn() };
   const webSocket = { open: jest.fn(), send: jest.fn(), close: jest.fn(), acknowledge: jest.fn() };
   const handOff = { isActive: jest.fn(() => false), start: jest.fn(), finish: jest.fn(), reset: jest.fn() };
+  const requestHandOff = { finish: jest.fn() };
   const callbacks = { armResponseTimeout: jest.fn(), onBodyPartTaken: jest.fn(), cleanup: jest.fn() };
   const listener = createWorkerMessageListener({
     request: request as unknown as Request,
@@ -27,10 +29,11 @@ const setup = ({ withWebSocket = false, headersSent = false } = {}) => {
     requestId: 'r1',
     webSocket: withWebSocket ? (webSocket as unknown as ReturnType<typeof createWsConnection>) : undefined,
     handOff: handOff as unknown as ReturnType<typeof createResponseHandOff>,
+    requestHandOff: requestHandOff as unknown as ReturnType<typeof createRequestHandOff>,
     ...callbacks,
   });
 
-  return { request, response, lease, webSocket, handOff, callbacks, listener, finishListeners };
+  return { request, response, lease, webSocket, handOff, requestHandOff, callbacks, listener, finishListeners };
 };
 
 const respond = (statusCode: number, extra: { headers?: Record<string, string>; body?: Buffer } = {}): WorkerOutputEvent => ({
@@ -220,6 +223,32 @@ describe('createWorkerMessageListener', () => {
 
       expect(webSocket.close).toHaveBeenNthCalledWith(1, 1008, 'no');
       expect(webSocket.close).toHaveBeenNthCalledWith(2, WebSocketCloseCode.normal, undefined);
+    });
+  });
+
+  describe('a worker that has the connection of the request', () => {
+    const done = (event?: { statusCode: number; headers?: Record<string, string> }): WorkerOutputEvent => ({
+      type: WORKER_EVENT.REQUEST_HANDOFF_DONE,
+      requestId: 'r1',
+      event,
+    });
+
+    it('passes on how the response went and ends the request when the worker is done', () => {
+      const { listener, requestHandOff, callbacks } = setup();
+
+      listener(done({ statusCode: 201, headers: { 'Content-Length': '2' } }));
+
+      expect(requestHandOff.finish).toHaveBeenCalledWith({ statusCode: 201, headers: { 'Content-Length': '2' } });
+      expect(callbacks.cleanup).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends the request when the worker does not say how it went', () => {
+      const { listener, requestHandOff, callbacks } = setup();
+
+      listener(done());
+
+      expect(requestHandOff.finish).not.toHaveBeenCalled();
+      expect(callbacks.cleanup).toHaveBeenCalledTimes(1);
     });
   });
 });

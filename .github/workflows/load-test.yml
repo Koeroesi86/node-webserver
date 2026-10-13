@@ -309,6 +309,18 @@ jobs:
             -e REQUIRE_HANDOFF=1 \
             -e MIN_MB_PER_S="$(( 50 / P95_FACTOR ))" \
             tools/src/k6/download.ts
+      # parallel uploads of a big body that the server hands to the worker (handOffRequests), the request side of the download one above. On its own and not part of the comparison with the base.
+      - name: Run big upload load test
+        timeout-minutes: 5
+        if: always()
+        run: |
+          # shellcheck disable=SC2086
+          $K6_PREFIX k6 run \
+            --summary-export=k6-big-upload-summary.json \
+            -e BASE_URL="http://localhost:${PORT_HTTP}" \
+            -e REQUIRE_HANDOFF=1 \
+            -e MIN_MB_PER_S="$(( 50 / P95_FACTOR ))" \
+            tools/src/k6/big-upload.ts
       - name: Summarize results
         if: always()
         run: |
@@ -327,6 +339,8 @@ jobs:
           node tools/dist/scripts/summary.js k6-lambda-routes-summary.json '' 'Load test: table of routes of lambdas' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/summary.js k6-download-summary.json '' 'Load test: big downloads' >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          node tools/dist/scripts/summary.js k6-big-upload-summary.json '' 'Load test: big uploads' >> "$GITHUB_STEP_SUMMARY"
           echo >> "$GITHUB_STEP_SUMMARY"
           node tools/dist/scripts/runner.js report runner-before.json runner-after.json >> "$GITHUB_STEP_SUMMARY"
       - name: Stop server
@@ -392,6 +406,7 @@ jobs:
             k6-routes-summary.json
             k6-lambda-routes-summary.json
             k6-download-summary.json
+            k6-big-upload-summary.json
             server.log
             runner-before.json
             runner-after.json

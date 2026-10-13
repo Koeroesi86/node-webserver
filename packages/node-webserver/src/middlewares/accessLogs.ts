@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { isHandedOff } from '@koeroesi86/node-worker-express';
+import { isHandedOff, isRequestHandedOff, requestHandOffDoneEvent } from '@koeroesi86/node-worker-express';
 import getDate from '../utils/getDate';
 import logger from '../utils/logger';
 import type { LogLevels } from '../types';
@@ -62,7 +62,9 @@ const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
         logger[level](logLine);
       };
       response.on('finish', logResponse);
-      response.on('close', () => isHandedOff(response) && logResponse());
+      // a handed over request is logged once the worker is done, with the status it wrote
+      response.on('close', () => isHandedOff(response) && !isRequestHandedOff(response) && logResponse());
+      response.on(requestHandOffDoneEvent, logResponse);
     }
     next();
   };

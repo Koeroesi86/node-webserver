@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { RequestBodyWindow, WebSocketWindow, WORKER_EVENT } from '../constants';
+import { isRequestHandedOff, requestHandOffDoneEvent } from '../utils/is-handed-off';
 import { getServerMetrics } from '../utils/metrics';
 import WorkerAbandonedError from '../utils/workerAbandonedError';
 import WorkerBusyError from '../utils/workerBusyError';
@@ -578,6 +579,160 @@ describe('workerMiddleware', () => {
 
       handlers.onExit(1);
 
+      expect(lease.release).toHaveBeenCalled();
+    });
+  });
+
+  describe('handing the connection of a request to the worker', () => {
+    const upload = Buffer.alloc(200 * 1024, 'u');
+    const done = (requestId: string, statusCode = 201) => ({
+      type: WORKER_EVENT.REQUEST_HANDOFF_DONE,
+      requestId,
+      event: { statusCode, headers: { 'Content-Length': '2' } },
+    });
+    const sentTypes = (lease: { send: jest.Mock }) => lease.send.mock.calls.map(([message]) => message.type);
+    const post = (body: BodyInit, headers: Record<string, string> = {}) =>
+      fetch(`${baseUrl}/`, { method: 'POST', body, headers, ...(body instanceof ReadableStream && { duplex: 'half' }) });
+
+    /** a worker that is given the connection, answers on it and says that it is done */
+    const takingOver = () => {
+      const lease = mockLease(() => {});
+      const handOff = jest.fn(
+        (message: { requestId: string; prefix?: string }, socket: net.Socket) =>
+          new Promise<void>((resolve) =>
+            socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok', () => {
+              resolve();
+              setImmediate(() => lease.subscribe.mock.calls[0][1](done(message.requestId)));
+            })
+          )
+      );
+
+      return Object.assign(lease, { handOff });
+    };
+
+    it('hands the connection over for a big body, with the request and what had arrived of the body, which the worker answers on', async () => {
+      await start({ handOffRequests: 100 * 1024, inlineRequestBody: 0, limitResponseTimeout: 300 });
+      const lease = takingOver();
+
+      const response = await post(upload);
+
+      expect(response.status).toBe(201);
+      expect(await response.text()).toBe('ok');
+      const [[message, socket]] = lease.handOff.mock.calls;
+      expect(message).toEqual({
+        type: WORKER_EVENT.REQUEST_HANDOFF,
+        requestId: expect.any(String),
+        event: expect.objectContaining({
+          httpMethod: 'POST',
+          path: '/',
+          hasBody: true,
+          headers: expect.objectContaining({ 'content-length': String(upload.length) }),
+        }),
+        prefix: expect.any(String),
+        length: upload.length,
+        timeout: 300,
+      });
+      expect(socket).toBeInstanceOf(net.Socket);
+      const prefix = Buffer.from(message.prefix, 'base64');
+      expect(prefix.length).toBeLessThanOrEqual(upload.length);
+      expect(prefix.equals(upload.subarray(0, prefix.length))).toBe(true);
+      await until(() => lease.release.mock.calls.length > 0);
+      expect(sentTypes(lease)).toEqual([]);
+    });
+
+    it('streams a body below the size through the server', async () => {
+      await start({ handOffRequests: upload.length + 1, inlineRequestBody: 0 });
+      const lease = takingOver();
+
+      post(upload).catch(() => undefined);
+      await until(() => sentTypes(lease).includes(WORKER_EVENT.REQUEST));
+
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('streams the body when it is not switched on', async () => {
+      await start({ inlineRequestBody: 0 });
+      const lease = takingOver();
+
+      post(upload).catch(() => undefined);
+      await until(() => sentTypes(lease).includes(WORKER_EVENT.REQUEST));
+
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('streams a chunked body, whose length is not known', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const lease = takingOver();
+      const chunks = new ReadableStream({
+        start(controller) {
+          controller.enqueue(upload);
+          controller.close();
+        },
+      });
+
+      post(chunks).catch(() => undefined);
+      await until(() => sentTypes(lease).includes(WORKER_EVENT.REQUEST));
+
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('keeps a body that is announced bigger than the limit here, to be answered with 413', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0, limitRequestBody: upload.length - 1 });
+      const lease = takingOver();
+
+      const response = await post(upload);
+
+      expect(response.status).toBe(413);
+      expect(lease.handOff).not.toHaveBeenCalled();
+    });
+
+    it('hands over a body that is as big as the limit', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0, limitRequestBody: upload.length });
+      const lease = takingOver();
+
+      expect((await post(upload)).status).toBe(201);
+      expect(lease.handOff).toHaveBeenCalled();
+    });
+
+    it('answers 502 and frees the worker when the connection could not be handed over', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const lease = takingOver();
+      lease.handOff.mockRejectedValueOnce(new Error('closed'));
+
+      expect((await post(upload)).status).toBe(502);
+
+      await until(() => lease.release.mock.calls.length > 0);
+    });
+
+    it('frees the worker when it exits while it has the connection', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const lease = Object.assign(
+        mockLease(() => {}),
+        { handOff: jest.fn(() => Promise.resolve()) }
+      );
+
+      post(upload).catch(() => undefined);
+      await until(() => lease.handOff.mock.calls.length > 0);
+      await settle();
+      expect(lease.release).not.toHaveBeenCalled();
+
+      lease.subscribe.mock.calls[0][2](1);
+
+      expect(lease.release).toHaveBeenCalled();
+    });
+
+    it('sets the status the worker wrote on the response and tells whoever listens, once the worker is done', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const lease = takingOver();
+      const finished = jest.fn();
+      server.on('request', (request, response) =>
+        response.once(requestHandOffDoneEvent, () => finished(response.statusCode, response.getHeader('content-length'), isRequestHandedOff(response)))
+      );
+
+      await post(upload);
+
+      await until(() => finished.mock.calls.length > 0);
+      expect(finished).toHaveBeenCalledWith(201, '2', true);
       expect(lease.release).toHaveBeenCalled();
     });
   });

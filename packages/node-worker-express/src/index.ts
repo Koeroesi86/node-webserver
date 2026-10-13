@@ -4,7 +4,7 @@ export { default as streamResponse } from './streamResponse';
 export { default as createWorkerBudget } from './utils/create-worker-budget';
 export { default as createCache } from './utils/create-cache';
 export { getServerMetrics, registerMetricsSource } from './utils/metrics';
-export { default as isHandedOff } from './utils/is-handed-off';
+export { default as isHandedOff, isRequestHandedOff, requestHandOffDoneEvent } from './utils/is-handed-off';
 export { default as closeWebSockets } from './utils/close-web-sockets';
 export type { ServerMetrics, StatusClass } from './utils/metrics';
 export { default as createRouteMatcher } from './utils/create-route-matcher';

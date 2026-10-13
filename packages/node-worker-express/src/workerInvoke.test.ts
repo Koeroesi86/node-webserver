@@ -112,6 +112,20 @@ module.exports = async (event, callback) => {
     else await new Promise((resolve) => socket.once('close', resolve));
     return callback(part(null));
   }
+  if (event.path === '/handed-echo') {
+    const chunks = [];
+    for await (const chunk of event.bodyStream) chunks.push(chunk);
+    const body = Buffer.concat(chunks).toString();
+    return callback({ statusCode: 201, headers: { 'Content-Type': 'text/plain' }, body: body.length + ':' + body.slice(0, 3) + ':' + event.hasBody });
+  }
+  if (event.path === '/handed-streams') {
+    await callback(part('one'));
+    await callback(part('two'));
+    return callback(part(null));
+  }
+  if (event.path === '/handed-early') return callback({ statusCode: 413, headers: { 'Connection': 'keep-alive' }, body: 'too large' });
+  if (event.path === '/handed-bad-header') return callback({ statusCode: 200, headers: { 'X-Bad': 'a\\r\\nInjected: yes' }, body: 'x' });
+  if (event.path === '/handed-fails') throw new Error('handed failure');
   if (event.path === '/stops-when-aborted') {
     let index = 0;
     while (await callback(part('part ' + index++)));
@@ -136,9 +150,17 @@ describe('workerInvoke', () => {
     const smallerLimit = (source: string) => source.replace(/ChannelMaxFrameLength = [^;]+;/, `ChannelMaxFrameLength = ${4 * 1024 * 1024};`);
     // what the worker process loads, as the build puts it together
     await Promise.all(
-      ['workerInvoke', 'constants/index', 'utils/createChannel', 'utils/create-hand-off-requests', 'utils/frames'].map(async (file) =>
-        fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8'))))
-      )
+      [
+        'workerInvoke',
+        'constants/index',
+        'utils/createChannel',
+        'utils/create-hand-off-requests',
+        'utils/create-handed-request',
+        'utils/create-socket-body',
+        'utils/create-socket-responder',
+        'utils/is-request-hand-off',
+        'utils/frames',
+      ].map(async (file) => fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8')))))
     );
     await fs.writeFile(path.join(folder, 'worker.js'), workerSource);
   });
@@ -782,6 +804,128 @@ describe('workerInvoke', () => {
 
       expect(await body).toBe('');
       await until(() => of('a', WORKER_EVENT.RESPONSE_EMIT).length === 1);
+    });
+  });
+
+  describe('a request whose connection was handed over', () => {
+    let server: net.Server;
+    let client: net.Socket;
+    let connection: net.Socket;
+
+    beforeEach(async () => {
+      // not read here, as the server does not read a connection it hands over
+      server = net.createServer({ pauseOnConnect: true });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const accepted = new Promise<net.Socket>((resolve) => server.once('connection', resolve));
+      client = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
+      connection = await accepted;
+    });
+
+    afterEach(() => {
+      client.destroy();
+      return new Promise((resolve) => server.close(resolve));
+    });
+
+    const read = (socket: net.Socket) =>
+      new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+        socket.once('close', () => resolve(Buffer.concat(chunks).toString()));
+      });
+    const handOver = (requestId: string, requestPath: string, { prefix = '', length = 0, timeout = 0 } = {}) =>
+      child.send(
+        {
+          type: WORKER_EVENT.REQUEST_HANDOFF,
+          requestId,
+          event: {
+            httpMethod: 'POST',
+            protocol: 'HTTP',
+            path: requestPath,
+            pathFragments: [],
+            queryStringParameters: {},
+            headers: {},
+            remoteAddress: '',
+            rootPath: folder,
+          },
+          prefix: Buffer.from(prefix).toString('base64'),
+          length,
+          timeout,
+        },
+        connection
+      );
+
+    it('reads the rest of the body from the connection after the part that came with the request, and answers on it', async () => {
+      const response = read(client);
+      handOver('a', '/handed-echo', { prefix: 'abc', length: 9 });
+      client.write('def');
+      client.write('ghi');
+
+      const text = await response;
+
+      expect(text).toMatch(/^HTTP\/1\.1 201 Created\r\n/);
+      expect(text).toContain('Connection: close\r\n');
+      expect(text).toContain('Content-Length: 10\r\n');
+      expect(text.endsWith('\r\n\r\n9:abc:true')).toBe(true);
+      await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
+      expect(of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE)[0].event).toEqual({ statusCode: 201, headers: { 'Content-Length': '10' } });
+    });
+
+    it('streams a response in parts, which ends the connection with the last one', async () => {
+      const response = read(client);
+      handOver('a', '/handed-streams');
+
+      const text = await response;
+
+      expect(text).toMatch(/^HTTP\/1\.1 200 OK\r\n/);
+      expect(text.endsWith('\r\n\r\nonetwo')).toBe(true);
+      expect(text).not.toContain('Content-Length');
+    });
+
+    it('answers before the body was read, with its own connection header replaced', async () => {
+      const response = read(client);
+      handOver('a', '/handed-early', { length: 100 });
+
+      const text = await response.then((value) => value);
+
+      expect(text).toMatch(/^HTTP\/1\.1 413 Payload Too Large\r\n/);
+      expect(text).toContain('Connection: close\r\n');
+      expect(text).not.toContain('keep-alive');
+    });
+
+    it('answers a header that is not valid with a 500 instead of writing it', async () => {
+      const response = read(client);
+      handOver('a', '/handed-bad-header');
+
+      const text = await response;
+
+      expect(text).toMatch(/^HTTP\/1\.1 500 Internal Server Error\r\n/);
+      expect(text).not.toContain('Injected');
+    });
+
+    it('answers a worker that throws with a 500', async () => {
+      const response = read(client);
+      handOver('a', '/handed-fails');
+
+      expect(await response).toMatch(/^HTTP\/1\.1 500 Internal Server Error\r\n/);
+    });
+
+    it('fails the body and tells the server when the client leaves before it was sent', async () => {
+      handOver('a', '/upload-catches', { length: 1000 });
+      client.write('partial');
+      await settle();
+      client.destroy();
+
+      await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
+      expect(of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE)[0].event).toEqual({ statusCode: 0, headers: { 'Content-Length': '0' } });
+      await until(() => fsSync.existsSync(path.join(folder, 'upload-error')));
+    });
+
+    it('closes the connection when the client sends nothing for the timeout', async () => {
+      const response = read(client);
+      handOver('a', '/upload', { length: 1000, timeout: 100 });
+
+      expect(await response).toBe('');
+      await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
     });
   });
 });

@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { Protocols, WORKER_EVENT } from '../constants';
 import type { MiddlewareOptions, RequestEvent } from '../types';
 import createBodyForwarder from './create-body-forwarder';
+import createRequestHandOff from './create-request-hand-off';
 import createResponseHandOff from './create-response-hand-off';
 import isHandedOff from './is-handed-off';
 import createResponseTimeout from './create-response-timeout';
@@ -24,7 +25,13 @@ interface ServeRequestParams {
   releaseSlot: () => void;
   options: Pick<
     MiddlewareOptions,
-    'handOffResponses' | 'limitRequestBody' | 'limitResponseTimeout' | 'limitWebSocketMessage' | 'webSocketPingInterval' | 'limitWebSocketIdleTimeout'
+    | 'handOffRequests'
+    | 'handOffResponses'
+    | 'limitRequestBody'
+    | 'limitResponseTimeout'
+    | 'limitWebSocketMessage'
+    | 'webSocketPingInterval'
+    | 'limitWebSocketIdleTimeout'
   >;
 }
 
@@ -84,6 +91,20 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     onFailed: () => failRequest(502, 'Worker could not take the connection.'),
   });
 
+  const requestHandOff = createRequestHandOff({
+    request,
+    response,
+    lease,
+    requestId,
+    event,
+    streamsBody,
+    minimumLength: options.handOffRequests,
+    limit: options.limitRequestBody,
+    timeout: options.limitResponseTimeout,
+    onHandedOver: responseTimeout.clear,
+    onFailed: () => failRequest(502, 'Worker could not take the connection.'),
+  });
+
   const messageListener = createWorkerMessageListener({
     request,
     response,
@@ -91,6 +112,7 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     requestId,
     webSocket,
     handOff,
+    requestHandOff,
     armResponseTimeout: responseTimeout.arm,
     onBodyPartTaken: bodyForwarder.acknowledge,
     cleanup: () => cleanupConnection(),
@@ -111,7 +133,7 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
   function cleanupConnection() {
     responseTimeout.clear();
     // the response closed as the connection was handed over, the worker is still writing to it
-    if (handOff.isActive()) return;
+    if (handOff.isActive() || requestHandOff.isActive()) return;
     if (event.protocol === Protocols.http && !response.writableFinished && !isHandedOff(response)) {
       // a worker that is streaming the response can stop
       lease.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId });
@@ -139,19 +161,24 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
   lease.subscribe(requestId, messageListener, () => {
     // a worker that dies while it writes leaves the client with a truncated body, as when the body passes through here
     handOff.reset();
+    requestHandOff.reset();
     failRequest(502, 'Worker exited.');
   });
   responseTimeout.arm();
-  lease.send({
-    type: WORKER_EVENT.REQUEST,
-    requestId,
-    // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
-    event: inlineBody === undefined ? event : { ...event, body: inlineBody },
-  });
+  if (requestHandOff.isAllowed()) {
+    void requestHandOff.start();
+  } else {
+    lease.send({
+      type: WORKER_EVENT.REQUEST,
+      requestId,
+      // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
+      event: inlineBody === undefined ? event : { ...event, body: inlineBody },
+    });
 
-  if (streamsBody) {
-    request.on('data', bodyForwarder.part);
-    request.once('end', bodyForwarder.end);
+    if (streamsBody) {
+      request.on('data', bodyForwarder.part);
+      request.once('end', bodyForwarder.end);
+    }
   }
 
   request.on('aborted', cleanupConnection);
