@@ -599,12 +599,17 @@ describe('workerMiddleware', () => {
       const lease = mockLease(() => {});
       const handOff = jest.fn(
         (message: { requestId: string; prefix?: string }, socket: net.Socket) =>
-          new Promise<void>((resolve) =>
-            socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok', () => {
+          new Promise<void>((resolve) => {
+            // the server destroys its socket once this resolves, and closing it with unread bytes of the upload resets the connection on windows before the client read the answer
+            socket.once('close', () => {
               resolve();
               setImmediate(() => lease.subscribe.mock.calls[0][1](done(message.requestId)));
-            })
-          )
+            });
+            // the server stopped libuv from reading before the handoff, reading again is how the close of the client is noticed
+            Reflect.apply(Reflect.get(Reflect.get(socket, '_handle'), 'readStart'), Reflect.get(socket, '_handle'), []);
+            socket.resume();
+            socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok');
+          })
       );
 
       return Object.assign(lease, { handOff });
