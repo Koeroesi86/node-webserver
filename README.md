@@ -47,7 +47,7 @@ Install what you need from npm, for example:
 npm install @koeroesi86/node-webserver
 ```
 
-See the README of each package for details.
+See the README of each package for details, and [docs/](docs/README.md) for the goals, the architecture and the behaviour of the server.
 
 ## Development
 
