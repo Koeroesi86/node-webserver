@@ -600,15 +600,25 @@ describe('workerMiddleware', () => {
       const handOff = jest.fn(
         (message: { requestId: string; prefix?: string }, socket: net.Socket) =>
           new Promise<void>((resolve) => {
-            // the server destroys its socket once this resolves, and closing it with unread bytes of the upload resets the connection on windows before the client read the answer
-            socket.once('close', () => {
-              resolve();
-              setImmediate(() => lease.subscribe.mock.calls[0][1](done(message.requestId)));
+            let missing = upload.length - Buffer.from(message.prefix ?? '', 'base64').length;
+            const answer = () =>
+              socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok', () => {
+                resolve();
+                setImmediate(() => lease.subscribe.mock.calls[0][1](done(message.requestId)));
+              });
+            // like the real worker, read the rest of the body before answering: the server destroys the socket once this resolves, and closing it with unread bytes resets the
+            // connection on windows, so the client loses the answer. The parser of the server listens no more, it is not the one reading the body now.
+            socket.removeAllListeners('data');
+            socket.on('data', (chunk) => {
+              missing -= chunk.length;
+              if (missing <= 0) answer();
             });
-            // the server stopped libuv from reading before the handoff, reading again is how the close of the client is noticed
-            Reflect.apply(Reflect.get(Reflect.get(socket, '_handle'), 'readStart'), Reflect.get(socket, '_handle'), []);
+            // the server stopped libuv from reading before the handoff; start it again and tell node, or its own restart on the first chunk fails with EALREADY
+            const handle = Reflect.get(socket, '_handle');
+            Reflect.apply(Reflect.get(handle, 'readStart'), handle, []);
+            Reflect.set(handle, 'reading', true);
             socket.resume();
-            socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok');
+            if (missing <= 0) answer();
           })
       );
 
