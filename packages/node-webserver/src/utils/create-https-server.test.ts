@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import tls from 'tls';
 import type { AddressInfo } from 'net';
+import createContextLookup from './create-context-lookup';
 import createHttp2App from './create-http2-app';
 import createHttpsServer from './create-https-server';
 import type { HttpsApps } from './create-https-server';
@@ -125,6 +126,15 @@ describe('createHttpsServer', () => {
     const port = await listen({ http2: useHttp2 });
 
     await expect(getHttp1(port, 'unknown.localhost')).rejects.toThrow();
+  });
+
+  it('serves the certificate of a wildcard host to the names it matches', async () => {
+    const lookup = createContextLookup([{ hostname: '*.localhost', secureContext: contexts[hostname] }]);
+    const server = createHttpsServer(lookup, createApps(), {});
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+    expect(await getHttp1((server.address() as AddressInfo).port)).toMatchObject({ app: 'http1', host: hostname });
   });
 
   it('closes a connection of HTTP/2 that stays idle for the keep alive timeout', async () => {

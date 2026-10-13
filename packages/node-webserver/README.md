@@ -355,6 +355,8 @@ What a worker writes to its stdout and stderr is handed to `onStdout` and `onStd
 ### HTTPS
 
 A server with `protocol: 'https'` is served on the https port for its host name (SNI), with the files in `key`, `cert` and, for the chain, `ca` (paths to PEM files).
+A host name with a wildcard (`*.example.com`, `*` is one label) gets its certificate for every name it matches, found like the virtual hosts are: an exact name first, then the wildcards in the order of the configuration.
+A client that asks for a name without a certificate, or sends none, fails the handshake at once.
 TLS ends in the front process, on the thread that serves every other request too, so a handshake slows all of them down a little, plain HTTP included. What keeps that small:
 
 - **Use an ECDSA (P-256) certificate** where the clients allow it (every current browser does). Its handshakes are cheaper for the server than with RSA 2048: about 40% more of them per second,
