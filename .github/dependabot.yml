@@ -10,6 +10,10 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    ignore:
+      # @types/node stays on the major of the minimum node in `engines` (>=24), so the compiler rejects an api that node 24 lacks
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       # minor and patch updates in one pull request each, as every change in a package folder publishes a new version of it (see tools/README.md#versions)
       # major updates are left out of the groups, so each one gets its own pull request to look at
