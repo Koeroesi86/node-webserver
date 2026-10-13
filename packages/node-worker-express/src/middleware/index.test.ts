@@ -32,8 +32,7 @@ jest.mock('../utils/workerPool', () => {
   return { __esModule: true, default: FakePool };
 });
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const FakePool = require('../utils/workerPool').default;
+const FakePool = jest.requireMock('../utils/workerPool').default;
 
 describe('workerMiddleware', () => {
   let root: string;

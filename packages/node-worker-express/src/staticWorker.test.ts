@@ -360,8 +360,7 @@ describe('staticWorker', () => {
       let worker: InvokableWorker;
       process.env[StaticOptionsEnv] = JSON.stringify(options);
       jest.isolateModules(() => {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        worker = require('./staticWorker');
+        worker = jest.requireActual('./staticWorker');
       });
       delete process.env[StaticOptionsEnv];
 
