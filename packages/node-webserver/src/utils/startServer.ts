@@ -10,6 +10,7 @@ import accessLogsMiddleware from '../middlewares/accessLogs';
 import { RELOAD_DEBOUNCE, RETIRE_TIMEOUT } from '../constants';
 import addExitListeners from './exitHandler';
 import configureServer from './configureServer';
+import createContextLookup from './create-context-lookup';
 import createHttp2App from './create-http2-app';
 import createHttpsServer from './create-https-server';
 import debounce from './debounce';
@@ -48,7 +49,7 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   /** what the requests and connections are handed to, swapped as a whole when the servers are loaded again, while the ones that were handed to the old ones finish there */
   let loaded: LoadedInstance[] = [];
   let hosts: Record<'http' | 'https', RequestHandler> = setupVirtualHosts([], configuration);
-  let contexts: Record<string, SecureContext | undefined> = {};
+  let findContext: (domain: string) => SecureContext | undefined = () => undefined;
   /** the servers that were replaced and still answer the requests they took */
   const retiring = new Set<LoadedInstance>();
   let stopWatching = () => {};
@@ -58,8 +59,10 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
     const removed = loaded.filter((instance) => !next.includes(instance));
 
     hosts = setupVirtualHosts(next, configuration);
-    contexts = Object.fromEntries(
-      next.filter(({ instance }) => instance.protocol === 'https').map(({ instance }) => [instance.hostname, instance.secureContext])
+    findContext = createContextLookup(
+      next
+        .filter(({ instance }) => instance.protocol === 'https')
+        .map(({ instance }) => ({ hostname: instance.hostname, secureContext: instance.secureContext }))
     );
     loaded = next;
 
@@ -105,7 +108,7 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
 
   const httpServer = http.createServer(httpApp);
   // the certificates of the servers that are loaded again are looked up when a client connects
-  const httpsServer = createHttpsServer((domain) => contexts[domain], { http1: httpsApp, http2: http2App }, hydratedConfiguration);
+  const httpsServer = createHttpsServer((domain) => findContext(domain), { http1: httpsApp, http2: http2App }, hydratedConfiguration);
 
   configureServer(httpServer, 'http', hydratedConfiguration);
   configureServer(httpsServer, 'https', hydratedConfiguration);
