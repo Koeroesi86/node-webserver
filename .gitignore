@@ -9,3 +9,4 @@ configuration.json
 .certificates
 dist
 coverage
+.vitepress/cache

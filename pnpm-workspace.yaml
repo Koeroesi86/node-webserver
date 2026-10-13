@@ -3,7 +3,10 @@ packages:
   - tools
 overrides:
   nodemon: ^2.0.15
+  vite: ^6.4.4
+  esbuild: ^0.25.0
 allowBuilds:
+  esbuild: false
   '@parcel/watcher': false
   nodemon: false
   os-service: false

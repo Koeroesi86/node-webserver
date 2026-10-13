@@ -47,7 +47,7 @@ Install what you need from npm, for example:
 npm install @koeroesi86/node-webserver
 ```
 
-See the README of each package for details.
+See the README of each package for details, and [docs/](docs/README.md) for the goals, the architecture and the behaviour of the server.
 
 ## Development
 
@@ -63,4 +63,5 @@ pnpm test               # unit tests of every package
 pnpm quality            # unit tests with coverage, then the code quality check with exact CRAP scores (`.fallowrc.ci.jsonc`)
 pnpm test:integration   # starts the built server with one server of every type (worker, lambda, child) and sends requests to them
 pnpm start   # run the web server with the example configuration
+pnpm docs:dev   # the pages in docs/ as a site (VitePress)
 ```
