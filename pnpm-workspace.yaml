@@ -4,6 +4,7 @@ packages:
 overrides:
   nodemon: ^2.0.15
 allowBuilds:
+  esbuild: false
   '@parcel/watcher': false
   nodemon: false
   os-service: false

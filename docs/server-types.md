@@ -16,7 +16,7 @@ Each entry of `servers` has a `hostname`, a `protocol` (`http` or `https`) and a
 - The body of a request is read from `event.bodyStream`. Responses can be streamed, and websockets are supported.
 - The static worker serves files with range requests, `Cache-Control` per folder or extension, and precompressed `.br` and `.gz` files.
 
-More: [the server README](../packages/node-webserver/README.md#routes), [node-worker-express](../packages/node-worker-express/README.md).
+More: [the server README](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#routes), [node-worker-express](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/README.md).
 
 ## lambda
 
@@ -24,7 +24,7 @@ More: [the server README](../packages/node-webserver/README.md#routes), [node-wo
 - The event is the proxy integration payload format 1.0. Failures are answered as API Gateway does: 502 for a handler that fails, 504 for a timeout, 503 for a full line, 413 for a body over 6 MiB.
 - Lambdas get a clean environment and a temporary folder of their own, and by default can write nowhere else.
 
-More: [Lambdas](../packages/node-webserver/README.md#lambdas), [node-lambda-invoke](../packages/node-lambda-invoke/README.md).
+More: [Lambdas](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#lambdas), [node-lambda-invoke](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-lambda-invoke/README.md).
 
 ## child
 
@@ -37,4 +37,4 @@ The server starts `childOptions.command` with its `args`, and proxies requests t
 - Answers 503 while there is no target, 502 when it cannot be reached, 504 when it stays silent.
 - Forwarding headers are trusted only from `trustedProxies`.
 
-More: [Proxy servers](../packages/node-webserver/README.md#proxy-servers).
+More: [Proxy servers](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#proxy-servers).

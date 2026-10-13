@@ -14,6 +14,7 @@ pnpm quality            # fallow with test coverage for exact CRAP scores, as th
 pnpm test               # unit tests
 pnpm test:coverage      # coverage: html per package in `packages/*/coverage/lcov-report`, merged `coverage/report.md` and `report.json` in the root; `pnpm coverage:merge` writes `coverage/coverage-final.json` for `pnpm quality`
 pnpm test:integration   # starts the built server with one server of every type
+pnpm docs:build         # the site of `docs/` (VitePress) in `docs/.vitepress/dist`; `pnpm docs:dev` serves it, a dead link fails the build
 pnpm load-test          # k6 against the example server, needs k6 or Docker
 ```
 
@@ -28,6 +29,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 | `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each in its own process |
 | `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node and the express middleware on it, which the worker pools are built on |
 | `tools/` | `@koeroesi86/tools`, never published: versioning for the pipeline and the k6 load tests (`tools/README.md`) |
+| `docs/` | short pages on goals, architecture and behaviour, published to GitHub Pages by `docs.yml` (VitePress, config in `docs/.vitepress/config.mts`); links to files outside `docs/` are GitHub URLs, as VitePress cannot resolve them |
 | `.github/` | workflows (`pr-checks.yml` gates master), PR template, dependabot and zizmor config |
 
 - `node-worker` and `node-worker-express` build with rollup, the rest with `tsc -p tsconfig.build.json`, all to `dist/`. Packages depend on each other via `workspace:*`, so run `pnpm build` after changing a dependency.

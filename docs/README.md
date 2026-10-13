@@ -13,7 +13,7 @@ Short pages on what this repository is for and how it behaves. The details of ev
 
 Where to look for the rest:
 
-- using the server: [packages/node-webserver/README.md](../packages/node-webserver/README.md)
-- the libraries: [node-worker](../packages/node-worker/README.md), [node-worker-express](../packages/node-worker-express/README.md), [node-lambda-invoke](../packages/node-lambda-invoke/README.md)
-- the command line and the OS service: [node-webserver-cli](../packages/node-webserver-cli/README.md), [node-webserver-service](../packages/node-webserver-service/README.md)
-- versions and load tests: [tools/README.md](../tools/README.md)
+- using the server: [packages/node-webserver/README.md](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md)
+- the libraries: [node-worker](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker/README.md), [node-worker-express](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/README.md), [node-lambda-invoke](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-lambda-invoke/README.md)
+- the command line and the OS service: [node-webserver-cli](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver-cli/README.md), [node-webserver-service](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver-service/README.md)
+- versions and load tests: [tools/README.md](https://github.com/Koeroesi86/node-webserver/blob/master/tools/README.md)

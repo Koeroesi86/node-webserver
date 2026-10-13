@@ -31,7 +31,7 @@ The front server listens on the http and the https port (HTTP/2 and SNI optional
 
 Server and workers talk over a socket pair, the fourth stdio of the worker, not the IPC of Node. A message is a frame with JSON metadata and raw body bytes, and messages written in the same turn of the event loop leave in one write.
 Messages are acknowledged, so a slow side slows the other down instead of filling memory. A worker that loses the server exits. Workers can ask the server for its metrics over the same channel.
-Details: [How the server and the workers talk](../packages/node-worker-express/README.md#how-the-server-and-the-workers-talk).
+Details: [How the server and the workers talk](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/README.md#how-the-server-and-the-workers-talk).
 
 ## Packages
 

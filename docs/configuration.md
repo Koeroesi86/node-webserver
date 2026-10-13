@@ -1,6 +1,6 @@
 # Configuration
 
-A `configuration.js` (or `configuration.json`) exports the top level options and the list of servers. The command line takes `--config <path>` (`nws-cli`). A working example per server type is in [`packages/node-webserver/examples/`](../packages/node-webserver/examples).
+A `configuration.js` (or `configuration.json`) exports the top level options and the list of servers. The command line takes `--config <path>` (`nws-cli`). A working example per server type is in [`packages/node-webserver/examples/`](https://github.com/Koeroesi86/node-webserver/tree/master/packages/node-webserver/examples).
 
 ```javascript
 module.exports = {
@@ -42,4 +42,4 @@ Every server has `hostname` (a wildcard like `*.example.com` is allowed), `proto
 | `proxy` | `proxyOptions`: `target` or `dynamic`, `changeOrigin`, `forwardedHeaders` |
 | any | `compression` |
 
-The reference for each option is in the [README of the server](../packages/node-webserver/README.md), and the types are in `packages/node-webserver/src/types.ts`.
+The reference for each option is in the [README of the server](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md), and the types are in `packages/node-webserver/src/types.ts`.
