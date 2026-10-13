@@ -20,6 +20,8 @@ pnpm --filter @koeroesi86/node-worker-express build
 pnpm --filter @koeroesi86/node-worker-express start
 ```
 
+`closeWebSockets(code = 1001, reason)` closes every websocket connection that is open with a close frame, for a process that is stopping (`node-webserver` calls it on `SIGTERM`).
+
 `middleware.close(timeout)` stops the workers of a middleware that is not used any more, each once it answered the requests it took, or all of them after `timeout` milliseconds, and removes its pool from the metrics and from its `workerBudget`. It resolves once the workers stopped.
 
 For all options see [types](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/src/types/index.ts).

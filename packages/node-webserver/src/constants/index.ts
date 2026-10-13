@@ -49,3 +49,6 @@ export const RELOAD_DEBOUNCE = 100;
 
 /** how long a server that was removed or changed may take to answer the requests it had, in milliseconds, before what runs behind it is stopped anyway */
 export const RETIRE_TIMEOUT = 30000;
+
+/** how long a stop of the process (SIGINT, SIGTERM, SIGHUP) waits for the requests in flight, in milliseconds, before the rest is cut */
+export const DEFAULT_SHUTDOWN_TIMEOUT = 30000;

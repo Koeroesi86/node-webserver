@@ -7,9 +7,10 @@ import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
 import exampleConfig from '../configuration.example';
 import accessLogsMiddleware from '../middlewares/accessLogs';
-import { RELOAD_DEBOUNCE, RETIRE_TIMEOUT } from '../constants';
+import { DEFAULT_SHUTDOWN_TIMEOUT, RELOAD_DEBOUNCE, RETIRE_TIMEOUT } from '../constants';
 import addExitListeners from './exitHandler';
 import configureServer from './configureServer';
+import createGracefulStop from './create-graceful-stop';
 import createContextLookup from './create-context-lookup';
 import createHttp2App from './create-http2-app';
 import createHttpsServer from './create-https-server';
@@ -38,7 +39,7 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
     ...exampleConfig,
     ...configuration,
   };
-  const { servers, watchServers = true, reloadOnSighup = false, trustedProxies = [] } = hydratedConfiguration;
+  const { servers, watchServers = true, reloadOnSighup = false, trustedProxies = [], shutdownTimeout = DEFAULT_SHUTDOWN_TIMEOUT } = hydratedConfiguration;
   // before the hosts are set up, as the client address and the protocol of every request depend on it
   httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : (trustedProxies.http ?? []));
   [httpsApp, http2App].forEach((app) => app.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : (trustedProxies.https ?? [])));
@@ -117,7 +118,11 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);
 
-  addExitListeners(() => [...loaded, ...retiring].map(({ instance }) => instance), { exitOnHangUp: !reloadOnSighup });
+  const gracefulStop = createGracefulStop([httpServer, httpsServer], (timeout) => Promise.all(loaded.map(({ close }) => close(timeout))).then(() => undefined));
+  addExitListeners(() => [...loaded, ...retiring].map(({ instance }) => instance), {
+    exitOnHangUp: !reloadOnSighup,
+    gracefulStop: () => gracefulStop(shutdownTimeout),
+  });
   if (watchServers) watch();
   if (reloadOnSighup) process.on('SIGHUP', reload);
 

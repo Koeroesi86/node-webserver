@@ -3,6 +3,7 @@ import { WebSocketCloseCode, WebSocketCloseTimeout, WebSocketOpcode, WebSocketSe
 import constructWsCloseFrame from './construct-ws-close-frame';
 import constructWsFrame from './construct-ws-frame';
 import createWsReader from './create-ws-reader';
+import webSocketConnections from './web-socket-connections';
 import WsProtocolError from './ws-protocol-error';
 
 export interface WsConnectionOptions {
@@ -113,7 +114,7 @@ const createWsConnection = (socket: Socket, { limitMessage, pingInterval, idleTi
     if (pingInterval > 0) write(constructWsFrame(WebSocketOpcode.ping));
   };
 
-  return {
+  const connection = {
     /** the worker accepted the upgrade, from now on the data of the socket is websocket frames */
     open: () => {
       opened = true;
@@ -125,10 +126,14 @@ const createWsConnection = (socket: Socket, { limitMessage, pingInterval, idleTi
     send,
     close,
     dispose: () => {
+      webSocketConnections.delete(connection);
       clearInterval(keepAliveTimer);
       clearTimeout(closeTimer);
     },
   };
+  webSocketConnections.add(connection);
+
+  return connection;
 };
 
 export default createWsConnection;

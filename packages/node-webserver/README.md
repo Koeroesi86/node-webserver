@@ -399,6 +399,17 @@ The servers given as paths in `servers` are loaded again when their files change
 What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the servers defined in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
 the stats and the logging), as it is given to the server once when it starts.
 
+### Stopping the server
+
+On `SIGINT`, `SIGTERM` and `SIGHUP` (the last one only without `reloadOnSighup`) the server stops gracefully, as `nginx -s quit` does, so a deploy or a restart of the service does not cut the responses in flight:
+
+1. It stops listening on both ports, and the responses on connections that stay open get `Connection: close` (HTTP/2 sessions are closed once their streams are done), so clients move on to another instance.
+2. Websockets are closed with a close frame, code 1001 (going away), at once, as they would otherwise outlast every timeout. Idle keep-alive connections are closed, and so are the ones that become idle when their response is complete.
+3. The requests in flight are answered. After `shutdownTimeout` (milliseconds, default 30000) the connections that are left are cut.
+4. The workers, lambdas and child processes are stopped, once their requests are done or in the time that is left of the timeout, then the logs are written, the tmp folder is cleaned and the process ends with the signal, as before.
+
+A second one of these signals ends the process at once, the way it ended before. So do an uncaught exception, `SIGUSR1` and `SIGUSR2`, as the state may be broken. `shutdownTimeout` is in the top level of the configuration, next to the ports.
+
 ### Build
 
 TODO: Set up tests for build
