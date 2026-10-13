@@ -38,7 +38,10 @@ jest.mock('@koeroesi86/node-worker', () => {
     });
     readonly terminate = jest.fn(() => this.exit(0));
 
-    constructor(readonly command: string, readonly options: unknown) {
+    constructor(
+      readonly command: string,
+      readonly options: unknown
+    ) {
       FakeWorker.instances.push(this);
     }
 

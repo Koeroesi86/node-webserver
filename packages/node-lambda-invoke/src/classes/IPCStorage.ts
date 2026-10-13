@@ -96,7 +96,10 @@ class IPCStorage {
     responses = {};
   }
 
-  constructor(readonly id: string, readonly instance: StorageInstance) {
+  constructor(
+    readonly id: string,
+    readonly instance: StorageInstance
+  ) {
     bindStorageMethods(this);
     this.invoker = this.invoker.bind(this);
     this.executor = this.executor.bind(this);

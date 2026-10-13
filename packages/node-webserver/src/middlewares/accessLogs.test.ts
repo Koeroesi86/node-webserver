@@ -19,7 +19,7 @@ const createRequest = (headers: Record<string, string> = {}) =>
     originalUrl: '/page?x=1',
     headers: { host: 'web.localhost', accept: '*/*', 'user-agent': 'test', ...headers },
     get: (name: string) => (name === 'host' ? 'web.localhost' : undefined),
-  } as unknown as Request);
+  }) as unknown as Request;
 
 const createResponse = (statusCode: number, statusMessage = 'OK') =>
   Object.assign(new EventEmitter(), {

@@ -577,7 +577,7 @@ describe('httpMiddleware', () => {
       for (let index = 1; index <= 4; index += 1) {
         responses.push(fetch(`${baseUrl}/slow/${index}`).then(async (response) => answered.push(await response.text())));
         // the next one is sent when this one has reached the server, so that the order of arrival is known
-        for (; arrived.length < index; ) await new Promise((resolve) => setImmediate(resolve));
+        for (; arrived.length < index;) await new Promise((resolve) => setImmediate(resolve));
       }
       await Promise.all(responses);
 

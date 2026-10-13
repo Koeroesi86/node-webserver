@@ -21,7 +21,7 @@ const takeSmallBody = (request: IncomingMessage, limit: number): Buffer | undefi
   }
 
   // `complete` is set when the parser has seen the end of the body, which then sits in the buffer of the request: a body that is cut off is not complete
-  return request.complete && request.readableLength <= limit ? request.read() ?? Buffer.alloc(0) : undefined;
+  return request.complete && request.readableLength <= limit ? (request.read() ?? Buffer.alloc(0)) : undefined;
 };
 
 export default takeSmallBody;

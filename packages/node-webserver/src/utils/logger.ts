@@ -4,8 +4,9 @@ import { constants, existsSync, fstatSync, mkdirSync, openSync, write, writeSync
 import { formatWithOptions } from 'util';
 import type { Configuration, LogLevels } from '../types';
 
-const { logLevels, fileLogPath, fileLogFlushInterval = 100 }: Pick<Configuration, 'logLevels' | 'fileLogPath' | 'fileLogFlushInterval'> = require(process.env
-  .NODE_WEBSERVER_CONFIG || '../configuration.example');
+const { logLevels, fileLogPath, fileLogFlushInterval = 100 }: Pick<Configuration, 'logLevels' | 'fileLogPath' | 'fileLogFlushInterval'> = require(
+  process.env.NODE_WEBSERVER_CONFIG || '../configuration.example'
+);
 
 const startedAt = moment();
 /** a buffer that grows beyond this many characters is written right away */

@@ -23,10 +23,13 @@ function debounce(fn = () => {}, timeout = 0) {
 const options = normalizeStaticOptions(process.env[StaticOptionsEnv] ? JSON.parse(process.env[StaticOptionsEnv]) : undefined);
 
 const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
-  debounce(() => {
-    console.log('Exiting static worker.');
-    process.exit(0);
-  }, 1000 * 60 * 30);
+  debounce(
+    () => {
+      console.log('Exiting static worker.');
+      process.exit(0);
+    },
+    1000 * 60 * 30
+  );
 
   const requested = path.resolve(event.rootPath, `.${event.path}`);
   // only files below the root are served, anything outside of it is answered as missing

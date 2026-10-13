@@ -39,7 +39,7 @@ export function encodeMessage({ event, ...message }: WireMessage): Buffer[] {
   const { body, ...rest } = event ?? {};
   const metadata = JSON.stringify(event === undefined ? message : { ...message, event: rest });
   const metadataLength = Buffer.byteLength(metadata);
-  const bodyBytes = typeof body === 'string' ? Buffer.from(body) : body ?? undefined;
+  const bodyBytes = typeof body === 'string' ? Buffer.from(body) : (body ?? undefined);
   const bodyLength = bodyBytes?.length ?? 0;
 
   const head = Buffer.allocUnsafe(fixedLength + metadataLength);
@@ -59,7 +59,10 @@ export class FrameDecoder<T extends WireMessage> {
   /** how many bytes the frame in progress has, once known */
   private needed = 0;
 
-  constructor(private readonly onMessage: (message: T) => void, private readonly maxFrameLength = ChannelMaxFrameLength) {}
+  constructor(
+    private readonly onMessage: (message: T) => void,
+    private readonly maxFrameLength = ChannelMaxFrameLength
+  ) {}
 
   /** throws when a frame cannot be understood, the stream is not to be trusted after that */
   push(chunk: Buffer) {

@@ -17,7 +17,11 @@ const serializer = {
 class FileStorage {
   readonly folder: string;
 
-  constructor(readonly id: string, readonly instance: StorageInstance, folder?: string) {
+  constructor(
+    readonly id: string,
+    readonly instance: StorageInstance,
+    folder?: string
+  ) {
     if (folder === undefined) throw new Error('The file storage needs the folder of the lambda.');
 
     this.folder = folder;
