@@ -4,5 +4,7 @@ packages:
 overrides:
   nodemon: ^2.0.15
 allowBuilds:
+  '@parcel/watcher': false
   nodemon: false
   os-service: false
+  unrs-resolver: false
