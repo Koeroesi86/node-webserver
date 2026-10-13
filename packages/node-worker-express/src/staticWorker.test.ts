@@ -21,6 +21,8 @@ describe('staticWorker', () => {
     await fs.mkdir(path.join(root, 'sub'), { recursive: true });
     await fs.writeFile(path.join(root, 'index.html'), '<h1>home</h1>');
     await fs.writeFile(path.join(root, 'a..b.txt'), 'dots');
+    await fs.writeFile(path.join(root, 'a b%c.txt'), 'encoded');
+    await fs.writeFile(path.join(root, 'árvíztűrő.txt'), 'unicode');
     await fs.writeFile(path.join(root, 'big.bin'), big);
     await fs.writeFile(path.join(root, 'icon.ico'), Buffer.from([1, 2, 3]));
     await fs.writeFile(path.join(root, 'digits.txt'), '0123456789');
@@ -82,6 +84,24 @@ describe('staticWorker', () => {
   it('answers a missing file with 404', async () => {
     expect((await request('/missing.html')).statusCode).toBe(404);
   });
+
+  it('serves a file whose name is percent-encoded in the path', async () => {
+    expect(bodyOf(await request('/a%20b%25c.txt'))).toBe('encoded');
+    expect(bodyOf(await request('/%C3%A1rv%C3%ADzt%C5%B1r%C5%91.txt'))).toBe('unicode');
+    // the name is not decoded twice
+    expect((await request('/a%2520b%25c.txt')).statusCode).toBe(404);
+  });
+
+  it.each(['/%zz', '/100%', '/a%20b%25c.txt%', '/%E0%A4%A'])('answers the malformed escape in %s with 404', async (requestPath) => {
+    expect((await request(requestPath)).statusCode).toBe(404);
+  });
+
+  it.each(['/%2e%2e/secret.txt', '/%2E%2E%2Fsecret.txt', '/sub/%2e%2e/%2e%2e/secret.txt', '/..%2fsecret.txt', '/%2e%2e%5csecret.txt', '/%00'])(
+    'does not serve files outside of the root through the encoded %s',
+    async (requestPath) => {
+      expect((await request(requestPath)).statusCode).toBe(404);
+    }
+  );
 
   it.each(['/../secret.txt', '/sub/../../secret.txt', '/....//secret.txt'])('does not serve files outside of the root through %s', async (requestPath) => {
     const response = await request(requestPath);

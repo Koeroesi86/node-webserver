@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { StaticOptionsEnv } from './constants';
 import { InvokableWorker } from './types';
+import decodePath from './utils/decode-path';
 import findCacheControl from './utils/find-cache-control';
 import isInside from './utils/isInside';
 import normalizeStaticOptions from './utils/normalize-static-options';
@@ -31,10 +32,12 @@ const staticWorker: InvokableWorker = async (event, callback = () => {}) => {
     1000 * 60 * 30
   );
 
-  const requested = path.resolve(event.rootPath, `.${event.path}`);
-  // only files below the root are served, anything outside of it is answered as missing
-  const isServable = ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, requested);
-  const fileName = event.path.endsWith('/') ? path.join(requested, 'index.html') : requested;
+  // the file system knows the names decoded; the guard below looks at the decoded path, so `%2e%2e` and `%2f` cannot lead out of the root
+  const decodedPath = decodePath(event.path) ?? '';
+  const requested = path.resolve(event.rootPath, `.${decodedPath}`);
+  // only files below the root are served, anything outside of it (or with a malformed escape) is answered as missing
+  const isServable = decodedPath !== '' && ['GET', 'HEAD'].includes(event.httpMethod) && isInside(event.rootPath, requested);
+  const fileName = decodedPath.endsWith('/') ? path.join(requested, 'index.html') : requested;
   const stats = isServable ? await fs.stat(fileName).catch(() => undefined) : undefined;
 
   if (stats?.isFile()) {
