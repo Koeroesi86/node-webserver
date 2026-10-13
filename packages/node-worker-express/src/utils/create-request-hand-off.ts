@@ -77,7 +77,7 @@ const createRequestHandOff = ({
     const parsed = request.read();
     socket.pause();
     const buffered = socket.read();
-    stopReading?.();
+    const resumeReading = stopReading?.();
     // what follows the body on the connection is not part of this request
     const prefix = Buffer.concat([parsed ?? Buffer.alloc(0), buffered ?? Buffer.alloc(0)]).subarray(0, length);
 
@@ -88,6 +88,7 @@ const createRequestHandOff = ({
     try {
       await lease.handOff({ type: WORKER_EVENT.REQUEST_HANDOFF, requestId, event, prefix: prefix.toString('base64'), length, timeout: timeout ?? 0 }, socket);
     } catch {
+      resumeReading?.();
       reset();
       onFailed();
       return;
