@@ -2,7 +2,7 @@ import type { Request } from 'express';
 import isWebSocket from './isWebSocket';
 
 describe('isWebSocket', () => {
-  const request = (method: string, headers: Record<string, string>) => ({ method, headers } as unknown as Request);
+  const request = (method: string, headers: Record<string, string>) => ({ method, headers }) as unknown as Request;
 
   it('recognises an upgrade request', () => {
     expect(isWebSocket(request('GET', { connection: 'keep-alive, Upgrade', upgrade: 'WebSocket' }))).toBe(true);

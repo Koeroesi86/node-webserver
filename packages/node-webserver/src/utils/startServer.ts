@@ -39,8 +39,8 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   };
   const { servers, watchServers = true, reloadOnSighup = false, trustedProxies = [] } = hydratedConfiguration;
   // before the hosts are set up, as the client address and the protocol of every request depend on it
-  httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.http ?? []);
-  [httpsApp, http2App].forEach((app) => app.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : trustedProxies.https ?? []));
+  httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : (trustedProxies.http ?? []));
+  [httpsApp, http2App].forEach((app) => app.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : (trustedProxies.https ?? [])));
   // one for the whole process, so that the workers of the servers that are loaded again count against the same limit
   const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
   registerMetricsSource('workers', workerBudget.getStats);

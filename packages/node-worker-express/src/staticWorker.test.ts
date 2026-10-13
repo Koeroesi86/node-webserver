@@ -44,7 +44,7 @@ describe('staticWorker', () => {
   });
 
   const event = (requestPath: string, httpMethod = 'GET', headers: Record<string, string> = {}) =>
-    ({ httpMethod, path: requestPath, rootPath: root, headers } as WorkerRequestEvent);
+    ({ httpMethod, path: requestPath, rootPath: root, headers }) as WorkerRequestEvent;
 
   /** the first response of the worker */
   const request = (requestPath: string, httpMethod = 'GET', headers: Record<string, string> = {}) =>

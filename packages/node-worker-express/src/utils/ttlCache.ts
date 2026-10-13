@@ -5,7 +5,10 @@
 class TtlCache<V> {
   private readonly entries = new Map<string, { value: V; expires: number }>();
 
-  constructor(private readonly ttl: number, private readonly maxSize: number) {}
+  constructor(
+    private readonly ttl: number,
+    private readonly maxSize: number
+  ) {}
 
   get(key: string): V | undefined {
     const entry = this.entries.get(key);

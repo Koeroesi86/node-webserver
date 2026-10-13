@@ -1,7 +1,7 @@
 import hasBody from './hasBody';
 import type { IncomingMessage } from 'http';
 
-const request = (method?: string) => ({ method } as IncomingMessage);
+const request = (method?: string) => ({ method }) as IncomingMessage;
 
 describe('hasBody', () => {
   it.each(['GET', 'get', 'DELETE', 'OPTIONS', 'HEAD', 'head'])('says %s has no body, whatever the case', (method) => {

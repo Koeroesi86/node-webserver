@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import getClientIp from './getClientIp';
 
-const request = (headers: Record<string, string | string[]>, remoteAddress?: string) => ({ headers, socket: { remoteAddress } } as unknown as Request);
+const request = (headers: Record<string, string | string[]>, remoteAddress?: string) => ({ headers, socket: { remoteAddress } }) as unknown as Request;
 
 describe('getClientIp', () => {
   it.each([
