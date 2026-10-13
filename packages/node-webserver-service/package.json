@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.4",
     "@types/os-service": "^2.2.3",
     "jest": "^30.5.2",
     "nodemon": "^2.0.15",

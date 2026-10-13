@@ -50,7 +50,7 @@
   "devDependencies": {
     "@types/http-proxy": "^1.17.14",
     "@types/jest": "^30.0.0",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.4",
     "@types/pidusage": "^2.0.5",
     "etag": "^1.8.1",
     "jest": "^30.5.2",
