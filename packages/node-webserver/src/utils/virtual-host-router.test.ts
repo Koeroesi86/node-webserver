@@ -86,6 +86,13 @@ describe('virtualHostRouter', () => {
     expect(await get(app, 'a.localhost')).toBe('failed');
   });
 
+  it("treats next('route') as passing to the next matching host", async () => {
+    const skipRoute: RequestHandler = (request, response, next) => next('route');
+    const app = routerApp([{ hostname: 'a.localhost', handler: skipRoute }, host('a.localhost')]);
+
+    expect(await get(app, 'a.localhost')).toBe('a.localhost,');
+  });
+
   describe('matches the same hosts as one vhost middleware per host did', () => {
     const configurations: Record<string, VirtualHost[]> = {
       'exact hosts': [host('a.localhost'), host('b.localhost')],
