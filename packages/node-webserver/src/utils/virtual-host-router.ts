@@ -9,24 +9,72 @@ interface Route {
   handler: RequestHandler;
 }
 
+interface PatternRoute extends Route {
+  pattern: RegExp;
+}
+
+interface RouteGroups {
+  exact: Map<string, Route[]>;
+  patterns: PatternRoute[];
+}
+
+function buildRouteGroups(hosts: VirtualHost[]): RouteGroups {
+  const exact = new Map<string, Route[]>();
+  const patterns: PatternRoute[] = [];
+
+  hosts.forEach(({ hostname, handler }, order) => {
+    if (hostname.includes('*')) {
+      patterns.push({ order, handler, pattern: getHostPattern(hostname) });
+      return;
+    }
+
+    const key = hostname.toLowerCase();
+    exact.set(key, [...(exact.get(key) ?? []), { order, handler }]);
+  });
+
+  return { exact, patterns };
+}
+
+function selectRoutes(hostname: string, { exact, patterns }: RouteGroups): Route[] {
+  const exactMatches = exact.get(hostname) ?? [];
+
+  if (patterns.length === 0) {
+    return exactMatches;
+  }
+
+  return [...exactMatches, ...patterns.filter(({ pattern }) => pattern.test(hostname))].sort((first, second) => first.order - second.order);
+}
+
+function runRoutes(
+  routes: Route[],
+  request: Parameters<RequestHandler>[0],
+  response: Parameters<RequestHandler>[1],
+  next: Parameters<RequestHandler>[2],
+  index = 0
+): void {
+  if (index === routes.length) {
+    next();
+    return;
+  }
+
+  routes[index].handler(request, response, (error?: unknown) => {
+    // `next('route')` only skips the rest of a route, between middlewares it goes on like `next()`
+    if (error && error !== 'route') {
+      next(error);
+      return;
+    }
+
+    runRoutes(routes, request, response, next, index + 1);
+  });
+}
+
 /**
  * one handler for many virtual hosts. A host without wildcards is found in a map, so the cost of a request does not grow with the number of hosts,
  * and only the hosts with wildcards are tested one by one. The hosts that match are run in the order of the configuration,
  * and a handler that calls `next` passes the request on to the next one, as it did when every host was a `vhost` middleware of its own.
  */
 function virtualHostRouter(hosts: VirtualHost[]): RequestHandler {
-  const exactRoutes = new Map<string, Route[]>();
-  const patternRoutes: (Route & { pattern: RegExp })[] = [];
-
-  hosts.forEach(({ hostname, handler }, order) => {
-    if (hostname.includes('*')) {
-      patternRoutes.push({ order, handler, pattern: getHostPattern(hostname) });
-      return;
-    }
-
-    const key = hostname.toLowerCase();
-    exactRoutes.set(key, [...(exactRoutes.get(key) ?? []), { order, handler }]);
-  });
+  const routes = buildRouteGroups(hosts);
 
   return (request, response, next) => {
     const hostname = getHostname(request.headers.host);
@@ -36,28 +84,7 @@ function virtualHostRouter(hosts: VirtualHost[]): RequestHandler {
       return;
     }
 
-    const exactMatches = exactRoutes.get(hostname) ?? [];
-    const routes =
-      patternRoutes.length === 0
-        ? exactMatches
-        : [...exactMatches, ...patternRoutes.filter(({ pattern }) => pattern.test(hostname))].sort((first, second) => first.order - second.order);
-
-    const runFrom =
-      (index: number) =>
-      (error?: unknown): void => {
-        // `next('route')` only skips the rest of a route, between middlewares it goes on like `next()`
-        if (error && error !== 'route') {
-          next(error);
-          return;
-        }
-        if (index === routes.length) {
-          next();
-          return;
-        }
-        routes[index].handler(request, response, runFrom(index + 1));
-      };
-
-    runFrom(0)();
+    runRoutes(selectRoutes(hostname, routes), request, response, next);
   };
 }
 
