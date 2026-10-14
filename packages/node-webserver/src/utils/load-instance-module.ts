@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
-import type { ServerInstance } from '../types';
+import type { ServerConfig } from '../types';
 
 /** the files each server module was loaded from the last time, also of a module whose file was removed since, as its file can come back */
 const loadedFiles = new Map<string, string[]>();
@@ -18,7 +18,7 @@ const collectFiles = (module: NodeJS.Module, files = new Set<string>()): Set<str
   return files;
 };
 
-const isServerInstance = (value: unknown): value is ServerInstance =>
+const isServerConfig = (value: unknown): value is ServerConfig =>
   typeof value === 'object' &&
   value !== null &&
   'hostname' in value &&
@@ -30,7 +30,7 @@ const isServerInstance = (value: unknown): value is ServerInstance =>
  * Loads the server definition a module exports, with the files it was loaded from: the module and the ones it loaded.
  * The files of the last time are loaded anew instead of being taken from the cache of node. Undefined when there is no such file.
  */
-const loadInstanceModule = (configPath: string): { instance: ServerInstance; files: string[] } | undefined => {
+const loadInstanceModule = (configPath: string): { instance: ServerConfig; files: string[] } | undefined => {
   const resolvedPath = path.resolve(configPath);
 
   if (!fs.existsSync(resolvedPath)) {
@@ -47,7 +47,7 @@ const loadInstanceModule = (configPath: string): { instance: ServerInstance; fil
   const files = module ? Array.from(collectFiles(module)) : [filename];
   loadedFiles.set(filename, files);
 
-  if (!isServerInstance(instance)) {
+  if (!isServerConfig(instance)) {
     throw new Error(`${filename} does not export a server with a hostname and a protocol.`);
   }
 

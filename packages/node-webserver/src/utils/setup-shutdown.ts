@@ -1,14 +1,14 @@
 import type net from 'net';
 import addExitListeners from './exitHandler';
 import createGracefulStop from './create-graceful-stop';
-import type { LoadedInstance, ServerInstance } from '../types';
+import type { LoadedInstance, ServerState } from '../types';
 
 interface ShutdownOptions {
   reloadOnSighup: boolean;
   shutdownTimeout: number;
   reload: () => void;
   getLoaded: () => LoadedInstance[];
-  getInstances: () => ServerInstance[];
+  getInstances: () => ServerState[];
 }
 
 /** Stops the servers softly on SIGINT, SIGTERM and, unless it reloads the configuration, SIGHUP. */

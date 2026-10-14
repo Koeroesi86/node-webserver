@@ -158,7 +158,7 @@ export interface ServerConfig {
   lambdaOptions?: LambdaOptions;
 }
 
-/** what a server gets while it runs, set on the instance by the setup steps: the virtual host (`url`), the certificates, the child process, the proxy and the lambdas */
+/** what a server gets while it runs, set by the setup steps: the virtual host (`url`), the certificates, the child process, the proxy and the lambdas */
 export interface ServerRuntime {
   url?: string;
   secureContext?: SecureContext;
@@ -166,8 +166,6 @@ export interface ServerRuntime {
   proxy?: HttpProxy;
   lambdas?: Record<string, { pid: number }>;
 }
-
-export interface ServerInstance extends ServerConfig, ServerRuntime {}
 
 /** the addresses (CIDRs, or `loopback`, `linklocal`, `uniquelocal`) of the proxies whose forwarding headers are believed */
 export type TrustedProxies = string[];
@@ -223,11 +221,16 @@ export interface InstanceHandler {
   registeredTarget?: () => ProxyTarget | undefined;
 }
 
+/** a server of the configuration with what it gets while it runs, which the setup steps set on `runtime` and never on the definition */
+export interface ServerState {
+  instance: ServerConfig;
+  runtime: ServerRuntime;
+}
+
 /** a server of the configuration as it runs */
-export interface LoadedInstance extends InstanceHandler {
+export interface LoadedInstance extends InstanceHandler, ServerState {
   /** the entry of `servers` it comes from */
   source: string | ServerConfig;
-  instance: ServerInstance;
   /** the files it was loaded from, the module and the ones it loaded, empty for a server defined in the configuration itself */
   files: string[];
   /** of the content of the files, to tell whether they changed */

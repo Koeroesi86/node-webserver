@@ -44,7 +44,7 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   [httpsApp, http2App].forEach((app) => app.use(logHttps));
 
   /** overall stats endpoint */
-  setupStatsHandler(() => reloader.getLoaded().map(({ instance }) => instance), httpApp, configuration);
+  setupStatsHandler(reloader.getLoaded, httpApp, configuration);
 
   httpApp.use(reloader.httpHandler);
   // the hosts are the same for HTTP/1 and HTTP/2, so a worker pool is not started twice

@@ -1,9 +1,9 @@
 import fs from 'fs';
 import tls from 'tls';
 import setupSecureContexts from './setupSecureContexts';
-import type { ServerInstance } from '../types';
+import type { ServerConfig, ServerState } from '../types';
 
-const instance = (extra: Partial<ServerInstance>): ServerInstance => ({ hostname: 'secure.localhost', protocol: 'https', ...extra });
+const instance = (extra: Partial<ServerConfig>): ServerState => ({ instance: { hostname: 'secure.localhost', protocol: 'https', ...extra }, runtime: {} });
 const certificate = (name: string) => `-----BEGIN CERTIFICATE-----\n${name}\n-----END CERTIFICATE-----`;
 
 describe('setupSecureContexts', () => {
@@ -26,14 +26,14 @@ describe('setupSecureContexts', () => {
   it('creates a secure context for an instance with a key and a certificate', () => {
     const [result] = setupSecureContexts([instance({ key: '/key.pem', cert: '/cert.pem' })]);
 
-    expect(result.secureContext).toBe(secureContext);
+    expect(result.runtime.secureContext).toBe(secureContext);
     expect(tls.createSecureContext).toHaveBeenCalledWith({ key: 'content of /key.pem', cert: 'content of /cert.pem', ca: undefined });
   });
 
   it('leaves the instances without a key or a certificate alone', () => {
     const result = setupSecureContexts([instance({ key: '/key.pem' }), instance({ cert: '/cert.pem' }), instance({ protocol: 'http' })]);
 
-    expect(result.map(({ secureContext: context }) => context)).toEqual([undefined, undefined, undefined]);
+    expect(result.map(({ runtime }) => runtime.secureContext)).toEqual([undefined, undefined, undefined]);
     expect(tls.createSecureContext).not.toHaveBeenCalled();
   });
 

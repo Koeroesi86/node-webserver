@@ -3,10 +3,9 @@ import getURL from './getURL';
 import virtualHostRouter from './virtual-host-router';
 import getDate from './getDate';
 import logger from './logger';
-import type { Configuration, ServerInstance } from '../types';
+import type { Configuration, ServerState } from '../types';
 
-interface StartedHost {
-  instance: ServerInstance;
+interface StartedHost extends ServerState {
   handler: RequestHandler;
 }
 
@@ -24,8 +23,8 @@ function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configur
     virtualHostRouter(
       hosts
         .filter(({ instance }) => instance.protocol === protocol)
-        .map(({ instance, handler }) => {
-          instance.url = getURL(protocol, instance.hostname, ports[protocol]);
+        .map(({ instance, runtime, handler }) => {
+          runtime.url = getURL(protocol, instance.hostname, ports[protocol]);
           return { hostname: instance.hostname, handler };
         })
     );

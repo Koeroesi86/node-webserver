@@ -6,12 +6,12 @@ import path from 'path';
 import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import lambdaMiddleware from './lambda';
 import createLambdaRouteTable from './lambda-route-table';
-import type { ServerInstance } from '../types';
+import type { ServerConfig } from '../types';
 
 jest.mock('@koeroesi86/node-lambda-invoke', () => ({ httpMiddleware: jest.fn(() => 'the handler') }));
 jest.mock('../utils/logger', () => ({ __esModule: true, default: { info: jest.fn() } }));
 
-const instance = (lambdaOptions: ServerInstance['lambdaOptions']): ServerInstance => ({
+const instance = (lambdaOptions: ServerConfig['lambdaOptions']): ServerConfig => ({
   hostname: 'lambda.localhost',
   protocol: 'http',
   type: 'lambda',

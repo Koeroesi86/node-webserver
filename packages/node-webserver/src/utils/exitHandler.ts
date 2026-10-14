@@ -2,7 +2,7 @@ import { resolve } from 'path';
 import { readdirSync, existsSync, rmSync } from 'fs';
 import logger from './logger';
 import { PACKAGE_ROOT } from '../constants';
-import type { ServerInstance } from '../types';
+import type { ServerState } from '../types';
 
 type ExitReason = NodeJS.Signals | 'exit' | 'uncaughtException';
 
@@ -23,17 +23,15 @@ function cleanTmp() {
   }
 }
 
-function exitHandler(instances: ServerInstance[]) {
-  instances.forEach((instance) => {
-    const { child } = instance;
-
+function exitHandler(hosts: ServerState[]) {
+  hosts.forEach(({ runtime: { child } }) => {
     if (child) {
       child.kill('SIGTERM');
     }
   });
 }
 
-function exitListener(getInstances: () => ServerInstance[], reason: ExitReason, event: unknown) {
+function exitListener(getInstances: () => ServerState[], reason: ExitReason, event: unknown) {
   logger.error(`${reason} triggered:\n`, event);
   // the signal is raised again below, and a process ended by a signal does not run its exit handlers
   logger.flush();
@@ -52,7 +50,7 @@ function exitListener(getInstances: () => ServerInstance[], reason: ExitReason, 
  * Stops the child processes of the servers when the process stops. The servers are asked for when that happens, as they change when the configuration is loaded again.
  * SIGUSR1 (which node also uses to start the inspector), SIGUSR2 and an uncaught exception always end the process at once, as the state may be broken.
  */
-function addExitListeners(getInstances: () => ServerInstance[], { exitOnHangUp = true, gracefulStop }: ExitOptions = {}) {
+function addExitListeners(getInstances: () => ServerState[], { exitOnHangUp = true, gracefulStop }: ExitOptions = {}) {
   process.stdin.resume();
 
   cleanTmp();

@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { SecureContext } from 'tls';
 import { RETIRE_TIMEOUT, RELOAD_DEBOUNCE } from '../constants';
-import type { Configuration, LoadedInstance, ServerInstance } from '../types';
+import type { Configuration, LoadedInstance, ServerState } from '../types';
 import createContextLookup from './create-context-lookup';
 import debounce from './debounce';
 import getDate from './getDate';
@@ -14,7 +14,7 @@ type InstanceLoader = (previous: LoadedInstance[]) => LoadedInstance[];
 
 interface ServerReloader {
   getLoaded: () => LoadedInstance[];
-  getInstances: () => ServerInstance[];
+  getInstances: () => ServerState[];
   httpHandler: RequestHandler;
   httpsHandler: RequestHandler;
   findContext: (domain: string) => SecureContext | undefined;
@@ -42,11 +42,11 @@ const createServerReloader = (
     findSecureContext = createContextLookup(
       next
         .filter(({ instance }) => instance.protocol === 'https')
-        .map(({ instance }) => ({ hostname: instance.hostname, secureContext: instance.secureContext }))
+        .map(({ instance, runtime }) => ({ hostname: instance.hostname, secureContext: runtime.secureContext }))
     );
     loaded = next;
 
-    added.forEach(({ instance }) => logger.system(`[${getDate()}] Server started for ${instance.url}`));
+    added.forEach(({ runtime }) => logger.system(`[${getDate()}] Server started for ${runtime.url}`));
     removed.forEach((instance) => {
       retiring.add(instance);
       instance.close(RETIRE_TIMEOUT).finally(() => retiring.delete(instance));
@@ -78,7 +78,7 @@ const createServerReloader = (
 
   return {
     getLoaded: () => loaded,
-    getInstances: () => [...loaded, ...retiring].map(({ instance }) => instance),
+    getInstances: () => [...loaded, ...retiring],
     httpHandler,
     httpsHandler,
     findContext: (domain) => findSecureContext(domain),

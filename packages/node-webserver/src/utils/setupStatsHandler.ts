@@ -4,9 +4,9 @@ import pidUsage from 'pidusage';
 import getURL from './getURL';
 import getDate from './getDate';
 import logger from './logger';
-import type { Configuration, ServerInstance } from '../types';
+import type { Configuration, ServerRuntime, ServerState } from '../types';
 
-type Lambdas = NonNullable<ServerInstance['lambdas']>;
+type Lambdas = NonNullable<ServerRuntime['lambdas']>;
 
 interface ChildUsage {
   url: string;
@@ -29,8 +29,8 @@ const getLambdaStats = (lambdas: Lambdas) =>
     Object.fromEntries(stats.map((lambdaStats) => [lambdaStats.pid, lambdaStats]))
   );
 
-function refreshInstanceStats(instance: ServerInstance) {
-  const { child, lambdas } = instance;
+function refreshInstanceStats({ instance, runtime }: ServerState) {
+  const { child, lambdas } = runtime;
   const url = instance.serverOptions?.url;
 
   if (child?.pid && url) {
@@ -56,7 +56,7 @@ function refreshInstanceStats(instance: ServerInstance) {
 }
 
 /** the servers are asked for every time, as they change when the configuration is loaded again */
-function refreshStats(getInstances: () => ServerInstance[], refreshInterval = 10000) {
+function refreshStats(getInstances: () => ServerState[], refreshInterval = 10000) {
   pidUsage(process.pid)
     .then((stats) => {
       usages.overall = stats;
@@ -68,7 +68,7 @@ function refreshStats(getInstances: () => ServerInstance[], refreshInterval = 10
   setTimeout(() => refreshStats(getInstances, refreshInterval), refreshInterval);
 }
 
-function setupStatsHandler(getInstances: () => ServerInstance[], httpApp: Express, Configuration: Partial<Configuration>) {
+function setupStatsHandler(getInstances: () => ServerState[], httpApp: Express, Configuration: Partial<Configuration>) {
   const { portHttp, statsDomain, statsRefreshInterval } = Configuration;
   if (statsDomain) {
     refreshStats(getInstances, statsRefreshInterval);
