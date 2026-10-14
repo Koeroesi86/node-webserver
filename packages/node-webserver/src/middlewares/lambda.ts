@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import type { HttpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import logger from '../utils/logger';
-import type { LambdaOptions, ServerInstance } from '../types';
+import type { LambdaOptions, ServerConfig } from '../types';
 import createLambdaRouteTable from './lambda-route-table';
 
 type LambdaHandler = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & { close: () => void };
@@ -47,7 +47,7 @@ const dispatchRequest =
 
 const closeLambdas = (started: HttpMiddleware[]) => started.forEach((route) => route.close());
 
-const lambdaMiddleware = (instance: ServerInstance): LambdaHandler => {
+const lambdaMiddleware = (instance: ServerConfig): LambdaHandler => {
   const { lambdaOptions: config } = instance;
   const routes = config?.routes ?? [];
 

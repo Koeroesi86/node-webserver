@@ -158,29 +158,8 @@ export interface ServerConfig {
   lambdaOptions?: LambdaOptions;
 }
 
-export interface ChildServerConfig extends ServerConfig {
-  type?: 'child';
-  childOptions?: ChildOptions;
-}
-
-export interface LambdaServerConfig extends ServerConfig {
-  type?: 'lambda';
-  lambdaOptions?: LambdaOptions;
-}
-
-export interface ProxyServerConfig extends ServerConfig {
-  type?: 'proxy';
-  proxyOptions?: ProxyOptions;
-  serverOptions?: InstanceServerOptions;
-}
-
-export interface WorkerServerConfig extends ServerConfig {
-  type?: 'worker';
-  options?: WorkerOptions;
-}
-
+/** what a server gets while it runs, set on the instance by the setup steps: the virtual host (`url`), the certificates, the child process, the proxy and the lambdas */
 export interface ServerRuntime {
-  /** populated at runtime */
   url?: string;
   secureContext?: SecureContext;
   child?: ChildProcess;

@@ -11,6 +11,7 @@ describe('setupShutdown', () => {
 
   beforeEach(() => {
     jest.mocked(addExitListeners).mockClear();
+    jest.mocked(createGracefulStop).mockClear();
     jest.mocked(createGracefulStop).mockReturnValue(stop);
     stop.mockClear();
   });
@@ -23,6 +24,17 @@ describe('setupShutdown', () => {
 
     expect(exitOnHangUp).toBe(true);
     expect(stop).toHaveBeenCalledWith(7);
+  });
+
+  it('closes every loaded instance with the time that is left', async () => {
+    const close = jest.fn(async () => undefined);
+    setupShutdown([], { ...options, getLoaded: () => [{ close }, { close }] as never, reloadOnSighup: false });
+    const stopBehind = jest.mocked(createGracefulStop).mock.calls[0][1];
+
+    await stopBehind(3);
+
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledWith(3);
   });
 
   it('leaves SIGHUP to the reload when it is asked to', () => {

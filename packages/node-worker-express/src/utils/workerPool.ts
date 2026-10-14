@@ -8,8 +8,8 @@ import type { Channel } from './createChannel';
 import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerUnavailableError from './workerUnavailableError';
 import createWorkerBudget from './create-worker-budget';
-import pickIdleWorker from './pick-idle-worker';
 import createRestartBackoff from './create-restart-backoff';
+import createWorkerEviction from './create-worker-eviction';
 import WorkerAcquisitionQueue from './worker-acquisition-queue';
 import type { HandOffMessage, IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
@@ -105,8 +105,7 @@ class WorkerPool implements WorkerBudgetMember {
   private readonly idleTimeout: number;
   private readonly budget: WorkerBudget;
   private readonly entries: Map<Worker, WorkerEntry> = new Map();
-  /** the workers stopped as they had no request for the idle timeout, and the ones stopped to make room for the first worker of another path, since the pool started */
-  private evicted = { idle: 0, forRoom: 0 };
+  private readonly eviction: ReturnType<typeof createWorkerEviction<Worker>>;
   /** the paths that keep a number of workers running, see `keepWarm` */
   private readonly minimums = new Map<string, { options: SpawnOptions; count: number }>();
   /** a path that is held back after crashes is warmed again when it may be, one timer per path */
@@ -139,6 +138,13 @@ class WorkerPool implements WorkerBudgetMember {
     this.channels = new Map();
     this.subscriptions = new Map();
     this.cursors = new Map();
+    this.eviction = createWorkerEviction({
+      workers: this.workers,
+      getEntry: (worker) => this.entries.get(worker),
+      getLoad: this.getLoad,
+      forgetPath: this.forgetPath,
+      stop: this.stop,
+    });
     this.idleTimeout = idleTimeout;
     this.budget = budget;
     budget.join(this);
@@ -221,34 +227,13 @@ class WorkerPool implements WorkerBudgetMember {
     return tied[cursor % tied.length];
   };
 
-  /** takes the worker out of the registry right away, the close event is asynchronous and the slot is free now */
-  private evict = (worker: Worker, reason: 'idle' | 'forRoom') => {
-    const entry = this.entries.get(worker);
-    const current = this.workers.get(entry.workerPath);
-    current?.delete(entry.id);
-    if (current?.size === 0) this.forgetPath(entry.workerPath);
-    this.evicted[reason] += 1;
-    this.stop(worker);
-  };
-
   /** a path without workers keeps no state, so that many paths that were asked for once do not add up */
   private forgetPath = (workerPath: string) => {
     this.workers.delete(workerPath);
     this.cursors.delete(workerPath);
   };
 
-  /**
-   * The idle worker this pool gives up first to make room: a spare worker of a path before the last worker of one, the one used longest ago first.
-   * The last worker of a path that still has requests is never taken, as only busy workers are left for it then, so one busy path cannot starve the others.
-   */
-  findIdleWorker = (): IdleWorker | undefined =>
-    pickIdleWorker(
-      Array.from(this.workers.values()).flatMap((current) =>
-        Array.from(current.values())
-          .filter((worker) => this.getLoad(worker) === 0)
-          .map((worker) => ({ spare: current.size > 1, lastUsed: this.entries.get(worker).lastUsed, stop: () => this.evict(worker, 'forRoom') }))
-      )
-    );
+  findIdleWorker = (): IdleWorker | undefined => this.eviction.findIdleWorker();
 
   /** Makes room for the first worker of a path by stopping an idle worker: of this pool when its own limit is used up, of any pool of the budget otherwise. */
   private makeRoom = (): boolean => {
@@ -270,7 +255,7 @@ class WorkerPool implements WorkerBudgetMember {
     }
 
     // no request waits for the slot: one that could use it would have taken this worker when it became idle
-    this.evict(worker, 'idle');
+    this.eviction.evict(worker, 'idle');
   };
 
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
@@ -465,7 +450,7 @@ class WorkerPool implements WorkerBudgetMember {
     /** requests that wait for a worker */
     ...this.acquisitionQueue.getStats(),
     /** workers stopped as they had no request for the idle timeout, and ones stopped to make room for the first worker of another path, since the pool started */
-    evicted: { ...this.evicted },
+    evicted: this.eviction.getStats(),
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
     failing: this.restartBackoff.getStats(),
     paths: Object.fromEntries(
