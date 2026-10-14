@@ -1,14 +1,15 @@
 import createServerReloader from './create-server-reloader';
-import type { Configuration, LoadedInstance, ServerInstance } from '../types';
+import type { Configuration, LoadedInstance, ServerConfig } from '../types';
 
 jest.mock('./logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn() } }));
 
 describe('createServerReloader', () => {
   it('keeps the running instances when a reload fails', () => {
-    const instance: ServerInstance = { hostname: 'running.localhost', protocol: 'http' };
+    const instance: ServerConfig = { hostname: 'running.localhost', protocol: 'http' };
     const loaded: LoadedInstance = {
       source: instance,
       instance,
+      runtime: {},
       handler: (request, response, next) => next(),
       close: async () => undefined,
       files: [],

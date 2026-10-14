@@ -6,9 +6,9 @@ import httpProxy from 'http-proxy';
 
 import { getFreePort } from '../utils/ports';
 import { PROXY_PROTOCOLS } from '../constants';
-import type { ServerInstance } from '../types';
+import type { ServerConfig, ServerRuntime } from '../types';
 
-const proxyMiddleware = (instance: ServerInstance): RequestHandler => {
+const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime): RequestHandler => {
   const { childOptions, proxyOptions, serverOptions } = instance;
 
   if (!childOptions || !proxyOptions || !serverOptions) {
@@ -31,9 +31,9 @@ const proxyMiddleware = (instance: ServerInstance): RequestHandler => {
     serverOptions.proxyTarget = `${PROXY_PROTOCOLS[serverOptions.protocol]}://${proxyOptions.hostname}:${port}`;
   }
 
-  instance.child = spawn(command, childArgs || [], { stdio: 'pipe' });
-  instance.proxy = httpProxy.createProxyServer(proxyOptions);
-  const { proxy } = instance;
+  runtime.child = spawn(command, childArgs || [], { stdio: 'pipe' });
+  const proxy = httpProxy.createProxyServer(proxyOptions);
+  runtime.proxy = proxy;
 
   return (req, res) => {
     proxy.web(req, res, { target: serverOptions.proxyTarget });

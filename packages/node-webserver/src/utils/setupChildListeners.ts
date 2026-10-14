@@ -1,8 +1,8 @@
 import setupChildListener from './setupChildListener';
-import type { ServerInstance } from '../types';
+import type { ServerState } from '../types';
 
-const setupChildListeners = (instances: ServerInstance[] = []) => {
-  instances.forEach(({ child }) => {
+const setupChildListeners = (hosts: ServerState[] = []) => {
+  hosts.forEach(({ runtime: { child } }) => {
     if (child) {
       setupChildListener(child);
     }

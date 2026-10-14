@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { PACKAGE_ROOT } from './constants';
-import type { Configuration, ServerInstance } from './types';
+import type { Configuration, ServerConfig } from './types';
 import exampleConfiguration from './configuration.example';
 
 const certificateFolder = resolve(PACKAGE_ROOT, '.certificates/localhost');
@@ -9,7 +9,7 @@ const key = resolve(certificateFolder, 'privkey.pem');
 const cert = resolve(certificateFolder, 'cert.pem');
 /** how many routes of each kind come before the one that the load test asks for, so that a request goes through all of them */
 const routesBefore = 200;
-const lambdaServer: ServerInstance = {
+const lambdaServer: ServerConfig = {
   hostname: 'lambda.localhost',
   protocol: 'http',
   type: 'lambda',
@@ -20,20 +20,20 @@ const lambdaServer: ServerInstance = {
 };
 const failuresLambda = resolve(PACKAGE_ROOT, 'examples/lambda-failures/exampleLambda.js');
 // a lambda that crashes loses only the request it runs, the others are answered by the lambdas that are left or started in its place
-const lambdaCrashServer: ServerInstance = {
+const lambdaCrashServer: ServerConfig = {
   hostname: 'lambda-crash.localhost',
   protocol: 'http',
   type: 'lambda',
   lambdaOptions: { lambda: failuresLambda, handler: 'handler', limit: 4 },
 };
 // two lambdas that answer after 1.5 seconds, and a request waits half a second for one: the rest is answered with 503
-const lambdaOverloadServer: ServerInstance = {
+const lambdaOverloadServer: ServerConfig = {
   hostname: 'lambda-overload.localhost',
   protocol: 'http',
   type: 'lambda',
   lambdaOptions: { lambda: failuresLambda, handler: 'handler', limit: 2, acquireTimeout: 500 },
 };
-const lambdaFileServer: ServerInstance = {
+const lambdaFileServer: ServerConfig = {
   hostname: 'lambda-file.localhost',
   protocol: 'http',
   type: 'lambda',
@@ -41,7 +41,7 @@ const lambdaFileServer: ServerInstance = {
 };
 const lambdaRoutesFile = resolve(PACKAGE_ROOT, 'examples/lambda-routes/exampleLambda.js');
 // the same lambda with a table of routes (`/items/<id>` is the last of 401, and `/orders` another handler of the file) and without one, which the lambda routes scenario compares
-const lambdaRoutesServer: ServerInstance = {
+const lambdaRoutesServer: ServerConfig = {
   hostname: 'lambda-routes.localhost',
   protocol: 'http',
   type: 'lambda',
@@ -54,13 +54,13 @@ const lambdaRoutesServer: ServerInstance = {
     ],
   },
 };
-const lambdaSingleServer: ServerInstance = {
+const lambdaSingleServer: ServerConfig = {
   hostname: 'lambda-single.localhost',
   protocol: 'http',
   type: 'lambda',
   lambdaOptions: { lambda: lambdaRoutesFile, handler: 'item' },
 };
-const compressedServer: ServerInstance = {
+const compressedServer: ServerConfig = {
   hostname: 'compressed.localhost',
   protocol: 'http',
   type: 'worker',
@@ -70,7 +70,7 @@ const compressedServer: ServerInstance = {
     index: ['exampleWorker.js'],
   },
 };
-const uploadServer: ServerInstance = {
+const uploadServer: ServerConfig = {
   hostname: 'upload.localhost',
   protocol: 'http',
   type: 'worker',
@@ -79,7 +79,7 @@ const uploadServer: ServerInstance = {
     index: ['exampleWorker.js'],
   },
 };
-const healthServer: ServerInstance = {
+const healthServer: ServerConfig = {
   hostname: 'health.localhost',
   protocol: 'http',
   type: 'worker',
@@ -90,7 +90,7 @@ const healthServer: ServerInstance = {
 };
 const upstreamPort = Number(process.env.PORT_UPSTREAM ?? 8081);
 // an application on a port of its own, started by the server as a child: the target of the proxy server below
-const upstreamServer: ServerInstance = {
+const upstreamServer: ServerConfig = {
   hostname: 'upstream.localhost',
   protocol: 'http',
   type: 'child',
@@ -101,13 +101,13 @@ const upstreamServer: ServerInstance = {
   proxyOptions: { port: upstreamPort },
   serverOptions: { protocol: 'http', proxyTarget: `http://127.0.0.1:${upstreamPort}` },
 };
-const proxiedServer: ServerInstance = {
+const proxiedServer: ServerConfig = {
   hostname: 'proxied.localhost',
   protocol: 'http',
   type: 'proxy',
   proxyOptions: { target: `http://127.0.0.1:${upstreamPort}` },
 };
-const routesServer: ServerInstance = {
+const routesServer: ServerConfig = {
   hostname: 'routes.localhost',
   protocol: 'http',
   type: 'worker',
@@ -121,7 +121,7 @@ const routesServer: ServerInstance = {
     fallthrough: false,
   },
 };
-const secureServers: ServerInstance[] =
+const secureServers: ServerConfig[] =
   existsSync(key) && existsSync(cert)
     ? [
         {
@@ -138,16 +138,16 @@ const secureServers: ServerInstance[] =
       ]
     : [];
 
-const withWorkerLimit = (server: ServerInstance): ServerInstance =>
+const withWorkerLimit = (server: ServerConfig): ServerConfig =>
   server.options && process.env.WORKERS_PER_PATH ? { ...server, options: { ...server.options, limitPerPath: Number(process.env.WORKERS_PER_PATH) } } : server;
 
-const withHandOff = (server: ServerInstance): ServerInstance =>
+const withHandOff = (server: ServerConfig): ServerConfig =>
   server.options && process.env.HAND_OFF_RESPONSES
     ? { ...server, options: { ...server.options, handOffResponses: Number(process.env.HAND_OFF_RESPONSES) } }
     : server;
 
 // off by default in the middleware, on here for the big upload scenario: the body of the upload of the example scenario is far below the size
-const withHandOffRequests = (server: ServerInstance): ServerInstance =>
+const withHandOffRequests = (server: ServerConfig): ServerConfig =>
   server.options ? { ...server, options: { ...server.options, handOffRequests: Number(process.env.HAND_OFF_REQUESTS ?? 8 * 1024 * 1024) } } : server;
 
 /**

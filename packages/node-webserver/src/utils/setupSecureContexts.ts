@@ -1,6 +1,6 @@
 import tls from 'tls';
 import fs from 'fs';
-import type { ServerInstance } from '../types';
+import type { ServerState } from '../types';
 
 // if CA contains more certificates it will be parsed to array
 function sslCADecode(source?: string): string[] {
@@ -20,11 +20,10 @@ function sslCADecode(source?: string): string[] {
   });
 }
 
-function setupSecureContexts(instances: ServerInstance[] = []) {
-  instances.forEach((instance) => {
-    const { key, cert, ca } = instance;
+function setupSecureContexts(hosts: ServerState[] = []) {
+  hosts.forEach(({ instance: { key, cert, ca }, runtime }) => {
     if (key && cert) {
-      instance.secureContext = tls.createSecureContext({
+      runtime.secureContext = tls.createSecureContext({
         key: fs.readFileSync(key, 'utf8'),
         cert: fs.readFileSync(cert, 'utf8'),
         // If the 'ca' option is not given, then node.js will use the default
@@ -33,7 +32,7 @@ function setupSecureContexts(instances: ServerInstance[] = []) {
     }
   });
 
-  return instances;
+  return hosts;
 }
 
 export default setupSecureContexts;

@@ -4,7 +4,7 @@ import https from 'https';
 import net from 'net';
 import { once } from 'events';
 import proxyServerMiddleware from './proxy-server';
-import type { ProxyOptions, ServerInstance } from '../types';
+import type { ProxyOptions, ServerConfig } from '../types';
 
 jest.mock('../utils/logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn(), info: jest.fn(), warning: jest.fn() } }));
 
@@ -58,7 +58,7 @@ const startUpstream = async (handler?: http.RequestListener) => {
 const startProxy = async (proxyOptions: ProxyOptions, { trustLoopback = false, hostname = 'app.localhost' } = {}) => {
   const app = express();
   app.set('trust proxy', trustLoopback ? ['loopback'] : []);
-  const instance: ServerInstance = { hostname, protocol: 'https', type: 'proxy', proxyOptions };
+  const instance: ServerConfig = { hostname, protocol: 'https', type: 'proxy', proxyOptions };
   app.use(proxyServerMiddleware(instance));
   const { port } = await listen(http.createServer(app));
 

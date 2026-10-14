@@ -14,7 +14,7 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
   const running = previous.find((loaded) => loaded.source === source);
 
   if (typeof source !== 'string') {
-    return [running ?? { source, instance: source, files: [] }];
+    return [running ?? { source, instance: source, runtime: {}, files: [] }];
   }
 
   if (running && readFingerprint(running.files) === running.fingerprint) {
@@ -23,12 +23,12 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
 
   const loaded = loadInstanceModule(source);
 
-  return loaded ? [{ source, ...loaded, fingerprint: readFingerprint(loaded.files) }] : [];
+  return loaded ? [{ source, ...loaded, runtime: {}, fingerprint: readFingerprint(loaded.files) }] : [];
 };
 
 const start = (candidate: Candidate, previous: LoadedInstance[], workerBudget?: WorkerBudget): LoadedInstance => ({
   ...candidate,
-  ...createInstanceHandler(candidate.instance, { workerBudget, previous: previous.find(({ source }) => source === candidate.source) }),
+  ...createInstanceHandler(candidate.instance, candidate.runtime, { workerBudget, previous: previous.find(({ source }) => source === candidate.source) }),
 });
 
 /**
@@ -39,7 +39,7 @@ const start = (candidate: Candidate, previous: LoadedInstance[], workerBudget?: 
 const loadInstances = (servers: Configuration['servers'], previous: LoadedInstance[], workerBudget?: WorkerBudget): LoadedInstance[] => {
   const candidates = servers.flatMap((source) => findCandidate(source, previous));
   // the certificates are read again for every server, the running ones too, as they are renewed without the definition changing
-  setupSecureContexts(candidates.map(({ instance }) => instance));
+  setupSecureContexts(candidates);
 
   const started: LoadedInstance[] = [];
   try {

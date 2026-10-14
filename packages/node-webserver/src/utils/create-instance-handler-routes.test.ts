@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import loadInstances from './load-instances';
-import type { ServerInstance } from '../types';
+import type { ServerConfig } from '../types';
 
 // the real middleware, as the routes are checked by it: a mistake in them has to stop the server while its configuration is loaded
 describe('the routes of a worker server', () => {
@@ -15,7 +15,7 @@ describe('the routes of a worker server', () => {
 
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
-  const server = (routes: object[]): ServerInstance => ({
+  const server = (routes: object[]): ServerConfig => ({
     hostname: 'routes.localhost',
     protocol: 'http',
     type: 'worker',

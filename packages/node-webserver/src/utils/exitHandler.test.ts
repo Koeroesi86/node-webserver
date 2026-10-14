@@ -38,7 +38,7 @@ describe('addExitListeners', () => {
 
   it('stops the children of the servers', () => {
     const child = { kill: jest.fn() };
-    addExitListeners((() => [{ hostname: 'a', protocol: 'http', child }]) as unknown as Parameters<typeof addExitListeners>[0]);
+    addExitListeners((() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[0]);
 
     listeners.SIGINT('SIGINT');
 
@@ -78,7 +78,9 @@ describe('addExitListeners', () => {
     const before = { kill: jest.fn() };
     const after = { kill: jest.fn() };
     let children = [before];
-    addExitListeners((() => children.map((child) => ({ hostname: 'a', protocol: 'http', child }))) as unknown as Parameters<typeof addExitListeners>[0]);
+    addExitListeners((() => children.map((child) => ({ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }))) as unknown as Parameters<
+      typeof addExitListeners
+    >[0]);
     children = [after];
 
     listeners.SIGTERM('SIGTERM');
@@ -116,7 +118,9 @@ describe('addExitListeners', () => {
     it('ends at once on a second signal while it waits', async () => {
       const { gracefulStop } = stoppingAt();
       const child = { kill: jest.fn() };
-      addExitListeners((() => [{ hostname: 'a', protocol: 'http', child }]) as unknown as Parameters<typeof addExitListeners>[0], { gracefulStop });
+      addExitListeners((() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[0], {
+        gracefulStop,
+      });
 
       void listeners.SIGTERM('SIGTERM');
       listeners.SIGTERM('SIGTERM');
@@ -140,7 +144,7 @@ describe('addExitListeners', () => {
 
     it('still stops the children and raises the signal when the stop fails', async () => {
       const child = { kill: jest.fn() };
-      addExitListeners((() => [{ hostname: 'a', protocol: 'http', child }]) as unknown as Parameters<typeof addExitListeners>[0], {
+      addExitListeners((() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[0], {
         gracefulStop: () => Promise.reject(new Error('broken')),
       });
 

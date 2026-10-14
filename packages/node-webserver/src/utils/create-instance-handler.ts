@@ -9,7 +9,7 @@ import getDate from './getDate';
 import logger from './logger';
 import trackRequests from './track-requests';
 import untilIdle from './until-idle';
-import type { InstanceHandler, LoadedInstance, ServerInstance } from '../types';
+import type { InstanceHandler, LoadedInstance, ServerConfig, ServerRuntime } from '../types';
 
 interface Context {
   /** shared by the worker servers, so that their processes together stay under its limit */
@@ -18,7 +18,7 @@ interface Context {
   previous?: LoadedInstance;
 }
 
-function getWorkerMiddleware(instance: ServerInstance, workerBudget?: WorkerBudget) {
+function getWorkerMiddleware(instance: ServerConfig, workerBudget?: WorkerBudget) {
   const { options } = instance;
 
   if (!options) {
@@ -44,16 +44,16 @@ function getWorkerMiddleware(instance: ServerInstance, workerBudget?: WorkerBudg
   });
 }
 
-function getMiddleware(instance: ServerInstance, { workerBudget, previous }: Context): InstanceHandler {
+function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, { workerBudget, previous }: Context): InstanceHandler {
   if (instance.type === 'child') {
     // the requests are counted for the child servers only, as the pools of the workers and the lambdas know which of theirs are busy themselves
-    const { handler, idle } = trackRequests(proxyMiddleware(instance));
+    const { handler, idle } = trackRequests(proxyMiddleware(instance, runtime));
     return {
       handler,
       close: async (timeout) => {
         await untilIdle(idle, timeout);
-        instance.child?.kill('SIGTERM');
-        instance.proxy?.close();
+        runtime.child?.kill('SIGTERM');
+        runtime.proxy?.close();
       },
     };
   }
@@ -88,9 +88,9 @@ const compose =
     first(request, response, (error?: unknown) => (error ? next(error) : second(request, response, next)));
 
 /** starts what answers the requests of the server: the workers, the lambdas, the child process or the connections to the target of a proxy */
-function createInstanceHandler(instance: ServerInstance, context: Context = {}): InstanceHandler {
+function createInstanceHandler(instance: ServerConfig, runtime: ServerRuntime, context: Context = {}): InstanceHandler {
   const { compression } = instance;
-  const started = getMiddleware(instance, context);
+  const started = getMiddleware(instance, runtime, context);
 
   return { ...started, handler: compression ? compose(compressionMiddleware(compression === true ? {} : compression), started.handler) : started.handler };
 }

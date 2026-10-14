@@ -9,7 +9,7 @@ import logger from '../utils/logger';
 import proxyRequest from '../utils/proxy-request';
 import setForwardedHeaders from '../utils/set-forwarded-headers';
 import proxyControl from './proxy-control';
-import type { ProxyTarget, ServerInstance } from '../types';
+import type { ProxyTarget, ServerConfig } from '../types';
 
 /** the middleware, `close`, which closes the connections to the target once their requests are answered, and the target that was registered, if any */
 export type ProxyServerMiddleware = RequestHandler & { close: () => void; registeredTarget: () => ProxyTarget | undefined };
@@ -18,7 +18,7 @@ export type ProxyServerMiddleware = RequestHandler & { close: () => void; regist
  * A `proxy` server: passes the requests of its host, websockets included, to a fixed `target`, or to the one the service behind it registers on the control path
  * of the host (`dynamic`). Without a target (yet, or expired) requests are answered with 503. A dynamic one starts with `seed`, the target of the server it replaces.
  */
-const proxyServerMiddleware = (instance: ServerInstance, seed?: ProxyTarget): ProxyServerMiddleware => {
+const proxyServerMiddleware = (instance: ServerConfig, seed?: ProxyTarget): ProxyServerMiddleware => {
   const { hostname, protocol, proxyOptions = {} } = instance;
   const { target, dynamic, changeOrigin, secure, hideHeaders = [], forwardedHeaders, proxyTimeout = DEFAULT_PROXY_TIMEOUT } = proxyOptions;
   const ca = proxyOptions.ca ? readFileSync(proxyOptions.ca, 'utf8') : undefined;

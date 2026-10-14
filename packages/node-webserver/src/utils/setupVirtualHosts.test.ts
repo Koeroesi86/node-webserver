@@ -5,7 +5,7 @@ import { middleware } from '@koeroesi86/node-worker-express';
 import createInstanceHandler from './create-instance-handler';
 import setupVirtualHosts from './setupVirtualHosts';
 import type { Express, RequestHandler } from 'express';
-import type { ServerInstance } from '../types';
+import type { ServerConfig, ServerRuntime } from '../types';
 
 const text = 'It works! '.repeat(500);
 
@@ -30,7 +30,7 @@ describe('setupVirtualHosts', () => {
     );
   });
 
-  const instance = (overrides: Partial<ServerInstance>): ServerInstance => ({
+  const instance = (overrides: Partial<ServerConfig>): ServerConfig => ({
     hostname: 'web.localhost',
     protocol: 'http',
     type: 'worker',
@@ -41,9 +41,12 @@ describe('setupVirtualHosts', () => {
   const ports = { portHttp: 80, portHttps: 443 };
 
   /** the apps of the two ports, with the servers on them */
-  const setup = (instances: ServerInstance[]) => {
+  const setup = (instances: ServerConfig[]) => {
     const hosts = setupVirtualHosts(
-      instances.map((current) => ({ instance: current, ...createInstanceHandler(current) })),
+      instances.map((current) => {
+        const runtime = {};
+        return { instance: current, runtime, ...createInstanceHandler(current, runtime) };
+      }),
       ports
     );
     const httpApp = express();
@@ -124,8 +127,8 @@ describe('setupVirtualHosts', () => {
         response.end(text);
     const hosts = setupVirtualHosts(
       [
-        { instance: instance({ hostname: 'a.localhost' }), handler: answer('a') },
-        { instance: instance({ hostname: 'b.localhost' }), handler: answer('b') },
+        { instance: instance({ hostname: 'a.localhost' }), runtime: {}, handler: answer('a') },
+        { instance: instance({ hostname: 'b.localhost' }), runtime: {}, handler: answer('b') },
       ],
       ports
     );
@@ -140,12 +143,13 @@ describe('setupVirtualHosts', () => {
     const http = instance({ hostname: 'a.localhost' });
     const https = instance({ hostname: 'b.localhost', protocol: 'https' });
 
+    const runtimes = [{}, {}] as Array<ServerRuntime>;
     setupVirtualHosts(
-      [http, https].map((current) => ({ instance: current, handler: jest.fn() })),
+      [http, https].map((current, index) => ({ instance: current, runtime: runtimes[index], handler: jest.fn() })),
       { portHttp: 8080, portHttps: 443 }
     );
 
-    expect([http.url, https.url]).toEqual(['http://a.localhost:8080', 'https://b.localhost']);
+    expect(runtimes.map(({ url }) => url)).toEqual(['http://a.localhost:8080', 'https://b.localhost']);
   });
 
   it('names the worker pool of a server after its host name, for the metrics', () => {

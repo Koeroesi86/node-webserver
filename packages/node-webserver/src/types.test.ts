@@ -1,4 +1,4 @@
-import type { LoadedInstance, ServerConfig, ServerInstance, ServerRuntime } from './types';
+import type { LoadedInstance, ServerConfig, ServerRuntime } from './types';
 
 describe('server type model', () => {
   it('keeps declarative config separate from runtime state', () => {
@@ -15,16 +15,16 @@ describe('server type model', () => {
       proxy: {} as never,
     };
 
-    const instance: ServerInstance = { ...config, ...runtime };
     const loaded: LoadedInstance = {
       handler: jest.fn(),
       close: jest.fn().mockResolvedValue(undefined),
       source: config,
-      instance,
+      instance: config,
+      runtime,
       files: [],
     };
 
-    expect(instance.hostname).toBe('example.localhost');
-    expect(loaded.instance.url).toBe('https://example.localhost');
+    expect(loaded.instance).not.toHaveProperty('url');
+    expect(loaded.runtime.url).toBe('https://example.localhost');
   });
 });

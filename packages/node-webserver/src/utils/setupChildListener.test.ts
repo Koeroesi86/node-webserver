@@ -3,7 +3,7 @@ import type { ChildProcess } from 'child_process';
 import logger from './logger';
 import setupChildListener from './setupChildListener';
 import setupChildListeners from './setupChildListeners';
-import type { ServerInstance } from '../types';
+import type { ServerState } from '../types';
 
 jest.mock('./logger', () => ({ __esModule: true, default: { info: jest.fn(), error: jest.fn() } }));
 
@@ -66,9 +66,9 @@ describe('setupChildListeners', () => {
   it('sets up the instances that have a child, and skips the others', () => {
     const { child, process } = createChild();
     const instances = [
-      { hostname: 'a', protocol: 'http', child: process },
-      { hostname: 'b', protocol: 'http' },
-    ] satisfies ServerInstance[];
+      { instance: { hostname: 'a', protocol: 'http' }, runtime: { child: process } },
+      { instance: { hostname: 'b', protocol: 'http' }, runtime: {} },
+    ] satisfies ServerState[];
 
     setupChildListeners(instances);
     child.stderr.emit('data', 'x');

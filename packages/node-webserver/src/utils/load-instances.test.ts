@@ -4,7 +4,7 @@ import path from 'path';
 import tls from 'tls';
 import createInstanceHandler from './create-instance-handler';
 import loadInstances from './load-instances';
-import type { ServerInstance } from '../types';
+import type { ServerConfig } from '../types';
 
 // a server starts processes, a handler that remembers whether it was stopped is enough here
 jest.mock('./create-instance-handler', () => ({ __esModule: true, default: jest.fn(() => ({ handler: jest.fn(), close: jest.fn() })) }));
@@ -33,7 +33,7 @@ describe('loadInstances', () => {
   const server = (name: string, hostname: string) => write(name, `module.exports = { hostname: '${hostname}', protocol: 'http', type: 'worker' };`);
 
   it('loads the servers of the files and the ones of the configuration', () => {
-    const inline: ServerInstance = { hostname: 'inline.localhost', protocol: 'http' };
+    const inline: ServerConfig = { hostname: 'inline.localhost', protocol: 'http' };
 
     const loaded = loadInstances([server('a.js', 'a.localhost'), inline], []);
 
@@ -46,7 +46,7 @@ describe('loadInstances', () => {
   });
 
   it('keeps a server whose files did not change, with what it started', () => {
-    const inline: ServerInstance = { hostname: 'inline.localhost', protocol: 'http' };
+    const inline: ServerConfig = { hostname: 'inline.localhost', protocol: 'http' };
     const servers = [server('a.js', 'a.localhost'), inline];
     const previous = loadInstances(servers, []);
 

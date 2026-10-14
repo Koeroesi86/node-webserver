@@ -1,10 +1,11 @@
 import path from 'path';
 import getWatchedFiles from './get-watched-files';
-import type { LoadedInstance, ServerInstance } from '../types';
+import type { LoadedInstance, ServerConfig } from '../types';
 
-const loaded = (instance: ServerInstance, files: string[] = []): LoadedInstance => ({
+const loaded = (instance: ServerConfig, files: string[] = []): LoadedInstance => ({
   source: instance,
   instance,
+  runtime: {},
   files,
   handler: jest.fn(),
   close: jest.fn(),
