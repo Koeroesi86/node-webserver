@@ -1,6 +1,6 @@
 ---
 name: open-pr
-description: Open a pull request for the current branch with the repository template filled in, the packages that publish worked out, and only the checks that were run ticked. Trigger "open pr", "create pr", "/open-pr".
+description: Open a pull request for the current branch with the repository template filled in, the packages that publish worked out, and what was tried by hand listed (CI-run checks are not). Trigger "open pr", "create pr", "/open-pr".
 model: sonnet
 allowed-tools: Read, Bash
 ---
@@ -31,8 +31,8 @@ Fill `.github/pull_request_template.md` section by section:
 - **Changes**: one line each.
 - **Behaviour changes**: config, API, defaults, output users notice; delete if none.
 - **Release**: packages above, breaking or not.
-- **Verification**: tick only what ran this session, after reading the output. `pnpm lint`, `build`, `quality`/`test`, `test:integration` are one box: all four must pass. The load test is required when the request path changed; CI counts only once it has run.
-- **Not verified**: everything not run or tried by hand, with the reason (no k6/Docker is one); "nothing" only when everything was.
+- **Verification**: what was tried by hand, as run and seen. Do not list lint, build, tests, quality, the integration test or the load test: CI runs them.
+- **Not verified**: what CI does not cover and was not tried by hand, with the reason; "nothing" only when everything was covered.
 - **Not in this pull request**: limits and follow-ups with issue numbers.
 
 Run missing checks before opening with `verify-change` (it lists what ran) unless told not to; workflow changes also need `zizmor .github`.

@@ -49,7 +49,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 
 - **Tickets are GitHub issues** (`gh issue list`, `gh issue view <N>`). Read the issue and comments first; link with `Closes #N`.
 - **Use `.github/pull_request_template.md`, every section filled.** Delete a section only where the template says (Behaviour changes, Release).
-- Verification: tick only what was run. Put what was not run or tried by hand under **Not verified**; "nothing" only when everything was.
+- Verification: do not list what CI runs (lint, build, tests, quality, integration, load test); write what you tried by hand. Put what neither CI nor you covered under **Not verified**; "nothing" only when everything was covered.
 - Release: say which packages publish (a change in `packages/**` or `pnpm-lock.yaml`, or in a package they depend on) and whether it is breaking. Delete for tools, docs and CI only.
 - A PR stacked on another says so in "What and why" and has that branch as its base.
 - One change per PR, from a branch off `master`. Never push to `master`. Do not merge or change repository settings unless asked.

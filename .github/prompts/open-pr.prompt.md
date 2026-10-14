@@ -28,11 +28,11 @@ Fill the template section by section:
 - **Changes**: one line per change
 - **Behaviour changes**: user-visible config, API, default, or output changes; delete if none
 - **Release**: affected packages and whether the change is breaking
-- **Verification**: tick only what was actually run and confirmed; include the exact validation commands that passed and list the rest under **Not verified**
-- **Not verified**: everything not run or only approximated, with a reason
+- **Verification**: what was tried by hand, as run and seen; do not list lint, build, tests, quality, the integration test or the load test, as CI runs them
+- **Not verified**: what CI does not cover and was not tried by hand, with a reason
 - **Not in this pull request**: follow-ups and scope boundaries with issue links
 
-Run the relevant verification before opening the PR. If the request path changed, include the load-test requirement and report whether it was run or could not be run locally.
+Run the relevant local verification before opening the PR; CI repeats it, so it is not reported in the PR body.
 
 ## Opening
 - Title should be an imperative sentence without a prefix, as a squash-commit title.
