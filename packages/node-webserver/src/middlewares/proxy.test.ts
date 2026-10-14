@@ -121,9 +121,9 @@ describe('proxyMiddleware', () => {
     );
 
     it('passes the requests on to the child', async () => {
-      const childPort = await listen(http.createServer((request, response) => response.end(`child ${request.url}`)));
+      const childPort = await listen(http.createServer((_request, response) => response.end('child')));
 
-      expect(await get(await startFront(childPort))).toEqual({ status: 200, text: 'child /' });
+      expect(await get(await startFront(childPort))).toEqual({ status: 200, text: 'child' });
     });
 
     it('answers 502 when the child cannot be reached', async () => {
