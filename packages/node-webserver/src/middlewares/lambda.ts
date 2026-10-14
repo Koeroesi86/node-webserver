@@ -1,9 +1,9 @@
-import fs from 'fs';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
-import { createRouteMatcher } from '@koeroesi86/node-worker-express';
+import type { HttpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import logger from '../utils/logger';
 import type { LambdaOptions, ServerInstance } from '../types';
+import createLambdaRouteTable from './lambda-route-table';
 
 type LambdaHandler = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & { close: () => void };
 
@@ -33,6 +33,20 @@ const createLambda = (config: LambdaOptions | undefined, lambda: string, handler
     env: config?.env,
   });
 
+const createFallbackLambda = (config: LambdaOptions | undefined) =>
+  config?.lambda ? createLambda(config, config.lambda, config.handler, config.limit) : undefined;
+
+const dispatchRequest =
+  (match: ReturnType<typeof createLambdaRouteTable>, fallback: HttpMiddleware | undefined): ((request: IncomingMessage, response: ServerResponse) => void) =>
+  (request, response) => {
+    const found = match(pathnameOf(request));
+    if (found) return found.target.handle(request, response, found.pathParameters);
+    if (fallback) return fallback.handle(request, response);
+    notFound(response);
+  };
+
+const closeLambdas = (started: HttpMiddleware[]) => started.forEach((route) => route.close());
+
 const lambdaMiddleware = (instance: ServerInstance): LambdaHandler => {
   const { lambdaOptions: config } = instance;
   const routes = config?.routes ?? [];
@@ -41,36 +55,16 @@ const lambdaMiddleware = (instance: ServerInstance): LambdaHandler => {
     return createLambda(config, config?.lambda || '', config?.handler, config?.limit);
   }
 
-  // the routes are matched here, before a lambda is taken, and each one has the pool and so the limit of its own lambda and handler
-  const started: Array<{ close: () => void }> = [];
+  // the routes are matched before a lambda is taken, and each one has the pool and so the limit of its own lambda and handler
+  const started: HttpMiddleware[] = [];
   try {
-    const match = createRouteMatcher(routes, ({ lambda, handler, limit }, position) => {
-      if (typeof lambda !== 'string' || lambda === '') {
-        throw new Error(`routes[${position}] has no lambda.`);
-      }
-      // checked once here, so that a mistake in the configuration shows when the server starts and not with the first request for it
-      if (!fs.statSync(lambda, { throwIfNoEntry: false })?.isFile()) {
-        throw new Error(`The lambda of routes[${position}] is not a file: ${lambda}`);
-      }
-      const route = createLambda(config, lambda, handler, limit ?? config?.limit);
-      started.push(route);
-      return route;
-    });
-    // `lambda` stays what it was, a route for every request, that comes last
-    const rest = config?.lambda ? createLambda(config, config.lambda, config.handler, config.limit) : undefined;
-    if (rest) started.push(rest);
+    const match = createLambdaRouteTable(routes, ({ lambda, handler, limit }) => createLambda(config, lambda, handler, limit ?? config?.limit), started);
+    const fallback = createFallbackLambda(config);
+    if (fallback) started.push(fallback);
 
-    return Object.assign(
-      (request: IncomingMessage, response: ServerResponse) => {
-        const found = match(pathnameOf(request));
-        if (found) return found.target.handle(request, response, found.pathParameters);
-        if (rest) return rest.handle(request, response);
-        notFound(response);
-      },
-      { close: () => started.forEach((route) => route.close()) }
-    );
+    return Object.assign(dispatchRequest(match, fallback), { close: () => closeLambdas(started) });
   } catch (error) {
-    started.forEach((route) => route.close());
+    closeLambdas(started);
     throw error;
   }
 };

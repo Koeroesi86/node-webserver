@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import lambdaMiddleware from './lambda';
+import createLambdaRouteTable from './lambda-route-table';
 import type { ServerInstance } from '../types';
 
 jest.mock('@koeroesi86/node-lambda-invoke', () => ({ httpMiddleware: jest.fn(() => 'the handler') }));
@@ -102,6 +103,22 @@ describe('lambdaMiddleware', () => {
         created.push({ options, middleware });
         return middleware;
       });
+    });
+
+    it('validates and registers route targets when the table is built', () => {
+      const started: Array<ReturnType<typeof httpMiddleware>> = [];
+      const target = httpMiddleware({ lambdaPath: slashes(orders), handlerKey: 'handler', communication: { type: 'ipc' } });
+      const match = createLambdaRouteTable([{ path: '/orders', lambda: orders }], () => target, started);
+
+      expect(match('/orders')?.target).toBe(target);
+      expect(started).toEqual([target]);
+    });
+
+    it('refuses a missing lambda before making its route target', () => {
+      const createTarget = jest.fn(() => httpMiddleware({ lambdaPath: '', communication: { type: 'ipc' } }));
+
+      expect(() => createLambdaRouteTable([{ path: '/orders', lambda: path.join(folder, 'missing.js') }], createTarget, [])).toThrow(/is not a file/);
+      expect(createTarget).not.toHaveBeenCalled();
     });
 
     it('sends a request to the lambda and handler of the route that matches, with the captures as path parameters', () => {
