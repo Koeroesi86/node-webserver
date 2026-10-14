@@ -28,7 +28,7 @@ More: [Lambdas](https://github.com/Koeroesi86/node-webserver/blob/master/package
 
 ## child
 
-The server starts `childOptions.command` with its `args`, and proxies requests to its port on `localhost` (`proxyOptions`, `serverOptions.protocol` and `childOptions` are required). The port is a free one, replaced for `%PORT%` in the arguments (or the result of an `args` function), unless `proxyOptions.port` is fixed. The child is stopped with the server. Websockets of child servers are not proxied yet (#56).
+The server starts `childOptions.command` with its `args`, and proxies requests to its port on `localhost` (`proxyOptions`, `serverOptions.protocol` and `childOptions` are required). The port is a free one, replaced for `%PORT%` in the arguments (or the result of an `args` function), unless `proxyOptions.port` is fixed. The child is stopped with the server. Requests and websockets are passed on as for a `proxy` server with a fixed target: 502 when the child cannot be reached, 504 when it stays silent.
 
 ## proxy
 

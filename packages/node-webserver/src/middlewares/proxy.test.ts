@@ -1,11 +1,14 @@
 import { spawn } from 'child_process';
-import httpProxy from 'http-proxy';
+import express from 'express';
+import http from 'http';
+import net from 'net';
+import { once } from 'events';
 import proxyMiddleware from './proxy';
 import { addPort, clearPorts } from '../utils/ports';
 import type { ServerConfig, ServerRuntime } from '../types';
 
 jest.mock('child_process', () => ({ spawn: jest.fn(() => ({ pid: 1 })) }));
-jest.mock('http-proxy', () => ({ __esModule: true, default: { createProxyServer: jest.fn(() => ({ web: jest.fn() })) } }));
+jest.mock('../utils/logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn(), info: jest.fn(), warning: jest.fn() } }));
 
 const instance = (extra: Partial<ServerConfig> = {}): ServerConfig => ({
   hostname: 'child.localhost',
@@ -23,7 +26,6 @@ describe('proxyMiddleware', () => {
   beforeEach(() => {
     clearPorts();
     jest.mocked(spawn).mockClear();
-    jest.mocked(httpProxy.createProxyServer).mockClear();
   });
 
   it.each(['childOptions', 'proxyOptions', 'serverOptions'] as const)('requires %s', (option) => {
@@ -74,15 +76,93 @@ describe('proxyMiddleware', () => {
     expect(() => start(instance())).toThrow('No more available port left.');
   });
 
-  it('hands the requests to the proxy with the target', () => {
-    addPort(3004);
-    const server = instance();
-    const runtime: ServerRuntime = {};
-    const handler = proxyMiddleware(server, runtime);
-    const request = {} as Parameters<typeof handler>[0];
-    const response = {} as Parameters<typeof handler>[1];
-    handler(request, response, jest.fn());
+  describe('requests', () => {
+    const servers: net.Server[] = [];
+    const listen = async <T extends net.Server>(server: T) => {
+      servers.push(server);
+      server.listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      const address = server.address();
 
-    expect(runtime.proxy?.web).toHaveBeenCalledWith(request, response, { target: 'http://localhost:3004' });
+      return address && typeof address === 'object' ? address.port : 0;
+    };
+
+    /** the front server of a child that listens on `childPort`, which is where the process would be */
+    const startFront = async (childPort: number, runtime: ServerRuntime = {}) => {
+      const server = instance({
+        childOptions: { command: 'app', args: [] },
+        proxyOptions: { hostname: '127.0.0.1', port: childPort },
+        serverOptions: { protocol: 'http', proxyTarget: `http://127.0.0.1:${childPort}` },
+      });
+      const app = express();
+      app.use(proxyMiddleware(server, runtime));
+
+      return listen(http.createServer(app));
+    };
+
+    const get = (port: number) =>
+      new Promise<{ status: number; text: string }>((resolve, reject) => {
+        http
+          .get({ host: '127.0.0.1', port, agent: false }, (response) => {
+            const parts: Buffer[] = [];
+            response.on('data', (part: Buffer) => parts.push(part));
+            response.on('end', () => resolve({ status: response.statusCode ?? 0, text: Buffer.concat(parts).toString('utf8') }));
+          })
+          .on('error', reject);
+      });
+
+    afterEach(() =>
+      Promise.all(
+        servers.splice(0).map((server) => {
+          if (server instanceof http.Server) server.closeAllConnections();
+          return new Promise((resolve) => server.close(resolve));
+        })
+      )
+    );
+
+    it('passes the requests on to the child', async () => {
+      const childPort = await listen(http.createServer((_request, response) => response.end('child')));
+
+      expect(await get(await startFront(childPort))).toEqual({ status: 200, text: 'child' });
+    });
+
+    it('answers 502 when the child cannot be reached', async () => {
+      const closed = http.createServer();
+      const childPort = await listen(closed);
+      await new Promise((resolve) => closed.close(resolve));
+
+      expect((await get(await startFront(childPort))).status).toBe(502);
+    });
+
+    it('connects a websocket to the child', async () => {
+      const upstream = http.createServer();
+      upstream.on('upgrade', (incoming: http.IncomingMessage, socket: net.Socket) => {
+        socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+        socket.pipe(socket);
+      });
+      const front = await startFront(await listen(upstream));
+      const client = net.connect(front, '127.0.0.1');
+      let received = '';
+      const echoed = new Promise<void>((resolve) =>
+        client.on('data', (data: Buffer) => {
+          received += data.toString('utf8');
+          if (received.includes('\r\n\r\n') && !received.endsWith('ping')) client.write('ping');
+          if (received.endsWith('ping')) resolve();
+        })
+      );
+      client.write('GET /socket HTTP/1.1\r\nHost: child.localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+
+      await echoed;
+      client.destroy();
+      expect(received).toMatch(/^HTTP\/1.1 101 Switching Protocols\r\n/);
+    });
+
+    it('closes the connections to the child through the runtime', async () => {
+      const runtime: ServerRuntime = {};
+      await startFront(1, runtime);
+
+      expect(() => runtime.proxy?.close()).not.toThrow();
+      expect(runtime.proxy).toBeDefined();
+    });
   });
 });

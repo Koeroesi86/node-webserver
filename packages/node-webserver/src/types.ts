@@ -2,7 +2,6 @@ import type { ChildProcess } from 'child_process';
 import type { RequestHandler } from 'express';
 import type { Agent } from 'http';
 import type { SecureContext } from 'tls';
-import type HttpProxy from 'http-proxy';
 import type { middleware, RouteSelector } from '@koeroesi86/node-worker-express';
 
 export type WorkerOptions = Parameters<typeof middleware>[0];
@@ -56,7 +55,15 @@ export interface DynamicTargetOptions {
   persistPath?: string;
 }
 
-export interface ProxyOptions extends HttpProxy.ServerOptions {
+export interface ProxyOptions {
+  /** `proxy` servers: where the requests go, a URL. A `child` server gets its target from the port of its process */
+  target?: string;
+  /** `proxy` servers: sends the host of the target instead of the one of the client */
+  changeOrigin?: boolean;
+  /** `proxy` servers: false to accept a certificate of an https target that is not valid */
+  secure?: boolean;
+  /** `proxy` servers: how long the target may stay silent, in milliseconds */
+  proxyTimeout?: number;
   hostname?: string;
   port?: number | number[];
   /** `proxy` servers: the headers of the response that are not passed on to the client, for example the ones that give the provider away */
@@ -163,7 +170,8 @@ export interface ServerRuntime {
   url?: string;
   secureContext?: SecureContext;
   child?: ChildProcess;
-  proxy?: HttpProxy;
+  /** the connections to the target of a `child` server, closed when it stops */
+  proxy?: { close: () => void };
   lambdas?: Record<string, { pid: number }>;
 }
 
