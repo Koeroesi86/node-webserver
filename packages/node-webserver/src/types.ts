@@ -142,7 +142,7 @@ export interface CompressionOptions {
   concurrency?: number;
 }
 
-export interface ServerInstance {
+export interface ServerConfig {
   hostname: string;
   protocol: string;
   type?: ServerType;
@@ -156,6 +156,30 @@ export interface ServerInstance {
   proxyOptions?: ProxyOptions;
   serverOptions?: InstanceServerOptions;
   lambdaOptions?: LambdaOptions;
+}
+
+export interface ChildServerConfig extends ServerConfig {
+  type?: 'child';
+  childOptions?: ChildOptions;
+}
+
+export interface LambdaServerConfig extends ServerConfig {
+  type?: 'lambda';
+  lambdaOptions?: LambdaOptions;
+}
+
+export interface ProxyServerConfig extends ServerConfig {
+  type?: 'proxy';
+  proxyOptions?: ProxyOptions;
+  serverOptions?: InstanceServerOptions;
+}
+
+export interface WorkerServerConfig extends ServerConfig {
+  type?: 'worker';
+  options?: WorkerOptions;
+}
+
+export interface ServerRuntime {
   /** populated at runtime */
   url?: string;
   secureContext?: SecureContext;
@@ -163,6 +187,8 @@ export interface ServerInstance {
   proxy?: HttpProxy;
   lambdas?: Record<string, { pid: number }>;
 }
+
+export interface ServerInstance extends ServerConfig, ServerRuntime {}
 
 /** the addresses (CIDRs, or `loopback`, `linklocal`, `uniquelocal`) of the proxies whose forwarding headers are believed */
 export type TrustedProxies = string[];
@@ -196,7 +222,7 @@ export interface Configuration {
   statsDomain: string | false;
   statsRefreshInterval: number;
   /** server definitions, or paths to modules exporting one */
-  servers: Array<string | ServerInstance>;
+  servers: Array<string | ServerConfig>;
   /** load the servers given as paths again when their files, or the certificates they point to, change. Defaults to true. */
   watchServers?: boolean;
   /**
@@ -221,7 +247,7 @@ export interface InstanceHandler {
 /** a server of the configuration as it runs */
 export interface LoadedInstance extends InstanceHandler {
   /** the entry of `servers` it comes from */
-  source: string | ServerInstance;
+  source: string | ServerConfig;
   instance: ServerInstance;
   /** the files it was loaded from, the module and the ones it loaded, empty for a server defined in the configuration itself */
   files: string[];
