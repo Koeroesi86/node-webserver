@@ -1,32 +1,30 @@
 import { randomUUID } from 'node:crypto';
-import type { Socket } from 'node:net';
-import path from 'path';
-import { Duplex } from 'stream';
-import Worker from '@koeroesi86/node-worker';
-import createChannel from './createChannel';
+import type Worker from '@koeroesi86/node-worker';
 import type { Channel } from './createChannel';
 import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerUnavailableError from './workerUnavailableError';
 import createWorkerBudget from './create-worker-budget';
 import createRestartBackoff from './create-restart-backoff';
 import createWorkerEviction from './create-worker-eviction';
+import createWorkerRegistry from './create-worker-registry';
+import createWorkerLease from './create-worker-lease';
+import createWorkerCloseSteps from './create-worker-close-steps';
+import spawnWorker from './spawn-worker';
+import watchWorkerUptime from './watch-worker-uptime';
 import WorkerAcquisitionQueue from './worker-acquisition-queue';
-import type { HandOffMessage, IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
+import type { WorkerLease } from './create-worker-lease';
+import type { CloseStep } from './create-worker-close-steps';
+import type { SpawnOptions } from './spawn-worker';
+import type { IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent } from '../types';
+
+export type { WorkerLease } from './create-worker-lease';
+export type { SpawnOptions } from './spawn-worker';
 
 const pools: WorkerPool[] = [];
 
 process.once('exit', () => {
   pools.forEach((pool) => pool.onClose());
 });
-
-const createWorkerCommand = (workerPath) => {
-  const ext = path.extname(workerPath);
-  switch (ext) {
-    case '.js':
-    default:
-      return `node --expose-gc ${path.resolve(__dirname, '../workerInvoke.js')} ${workerPath}`;
-  }
-};
 
 interface WorkerPoolParams {
   overallLimit?: number;
@@ -46,55 +44,17 @@ interface WorkerPoolParams {
   budget?: WorkerBudget;
 }
 
-/** the options to spawn a worker with, or a function that makes them: building them can be costly (the environment is copied), and it is only needed when a worker is started */
-export type SpawnOptions = object | (() => object);
-
-/** A worker handed out for one request, it counts as load for the worker until it is released. */
-export interface WorkerLease {
-  readonly worker: Worker;
-  /** sends a message to the worker */
-  send: (message: WorkerInputEvent) => void;
-  /** `onMessage` receives the messages of the worker for the request, `onExit` is called when the worker dies before the lease is released */
-  subscribe: (requestId: string, onMessage: (message: WorkerOutputEvent) => void, onExit: (code: number | null) => void) => void;
-  /**
-   * gives the connection of the client to the worker, along with the message, over the IPC channel. The socket is closed in this process once it was sent,
-   * the promise rejects when it could not be sent
-   */
-  handOff: (message: HandOffMessage, socket: Socket) => Promise<void>;
-  /** frees the worker for other requests, safe to call more than once */
-  release: () => void;
-}
-
 interface WorkerRequest {
   workerPath: string;
   options: SpawnOptions;
   limit: number;
 }
 
-/** what the pool knows about a worker besides its requests */
-interface WorkerEntry {
-  workerPath: string;
-  id: string;
-  lastUsed: number;
-  /** restarted whenever the worker finishes its last request, it stops the worker when it fires */
-  idleTimer?: NodeJS.Timeout;
-}
-
-interface LeaseState {
-  requestId?: string;
-  onMessage?: (message: WorkerOutputEvent) => void;
-  onExit?: (code: number | null) => void;
-}
-
 class WorkerPool implements WorkerBudgetMember {
   protected readonly overallLimit: number;
   protected readonly acquireTimeout: number;
   protected readonly onExit: (code: number, workerPath: string, id: string) => void;
-  protected readonly workers: Map<string, Map<string, Worker>>;
-  private readonly leases: Map<Worker, Set<LeaseState>>;
-  private readonly channels: Map<Worker, Channel<WorkerInputEvent>>;
-  private readonly subscriptions: Map<string, LeaseState>;
-  private readonly cursors: Map<string, number>;
+  private readonly registry = createWorkerRegistry<Worker, Channel<WorkerInputEvent>>();
   private readonly restartBackoff: ReturnType<typeof createRestartBackoff>;
   /** the workers that the pool stops itself, which is no crash */
   private readonly stopping: WeakSet<Worker>;
@@ -104,8 +64,8 @@ class WorkerPool implements WorkerBudgetMember {
   private readonly acquisitionQueue: WorkerAcquisitionQueue<WorkerRequest, WorkerLease>;
   private readonly idleTimeout: number;
   private readonly budget: WorkerBudget;
-  private readonly entries: Map<Worker, WorkerEntry> = new Map();
   private readonly eviction: ReturnType<typeof createWorkerEviction<Worker>>;
+  private readonly closeSteps: CloseStep<Worker>[];
   /** the paths that keep a number of workers running, see `keepWarm` */
   private readonly minimums = new Map<string, { options: SpawnOptions; count: number }>();
   /** a path that is held back after crashes is warmed again when it may be, one timer per path */
@@ -133,17 +93,21 @@ class WorkerPool implements WorkerBudgetMember {
     this.minUptime = restartBackoff.minUptime;
     this.restartBackoff = createRestartBackoff(restartBackoff);
     this.stopping = new WeakSet();
-    this.workers = new Map();
-    this.leases = new Map();
-    this.channels = new Map();
-    this.subscriptions = new Map();
-    this.cursors = new Map();
     this.eviction = createWorkerEviction({
-      workers: this.workers,
-      getEntry: (worker) => this.entries.get(worker),
-      getLoad: this.getLoad,
-      forgetPath: this.forgetPath,
+      getGroups: this.registry.getGroups,
+      getEntry: this.registry.getEntry,
+      getLoad: this.registry.getLoad,
+      unlist: this.registry.unlist,
       stop: this.stop,
+    });
+    this.closeSteps = createWorkerCloseSteps({
+      registry: this.registry,
+      restartBackoff: this.restartBackoff,
+      isStopping: (worker) => this.stopping.has(worker),
+      onExit,
+      wakeUp: this.wakeWaiting,
+      checkDisposed: this.checkDisposed,
+      refillWarmPaths: () => this.minimums.forEach((_, warmPath) => this.refill(warmPath)),
     });
     this.idleTimeout = idleTimeout;
     this.budget = budget;
@@ -167,7 +131,7 @@ class WorkerPool implements WorkerBudgetMember {
   onClose = () => {
     this.closed = true;
     this.stopKeepingWarm();
-    this.workers.forEach((current) => current.forEach(this.stop));
+    this.registry.getWorkers().forEach(this.stop);
   };
 
   /** set while the pool is disposed of, called once its last worker stopped */
@@ -194,7 +158,10 @@ class WorkerPool implements WorkerBudgetMember {
     });
 
   private stopIdleWorkers = () =>
-    this.workers.forEach((current) => current.forEach((worker) => !this.stopping.has(worker) && this.getLoad(worker) === 0 && this.stop(worker)));
+    this.registry
+      .getWorkers()
+      .filter((worker) => !this.stopping.has(worker) && this.getLoad(worker) === 0)
+      .forEach(this.stop);
 
   private checkDisposed = () => {
     if (this.getWorkerCount() > 0) return;
@@ -203,15 +170,11 @@ class WorkerPool implements WorkerBudgetMember {
     this.onDisposed = undefined;
   };
 
-  getWorkerCountForPath = (p) => {
-    return this.workers.get(p)?.size ?? 0;
-  };
+  getWorkerCountForPath = (workerPath: string) => this.registry.getWorkerCountForPath(workerPath);
 
-  getWorkerCount = () => {
-    return Array.from(this.workers.values()).reduce((result, current) => current.size + result, 0);
-  };
+  getWorkerCount = () => this.registry.getWorkerCount();
 
-  private getLoad = (worker: Worker) => this.leases.get(worker)?.size ?? 0;
+  private getLoad = (worker: Worker) => this.registry.getLoad(worker);
 
   private belowOverallLimit = () => this.overallLimit <= 0 || this.getWorkerCount() < this.overallLimit;
 
@@ -221,16 +184,8 @@ class WorkerPool implements WorkerBudgetMember {
   private pickLeastLoaded = (workerPath: string, candidates: Worker[]): Worker | undefined => {
     const lowest = Math.min(...candidates.map(this.getLoad));
     const tied = candidates.filter((worker) => this.getLoad(worker) === lowest);
-    const cursor = this.cursors.get(workerPath) ?? 0;
-    this.cursors.set(workerPath, cursor + 1);
 
-    return tied[cursor % tied.length];
-  };
-
-  /** a path without workers keeps no state, so that many paths that were asked for once do not add up */
-  private forgetPath = (workerPath: string) => {
-    this.workers.delete(workerPath);
-    this.cursors.delete(workerPath);
+    return tied[this.registry.nextCursor(workerPath) % tied.length];
   };
 
   findIdleWorker = (): IdleWorker | undefined => this.eviction.findIdleWorker();
@@ -245,10 +200,10 @@ class WorkerPool implements WorkerBudgetMember {
 
   private onIdleTimeout = (worker: Worker) => {
     // a worker that is busy again is timed anew when it finishes, one that is gone already has nothing to stop
-    if (this.getLoad(worker) > 0 || !this.entries.has(worker) || this.stopping.has(worker)) return;
+    if (this.getLoad(worker) > 0 || this.registry.getEntry(worker) === undefined || this.stopping.has(worker)) return;
 
     // the workers a path is kept warm with stay, and are looked at again later as the path can have more workers by then
-    const entry = this.entries.get(worker);
+    const entry = this.registry.getEntry(worker);
     if (this.getWorkerCountForPath(entry.workerPath) <= (this.minimums.get(entry.workerPath)?.count ?? 0)) {
       entry.idleTimer?.refresh();
       return;
@@ -260,83 +215,38 @@ class WorkerPool implements WorkerBudgetMember {
 
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = randomUUID();
-    // the IPC channel of node is only there for what the socket pair cannot carry: the connections of clients that are handed over.
-    // the fourth stdio is the socket pair the messages go through, in place of the IPC channel of node that sends JSON.
-    // 'overlapped' is a plain pipe except on Windows, where the worker could not read and write it at the same time otherwise
-    const instance = new Worker(createWorkerCommand(workerPath), {
-      ...(typeof options === 'function' ? options() : options),
-      stdio: ['pipe', 'pipe', 'pipe', 'overlapped', 'ipc'],
+    const { instance, channel } = spawnWorker({
+      workerPath,
+      options,
+      onMessage: (message) => this.registry.getSubscription(message.requestId)?.onMessage?.(message),
+      onStdout: this.onStdout,
+      onStderr: this.onStderr,
     });
-    const socket = instance.instance.stdio[3];
-    if (!(socket instanceof Duplex)) {
-      instance.terminate();
-      throw new Error(`The worker ${workerPath} has no channel.`);
-    }
-    const workersForPath = this.workers.get(workerPath) ?? new Map<string, Worker>();
-    this.workers.set(workerPath, workersForPath);
-    this.leases.set(instance, new Set());
-    const entry: WorkerEntry = { workerPath, id, lastUsed: Date.now() };
-    if (this.idleTimeout > 0) {
-      // a worker that gets no request at all is stopped as well
-      entry.idleTimer = setTimeout(() => this.onIdleTimeout(instance), this.idleTimeout);
-      entry.idleTimer.unref();
-    }
-    this.entries.set(instance, entry);
+    const entry = { workerPath, id, lastUsed: Date.now(), idleTimer: this.startIdleTimer(instance) };
+    this.registry.add(instance, entry, channel);
 
-    // a single listener dispatches the messages of all requests of the worker
-    this.channels.set(
-      instance,
-      createChannel<WorkerOutputEvent, WorkerInputEvent>(socket, (message) => this.subscriptions.get(message.requestId)?.onMessage?.(message))
-    );
-
-    // once for the worker, not for every request it gets, and from the start, so that nothing it writes waits unread in the pipe
-    if (this.onStdout) instance.instance.stdout?.on('data', this.onStdout);
-    if (this.onStderr) instance.instance.stderr?.on('data', this.onStderr);
-
-    // a worker that has been up for a while is healthy, whatever the ones before it did
-    let stable = false;
-    const stableTimer = setTimeout(() => {
-      stable = true;
-      this.restartBackoff.clear(workerPath);
-    }, this.minUptime);
-    stableTimer.unref();
-
+    const uptime = watchWorkerUptime(this.minUptime, () => this.restartBackoff.clear(workerPath));
     instance.addEventListenerOnce('close', (code: number) => {
-      clearTimeout(stableTimer);
-      clearTimeout(entry.idleTimer);
-      if (!this.stopping.has(instance) && (!stable || code)) {
-        this.restartBackoff.recordFailure(workerPath);
-      }
-      const states = Array.from(this.leases.get(instance) ?? []);
-      workersForPath.delete(id);
-      if (workersForPath.size === 0 && this.workers.get(workerPath) === workersForPath) this.forgetPath(workerPath);
-      this.leases.delete(instance);
-      this.channels.delete(instance);
-      this.entries.delete(instance);
-      states.forEach((state) => {
-        this.subscriptions.delete(state.requestId);
-        state.onExit?.(code);
-      });
-      this.onExit(code, workerPath, id);
-      // there is room for another worker now, and the requests that wait may get one, also in the other pools of the budget
-      this.wakeUp();
-      this.budget.wakeUp(this);
-      this.checkDisposed();
-      // the requests that waited came first, also those of the other pools of the budget, the paths that are kept warm take what room is left, which can be the room of another path.
-      // a worker that the pool stopped itself is not replaced: it made room for another worker, or the pool is going away
-      if (!this.stopping.has(instance)) this.minimums.forEach((_, warmPath) => this.refill(warmPath));
+      const closed = { worker: instance, entry, code, uptime, leases: [] };
+      this.closeSteps.forEach((step) => step(closed));
     });
-
-    workersForPath.set(id, instance);
 
     return instance;
   };
 
+  /** a worker that gets no request at all is stopped as well */
+  private startIdleTimer = (worker: Worker): NodeJS.Timeout | undefined => {
+    if (this.idleTimeout <= 0) return undefined;
+
+    const timer = setTimeout(() => this.onIdleTimeout(worker), this.idleTimeout);
+    timer.unref();
+
+    return timer;
+  };
+
   private tryGetWorker = (workerPath: string, options: SpawnOptions, limit: number): Worker | undefined => {
     // a worker that is being stopped takes no more requests
-    const candidates = Array.from(this.workers.get(workerPath)?.values() ?? []).filter(
-      (worker) => worker.instance.exitCode === null && !this.stopping.has(worker)
-    );
+    const candidates = this.registry.getWorkersForPath(workerPath).filter((worker) => worker.instance.exitCode === null && !this.stopping.has(worker));
     const leastLoaded = candidates.length > 0 ? this.pickLeastLoaded(workerPath, candidates) : undefined;
 
     if (leastLoaded !== undefined && this.getLoad(leastLoaded) === 0) {
@@ -395,44 +305,17 @@ class WorkerPool implements WorkerBudgetMember {
     this.refillTimers.set(workerPath, timer);
   };
 
-  /** counts the request as a load of the worker right away, before anything else can look at the worker */
-  private createLease = (leased: Worker): WorkerLease => {
-    const state: LeaseState = {};
-    this.leases.get(leased).add(state);
-
-    return {
-      worker: leased,
-      send: (message) => this.channels.get(leased)?.send(message),
-      handOff: (message, socket) =>
-        new Promise<void>((resolve, reject) => {
-          if (!leased.instance.connected) {
-            reject(new Error('The worker has no IPC channel.'));
-            return;
-          }
-          leased.instance.send(message, socket, (error) => (error ? reject(error) : resolve()));
-        }),
-      subscribe: (requestId, onMessage, onExit) => {
-        Object.assign(state, { requestId, onMessage, onExit });
-        this.subscriptions.set(requestId, state);
-      },
-      release: () => {
-        this.leases.get(leased)?.delete(state);
-        if (state.requestId !== undefined && this.subscriptions.get(state.requestId) === state) {
-          this.subscriptions.delete(state.requestId);
-        }
-        const entry = this.entries.get(leased);
-        if (entry !== undefined && this.getLoad(leased) === 0) {
-          entry.lastUsed = Date.now();
-          entry.idleTimer?.refresh();
-        }
+  private createLease = (worker: Worker): WorkerLease =>
+    createWorkerLease({
+      worker,
+      registry: this.registry,
+      onReleased: () => {
         // a worker has room again, for the request that has waited longest, and an idle one can make room in the other pools of the budget
-        this.wakeUp();
-        this.budget.wakeUp(this);
+        this.wakeWaiting();
         // a pool that is disposed of keeps a worker only for as long as it has requests
         if (this.onDisposed) this.stopIdleWorkers();
       },
-    };
-  };
+    });
 
   private serve = ({ workerPath, options, limit }: WorkerRequest) => {
     const worker = this.tryGetWorker(workerPath, options, limit);
@@ -442,23 +325,24 @@ class WorkerPool implements WorkerBudgetMember {
   /** looks at the requests that wait, in the order they came in, whenever a worker could have become available: a request that is finished, a worker that stopped or started */
   wakeUp = () => this.acquisitionQueue.wakeUp(this.serve);
 
+  /** also the pools of the budget, as a room that opened can be the one a request of another pool waits for */
+  private wakeWaiting = () => {
+    this.wakeUp();
+    this.budget.wakeUp(this);
+  };
+
   /** what the pool is doing right now, for metrics */
   getStats = () => ({
     workers: this.getWorkerCount(),
     /** requests that are being handled by a worker */
-    active: Array.from(this.leases.values()).reduce((result, current) => result + current.size, 0),
+    active: this.registry.getActive(),
     /** requests that wait for a worker */
     ...this.acquisitionQueue.getStats(),
     /** workers stopped as they had no request for the idle timeout, and ones stopped to make room for the first worker of another path, since the pool started */
     evicted: this.eviction.getStats(),
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
     failing: this.restartBackoff.getStats(),
-    paths: Object.fromEntries(
-      Array.from(this.workers.entries()).map(([workerPath, current]) => [
-        workerPath,
-        { workers: current.size, active: Array.from(current.values()).reduce((result, worker) => result + this.getLoad(worker), 0) },
-      ])
-    ),
+    paths: this.registry.getPathStats(),
   });
 
   /**

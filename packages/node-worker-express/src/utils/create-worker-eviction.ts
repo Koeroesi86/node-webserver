@@ -4,25 +4,23 @@ import type { IdleWorker } from '../types';
 export type EvictionReason = 'idle' | 'forRoom';
 
 interface WorkerEviction<T> {
-  workers: Map<string, Map<string, T>>;
+  /** the workers per path */
+  getGroups: () => T[][];
   /** what the pool knows about the worker */
-  getEntry: (worker: T) => { workerPath: string; id: string; lastUsed: number };
+  getEntry: (worker: T) => { lastUsed: number };
   getLoad: (worker: T) => number;
-  /** a path without workers keeps no state, so that many paths that were asked for once do not add up */
-  forgetPath: (workerPath: string) => void;
+  /** takes the worker out of the workers of its path, which forgets a path that has no worker left */
+  unlist: (worker: T) => void;
   stop: (worker: T) => void;
 }
 
 /** Stops the idle workers of a pool, when they had no request for the idle timeout or to make room, and counts them. */
-const createWorkerEviction = <T>({ workers, getEntry, getLoad, forgetPath, stop }: WorkerEviction<T>) => {
+const createWorkerEviction = <T>({ getGroups, getEntry, getLoad, unlist, stop }: WorkerEviction<T>) => {
   const evicted = { idle: 0, forRoom: 0 };
 
   /** takes the worker out of the registry right away, the close event is asynchronous and the slot is free now */
   const evict = (worker: T, reason: EvictionReason) => {
-    const { workerPath, id } = getEntry(worker);
-    const current = workers.get(workerPath);
-    current?.delete(id);
-    if (current?.size === 0) forgetPath(workerPath);
+    unlist(worker);
     evicted[reason] += 1;
     stop(worker);
   };
@@ -35,10 +33,10 @@ const createWorkerEviction = <T>({ workers, getEntry, getLoad, forgetPath, stop 
      */
     findIdleWorker: (): IdleWorker | undefined =>
       pickIdleWorker(
-        Array.from(workers.values()).flatMap((current) =>
-          Array.from(current.values())
+        getGroups().flatMap((current) =>
+          current
             .filter((worker) => getLoad(worker) === 0)
-            .map((worker) => ({ spare: current.size > 1, lastUsed: getEntry(worker).lastUsed, stop: () => evict(worker, 'forRoom') }))
+            .map((worker) => ({ spare: current.length > 1, lastUsed: getEntry(worker).lastUsed, stop: () => evict(worker, 'forRoom') }))
         )
       ),
     getStats: () => ({ ...evicted }),

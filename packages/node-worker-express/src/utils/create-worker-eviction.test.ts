@@ -1,4 +1,5 @@
 import createWorkerEviction from './create-worker-eviction';
+import createWorkerRegistry from './create-worker-registry';
 
 interface FakeWorker {
   workerPath: string;
@@ -8,37 +9,38 @@ interface FakeWorker {
 }
 
 const setup = (list: FakeWorker[]) => {
-  const workers = new Map<string, Map<string, FakeWorker>>();
-  list.forEach((worker) => {
-    const current = workers.get(worker.workerPath) ?? new Map<string, FakeWorker>();
-    current.set(worker.id, worker);
-    workers.set(worker.workerPath, current);
-  });
+  const registry = createWorkerRegistry<FakeWorker, undefined>();
+  list.forEach((worker) => registry.add(worker, worker, undefined));
   const stop = jest.fn();
-  const forgetPath = jest.fn((workerPath: string) => workers.delete(workerPath));
-  const eviction = createWorkerEviction<FakeWorker>({ workers, getEntry: (worker) => worker, getLoad: (worker) => worker.load, forgetPath, stop });
+  const eviction = createWorkerEviction<FakeWorker>({
+    getGroups: registry.getGroups,
+    getEntry: (worker) => worker,
+    getLoad: (worker) => worker.load,
+    unlist: registry.unlist,
+    stop,
+  });
 
-  return { workers, stop, forgetPath, ...eviction };
+  return { registry, stop, ...eviction };
 };
 
 describe('createWorkerEviction', () => {
   it('takes the worker out of the registry and stops it', () => {
     const worker = { workerPath: 'a.js', id: '1', lastUsed: 1, load: 0 };
-    const { workers, stop, evict } = setup([worker, { workerPath: 'a.js', id: '2', lastUsed: 2, load: 0 }]);
+    const { registry, stop, evict } = setup([worker, { workerPath: 'a.js', id: '2', lastUsed: 2, load: 0 }]);
 
     evict(worker, 'idle');
 
-    expect(workers.get('a.js')?.has('1')).toBe(false);
+    expect(registry.getWorkersForPath('a.js')).not.toContain(worker);
     expect(stop).toHaveBeenCalledWith(worker);
   });
 
   it('forgets a path that has no worker left', () => {
     const worker = { workerPath: 'a.js', id: '1', lastUsed: 1, load: 0 };
-    const { forgetPath, evict } = setup([worker]);
+    const { registry, evict } = setup([worker]);
 
     evict(worker, 'idle');
 
-    expect(forgetPath).toHaveBeenCalledWith('a.js');
+    expect(registry.getPathStats()).toEqual({});
   });
 
   it('counts the evictions by reason', () => {
