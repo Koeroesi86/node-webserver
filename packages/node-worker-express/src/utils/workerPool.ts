@@ -6,11 +6,10 @@ import Worker from '@koeroesi86/node-worker';
 import createChannel from './createChannel';
 import type { Channel } from './createChannel';
 import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
-import WorkerBusyError from './workerBusyError';
 import WorkerUnavailableError from './workerUnavailableError';
-import WorkerAbandonedError from './workerAbandonedError';
 import createWorkerBudget from './create-worker-budget';
 import pickIdleWorker from './pick-idle-worker';
+import WorkerAcquisitionQueue from './worker-acquisition-queue';
 import type { HandOffMessage, IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const pools: WorkerPool[] = [];
@@ -65,14 +64,10 @@ export interface WorkerLease {
   release: () => void;
 }
 
-/** a request that waits for a worker */
-interface Waiter {
+interface WorkerRequest {
   workerPath: string;
   options: SpawnOptions;
   limit: number;
-  resolve: (lease: WorkerLease) => void;
-  reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
 }
 
 /** what the pool knows about a worker besides its requests */
@@ -106,12 +101,7 @@ class WorkerPool implements WorkerBudgetMember {
   private readonly onStdout?: (data: Buffer) => void;
   private readonly onStderr?: (data: Buffer) => void;
   private readonly restartBackoff: { minUptime: number; base: number; max: number };
-  /** the requests that wait for a worker, in the order they came in */
-  private readonly queue: Waiter[] = [];
-  private readonly maxQueue: number;
-  /** how many requests were refused because too many waited, and how many gave up after waiting too long, since the pool started */
-  private refused = { queueFull: 0, timedOut: 0 };
-  private abandoned = 0;
+  private readonly acquisitionQueue: WorkerAcquisitionQueue<WorkerRequest, WorkerLease>;
   private readonly idleTimeout: number;
   private readonly budget: WorkerBudget;
   private readonly entries: Map<Worker, WorkerEntry> = new Map();
@@ -137,7 +127,7 @@ class WorkerPool implements WorkerBudgetMember {
   }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
     this.acquireTimeout = acquireTimeout;
-    this.maxQueue = maxQueue;
+    this.acquisitionQueue = new WorkerAcquisitionQueue(acquireTimeout, maxQueue);
     this.onExit = onExit;
     this.onStdout = onStdout;
     this.onStderr = onStderr;
@@ -469,68 +459,13 @@ class WorkerPool implements WorkerBudgetMember {
     };
   };
 
-  /** gives a worker to a waiting request if there is one for it, otherwise it keeps its place, and tells it when the worker is not to be had at all */
-  private serve = (waiter: Waiter) => {
-    try {
-      const worker = this.tryGetWorker(waiter.workerPath, waiter.options, waiter.limit);
-      if (worker === undefined) {
-        this.queue.push(waiter);
-        return;
-      }
-      clearTimeout(waiter.timer);
-      waiter.resolve(this.createLease(worker));
-    } catch (error) {
-      clearTimeout(waiter.timer);
-      waiter.reject(error);
-    }
+  private serve = ({ workerPath, options, limit }: WorkerRequest) => {
+    const worker = this.tryGetWorker(workerPath, options, limit);
+    return worker === undefined ? undefined : this.createLease(worker);
   };
 
   /** looks at the requests that wait, in the order they came in, whenever a worker could have become available: a request that is finished, a worker that stopped or started */
-  wakeUp = () => {
-    if (this.queue.length === 0) return;
-
-    this.queue.splice(0).forEach(this.serve);
-  };
-
-  /** the request waits in line for a worker, for as long as the acquire timeout, unless too many wait already */
-  private enqueue = (workerPath: string, options: SpawnOptions, limit: number, signal?: AbortSignal) =>
-    new Promise<WorkerLease>((resolve, reject) => {
-      if (this.maxQueue > 0 && this.queue.length >= this.maxQueue) {
-        this.refused.queueFull += 1;
-        reject(new WorkerBusyError(workerPath, `${this.queue.length} requests wait for a worker for ${workerPath} already.`));
-        return;
-      }
-
-      if (signal?.aborted) {
-        this.abandoned += 1;
-        reject(new WorkerAbandonedError(workerPath));
-        return;
-      }
-
-      // one timer for the time that the request waits, nothing polls
-      const timer = setTimeout(() => {
-        const index = this.queue.indexOf(waiter);
-        if (index >= 0) this.queue.splice(index, 1);
-        this.refused.timedOut += 1;
-        waiter.reject(new WorkerBusyError(workerPath, `No worker became available for ${workerPath} within ${this.acquireTimeout}ms.`));
-      }, this.acquireTimeout);
-      const onAbort = () => {
-        clearTimeout(timer);
-        const index = this.queue.indexOf(waiter);
-        if (index >= 0) this.queue.splice(index, 1);
-        this.abandoned += 1;
-        reject(new WorkerAbandonedError(workerPath));
-      };
-      signal?.addEventListener('abort', onAbort, { once: true });
-      const settle =
-        <T>(settleWaiter: (value: T) => void) =>
-        (value: T) => {
-          signal?.removeEventListener('abort', onAbort);
-          settleWaiter(value);
-        };
-      const waiter: Waiter = { workerPath, options, limit, resolve: settle(resolve), reject: settle(reject), timer };
-      this.queue.push(waiter);
-    });
+  wakeUp = () => this.acquisitionQueue.wakeUp(this.serve);
 
   /** what the pool is doing right now, for metrics */
   getStats = () => ({
@@ -538,11 +473,7 @@ class WorkerPool implements WorkerBudgetMember {
     /** requests that are being handled by a worker */
     active: Array.from(this.leases.values()).reduce((result, current) => result + current.size, 0),
     /** requests that wait for a worker */
-    waiting: this.queue.length,
-    /** requests that were refused because too many waited, and requests that gave up after waiting too long, since the pool started */
-    refused: { ...this.refused },
-    /** requests that stopped waiting because their client went away, since the pool started */
-    abandoned: this.abandoned,
+    ...this.acquisitionQueue.getStats(),
     /** workers stopped as they had no request for the idle timeout, and ones stopped to make room for the first worker of another path, since the pool started */
     evicted: { ...this.evicted },
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
@@ -567,7 +498,7 @@ class WorkerPool implements WorkerBudgetMember {
   acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0, signal?: AbortSignal): Promise<WorkerLease> => {
     const worker = this.tryGetWorker(workerPath, options, limit);
 
-    return worker === undefined ? this.enqueue(workerPath, options, limit, signal) : this.createLease(worker);
+    return worker === undefined ? this.acquisitionQueue.enqueue({ workerPath, options, limit }, signal) : this.createLease(worker);
   };
 }
 
