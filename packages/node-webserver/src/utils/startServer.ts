@@ -4,16 +4,15 @@ import http from 'http';
 import type net from 'net';
 import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
-import exampleConfig from '../configuration.example';
 import accessLogsMiddleware from '../middlewares/accessLogs';
-import { DEFAULT_SHUTDOWN_TIMEOUT } from '../constants';
-import addExitListeners from './exitHandler';
+import applyTrustedProxies from './apply-trusted-proxies';
 import configureServer from './configureServer';
-import createGracefulStop from './create-graceful-stop';
 import createHttp2App from './create-http2-app';
 import createHttpsServer from './create-https-server';
 import createServerReloader from './create-server-reloader';
+import hydrateConfiguration from './hydrate-configuration';
 import loadInstances from './load-instances';
+import setupShutdown from './setup-shutdown';
 import setupStatsHandler from './setupStatsHandler';
 import type { Configuration } from '../types';
 
@@ -28,14 +27,10 @@ httpsApp.disable('x-powered-by');
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
 const startServer = async (configuration: Partial<Configuration>): Promise<{ httpApp: Express; httpsApp: Express; reload: () => void }> => {
-  const hydratedConfiguration: Configuration = {
-    ...exampleConfig,
-    ...configuration,
-  };
-  const { servers, watchServers = true, reloadOnSighup = false, trustedProxies = [], shutdownTimeout = DEFAULT_SHUTDOWN_TIMEOUT } = hydratedConfiguration;
+  const hydratedConfiguration = hydrateConfiguration(configuration);
+  const { servers, watchServers, reloadOnSighup, trustedProxies, shutdownTimeout } = hydratedConfiguration;
   // before the hosts are set up, as the client address and the protocol of every request depend on it
-  httpApp.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : (trustedProxies.http ?? []));
-  [httpsApp, http2App].forEach((app) => app.set('trust proxy', Array.isArray(trustedProxies) ? trustedProxies : (trustedProxies.https ?? [])));
+  applyTrustedProxies(trustedProxies, [httpApp], [httpsApp, http2App]);
   // one for the whole process, so that the workers of the servers that are loaded again count against the same limit
   const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
   registerMetricsSource('workers', workerBudget.getStats);
@@ -66,15 +61,8 @@ const startServer = async (configuration: Partial<Configuration>): Promise<{ htt
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);
 
-  const gracefulStop = createGracefulStop([httpServer, httpsServer], (timeout) =>
-    Promise.all(reloader.getLoaded().map(({ close }) => close(timeout))).then(() => undefined)
-  );
-  addExitListeners(reloader.getInstances, {
-    exitOnHangUp: !reloadOnSighup,
-    gracefulStop: () => gracefulStop(shutdownTimeout),
-  });
+  setupShutdown([httpServer, httpsServer], { reloadOnSighup, shutdownTimeout, reload, getLoaded: reloader.getLoaded, getInstances: reloader.getInstances });
   if (watchServers) watch();
-  if (reloadOnSighup) process.on('SIGHUP', reload);
 
   return { httpApp, httpsApp, reload };
 };

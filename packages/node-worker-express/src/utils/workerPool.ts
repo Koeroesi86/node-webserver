@@ -9,6 +9,7 @@ import { WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerUnavailableError from './workerUnavailableError';
 import createWorkerBudget from './create-worker-budget';
 import pickIdleWorker from './pick-idle-worker';
+import createRestartBackoff from './create-restart-backoff';
 import WorkerAcquisitionQueue from './worker-acquisition-queue';
 import type { HandOffMessage, IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
@@ -94,13 +95,12 @@ class WorkerPool implements WorkerBudgetMember {
   private readonly channels: Map<Worker, Channel<WorkerInputEvent>>;
   private readonly subscriptions: Map<string, LeaseState>;
   private readonly cursors: Map<string, number>;
-  /** the workers that crashed in a row per path, and when another one may be started */
-  private readonly failures: Map<string, { count: number; retryAt: number }>;
+  private readonly restartBackoff: ReturnType<typeof createRestartBackoff>;
   /** the workers that the pool stops itself, which is no crash */
   private readonly stopping: WeakSet<Worker>;
   private readonly onStdout?: (data: Buffer) => void;
   private readonly onStderr?: (data: Buffer) => void;
-  private readonly restartBackoff: { minUptime: number; base: number; max: number };
+  private readonly minUptime: number;
   private readonly acquisitionQueue: WorkerAcquisitionQueue<WorkerRequest, WorkerLease>;
   private readonly idleTimeout: number;
   private readonly budget: WorkerBudget;
@@ -131,8 +131,8 @@ class WorkerPool implements WorkerBudgetMember {
     this.onExit = onExit;
     this.onStdout = onStdout;
     this.onStderr = onStderr;
-    this.restartBackoff = restartBackoff;
-    this.failures = new Map();
+    this.minUptime = restartBackoff.minUptime;
+    this.restartBackoff = createRestartBackoff(restartBackoff);
     this.stopping = new WeakSet();
     this.workers = new Map();
     this.leases = new Map();
@@ -273,16 +273,6 @@ class WorkerPool implements WorkerBudgetMember {
     this.evict(worker, 'idle');
   };
 
-  /** a second crash in a row, and every one after it, holds back the next start for longer */
-  private recordFailure = (workerPath: string) => {
-    const count = (this.failures.get(workerPath)?.count ?? 0) + 1;
-    const delay = count < 2 ? 0 : Math.min(this.restartBackoff.max, this.restartBackoff.base * 2 ** (count - 2));
-    this.failures.set(workerPath, { count, retryAt: Date.now() + delay });
-  };
-
-  /** how long a worker for the path may not be started, 0 when it may */
-  private getBackoff = (workerPath: string) => Math.max(0, (this.failures.get(workerPath)?.retryAt ?? 0) - Date.now());
-
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = randomUUID();
     // the IPC channel of node is only there for what the socket pair cannot carry: the connections of clients that are handed over.
@@ -322,15 +312,15 @@ class WorkerPool implements WorkerBudgetMember {
     let stable = false;
     const stableTimer = setTimeout(() => {
       stable = true;
-      this.failures.delete(workerPath);
-    }, this.restartBackoff.minUptime);
+      this.restartBackoff.clear(workerPath);
+    }, this.minUptime);
     stableTimer.unref();
 
     instance.addEventListenerOnce('close', (code: number) => {
       clearTimeout(stableTimer);
       clearTimeout(entry.idleTimer);
       if (!this.stopping.has(instance) && (!stable || code)) {
-        this.recordFailure(workerPath);
+        this.restartBackoff.recordFailure(workerPath);
       }
       const states = Array.from(this.leases.get(instance) ?? []);
       workersForPath.delete(id);
@@ -369,7 +359,7 @@ class WorkerPool implements WorkerBudgetMember {
     }
 
     // a path whose workers keep crashing gets no new one for a while: the busy ones that still run take the request, and without one it is refused
-    const backoff = this.getBackoff(workerPath);
+    const backoff = this.restartBackoff.getBackoff(workerPath);
     if (backoff > 0 && leastLoaded !== undefined) {
       return leastLoaded;
     }
@@ -386,7 +376,7 @@ class WorkerPool implements WorkerBudgetMember {
 
   /** Starts workers for the path ahead of its first request, so that one does not have to wait for a process to start. */
   warm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
-    while (!this.closed && this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.getBackoff(workerPath) === 0) {
+    while (!this.closed && this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.restartBackoff.getBackoff(workerPath) === 0) {
       this.createWorker(workerPath, options);
     }
     this.wakeUp();
@@ -405,7 +395,7 @@ class WorkerPool implements WorkerBudgetMember {
     const minimum = this.minimums.get(workerPath);
     if (minimum === undefined || this.closed || this.onDisposed !== undefined || this.refillTimers.has(workerPath)) return;
 
-    const backoff = this.getBackoff(workerPath);
+    const backoff = this.restartBackoff.getBackoff(workerPath);
     if (backoff === 0) {
       this.warm(workerPath, minimum.options, minimum.count);
       return;
@@ -477,9 +467,7 @@ class WorkerPool implements WorkerBudgetMember {
     /** workers stopped as they had no request for the idle timeout, and ones stopped to make room for the first worker of another path, since the pool started */
     evicted: { ...this.evicted },
     /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
-    failing: Object.fromEntries(
-      Array.from(this.failures.entries()).map(([workerPath, { count }]) => [workerPath, { crashes: count, retryInMs: this.getBackoff(workerPath) }])
-    ),
+    failing: this.restartBackoff.getStats(),
     paths: Object.fromEntries(
       Array.from(this.workers.entries()).map(([workerPath, current]) => [
         workerPath,
