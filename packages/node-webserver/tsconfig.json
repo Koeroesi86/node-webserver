@@ -13,7 +13,7 @@
     "noFallthroughCasesInSwitch": true,
     "declaration": true,
     "sourceMap": true,
-    "types": ["node", "jest", "express", "http-proxy", "pidusage"]
+    "types": ["node", "jest", "express", "pidusage"]
   },
   "include": ["src"]
 }

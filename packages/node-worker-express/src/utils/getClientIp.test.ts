@@ -1,9 +1,22 @@
 import type { Request } from 'express';
 import getClientIp from './getClientIp';
 
-const request = (headers: Record<string, string | string[]>, remoteAddress?: string) => ({ headers, socket: { remoteAddress } }) as unknown as Request;
+const request = (headers: Record<string, string | string[]>, { ip, remoteAddress }: { ip?: string; remoteAddress?: string } = {}) =>
+  ({ headers, ip, socket: { remoteAddress } }) as unknown as Request;
 
 describe('getClientIp', () => {
+  it('gives the address the app resolved', () => {
+    expect(getClientIp(request({}, { ip: '1.2.3.4', remoteAddress: '10.0.0.1' }))).toBe('1.2.3.4');
+  });
+
+  it('falls back to the address of the socket', () => {
+    expect(getClientIp(request({}, { remoteAddress: '3.3.3.3' }))).toBe('3.3.3.3');
+  });
+
+  it('gives an empty string when there is nothing to tell', () => {
+    expect(getClientIp(request({}))).toBe('');
+  });
+
   it.each([
     'x-client-ip',
     'x-forwarded-for',
@@ -15,24 +28,12 @@ describe('getClientIp', () => {
     'x-forwarded',
     'forwarded-for',
     'forwarded',
-  ])('reads the address from %s', (header) => {
-    expect(getClientIp(request({ [header]: '1.2.3.4' }))).toBe('1.2.3.4');
+  ])('ignores %s set by a direct client', (header) => {
+    expect(getClientIp(request({ [header]: '6.6.6.6' }, { ip: '3.3.3.3', remoteAddress: '3.3.3.3' }))).toBe('3.3.3.3');
   });
 
-  it('prefers the headers in order, over the address of the socket', () => {
-    expect(getClientIp(request({ 'x-real-ip': '2.2.2.2', 'x-client-ip': '1.1.1.1' }, '3.3.3.3'))).toBe('1.1.1.1');
-    expect(getClientIp(request({ 'x-real-ip': '2.2.2.2' }, '3.3.3.3'))).toBe('2.2.2.2');
-  });
-
-  it('takes the first of a header that comes more than once', () => {
-    expect(getClientIp(request({ 'x-client-ip': ['1.1.1.1', '2.2.2.2'] }))).toBe('1.1.1.1');
-  });
-
-  it('falls back to the address of the socket', () => {
-    expect(getClientIp(request({}, '3.3.3.3'))).toBe('3.3.3.3');
-  });
-
-  it('gives an empty string when there is nothing to tell', () => {
-    expect(getClientIp(request({}))).toBe('');
+  it('gives a mapped IPv4 address as IPv4, as the access logs do', () => {
+    expect(getClientIp(request({}, { ip: '::ffff:1.2.3.4' }))).toBe('1.2.3.4');
+    expect(getClientIp(request({}, { ip: '2001:db8::1' }))).toBe('2001:db8::1');
   });
 });

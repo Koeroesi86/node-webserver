@@ -1,11 +1,9 @@
 import { spawn } from 'child_process';
 import type { RequestHandler } from 'express';
 
-/** https://github.com/nodejitsu/node-http-proxy */
-import httpProxy from 'http-proxy';
-
 import { getFreePort } from '../utils/ports';
 import { PROXY_PROTOCOLS } from '../constants';
+import proxyServerMiddleware from './proxy-server';
 import type { ServerConfig, ServerRuntime } from '../types';
 
 const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime): RequestHandler => {
@@ -32,12 +30,12 @@ const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime): Reques
   }
 
   runtime.child = spawn(command, childArgs || [], { stdio: 'pipe' });
-  const proxy = httpProxy.createProxyServer(proxyOptions);
+
+  // the requests go the way those of a `proxy` server with a fixed target do (websockets, 502 and 504, forwarded headers), without a control path
+  const proxy = proxyServerMiddleware({ ...instance, proxyOptions: { ...proxyOptions, target: serverOptions.proxyTarget, dynamic: undefined } });
   runtime.proxy = proxy;
 
-  return (req, res) => {
-    proxy.web(req, res, { target: serverOptions.proxyTarget });
-  };
+  return proxy;
 };
 
 export default proxyMiddleware;

@@ -1,53 +1,14 @@
-import { Request } from 'express';
+import { isIPv6 } from 'net';
+import type { Request } from 'express';
 
-const headerToString = (header: string | string[]) => (typeof header === 'string' ? header : header[0]);
-
+/**
+ * The address of the client: the peer of the connection, or, when the peer is a trusted proxy, the address `request.ip` takes from `X-Forwarded-For` (the
+ * `trust proxy` setting of the app). Headers a client sets itself are never believed. An IPv4 address on a dual stack socket (`::ffff:1.2.3.4`) is given as IPv4.
+ */
 const getClientIp = (request: Request): string => {
-  if (request.headers['x-client-ip']) {
-    return headerToString(request.headers['x-client-ip']);
-  }
+  const address = request.ip ?? request.socket?.remoteAddress ?? '';
 
-  if (request.headers['x-forwarded-for']) {
-    return headerToString(request.headers['x-forwarded-for']);
-  }
-
-  if (request.headers['cf-connecting-ip']) {
-    return headerToString(request.headers['cf-connecting-ip']);
-  }
-
-  if (request.headers['fastly-client-ip']) {
-    return headerToString(request.headers['fastly-client-ip']);
-  }
-
-  if (request.headers['true-client-ip']) {
-    return headerToString(request.headers['true-client-ip']);
-  }
-
-  if (request.headers['x-real-ip']) {
-    return headerToString(request.headers['x-real-ip']);
-  }
-
-  if (request.headers['x-cluster-client-ip']) {
-    return headerToString(request.headers['x-cluster-client-ip']);
-  }
-
-  if (request.headers['x-forwarded']) {
-    return headerToString(request.headers['x-forwarded']);
-  }
-
-  if (request.headers['forwarded-for']) {
-    return headerToString(request.headers['forwarded-for']);
-  }
-
-  if (request.headers.forwarded) {
-    return request.headers.forwarded;
-  }
-
-  if (request.socket && request.socket.remoteAddress) {
-    return request.socket.remoteAddress;
-  }
-
-  return '';
+  return isIPv6(address) && address.toLowerCase().startsWith('::ffff:') && address.includes('.') ? address.slice(7) : address;
 };
 
 export default getClientIp;
