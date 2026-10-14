@@ -28,7 +28,7 @@ jobs:
   load-test:
     name: load-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -43,7 +43,6 @@ jobs:
           # comparison-rounds: runs of each side, the median of which is compared. The systems with the large spread between runs of the same side get more of them.
           # access-logs-comparison: also compares the base with the pull request with the access logs on (informational), where the logger shows in the numbers. One system is enough for that.
           # p95-factor: multiplies the p95 allowed for every route, where everything is slower and shared runners are noisier.
-          # comparison-informational: the comparison is shown in the summary but does not fail the job, as a single run of those systems was 4 times faster than the rest.
           - os: ubuntu-latest
             requests-per-core: 250
             cpu-max-p95-ms: 100
@@ -51,7 +50,6 @@ jobs:
             cpu-max-dropped: 0
             p95-overrides: ''
             comparison-limits: ''
-            comparison-informational: false
             comparison-rounds: 3
             access-logs-comparison: true
             p95-factor: 1
@@ -62,7 +60,6 @@ jobs:
             cpu-max-dropped: 60
             p95-overrides: 'lambda=1500,ws_connecting=1000'
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
-            comparison-informational: true
             comparison-rounds: 5
             access-logs-comparison: false
             p95-factor: 2
@@ -73,7 +70,6 @@ jobs:
             cpu-max-dropped: 60
             p95-overrides: ''
             comparison-limits: 'MAX_THROUGHPUT_DROP=0.4 MAX_P95_INCREASE=1 MAX_CPU_P95_INCREASE=1 MIN_P95_DIFFERENCE_MS=15'
-            comparison-informational: true
             comparison-rounds: 5
             access-logs-comparison: false
             p95-factor: 2
@@ -356,18 +352,27 @@ jobs:
       # one server at a time, the one above is stopped, and the cores of the runner are the same for both sides
       - name: Compare with the base
         if: always() && github.event_name == 'pull_request' && steps.base.outputs.ready == 'true'
-        # shorter than the job, so that a hang fails this step and leaves the results to be uploaded
-        timeout-minutes: 15
-        continue-on-error: ${{ matrix.comparison-informational }}
+        # shorter than the job, so that a hang fails this step and leaves the results to be uploaded. Two attempts of about 7 minutes on the slower systems
+        timeout-minutes: 20
         run: |
-          # not through a pipe: processes that outlive the script (on Windows) would keep the pipe open, and the step with it
-          status=0
-          # the limits are words of NAME=value, empty for the defaults
-          # shellcheck disable=SC2086
-          env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . "${COMPARISON_ROUNDS}" 15s > compare-summary.md || status=$?
-          cat compare-summary.md
-          cat compare-summary.md >> "$GITHUB_STEP_SUMMARY"
-          exit "${status}"
+          # A failed comparison is made once more: noise on a shared runner (a slow neighbour for some of the rounds) rarely fails twice, a slowdown of the code does.
+          # Both attempts are in the summary, so that a pass on the second one can be seen.
+          for attempt in 1 2; do
+            # not through a pipe: processes that outlive the script (on Windows) would keep the pipe open, and the step with it
+            status=0
+            # the limits are words of NAME=value, empty for the defaults
+            # shellcheck disable=SC2086
+            env ${COMPARISON_LIMITS} node tools/dist/scripts/compare-with-base.js base . "${COMPARISON_ROUNDS}" 15s > compare-summary.md || status=$?
+            cat compare-summary.md
+            {
+              echo "Attempt ${attempt} of 2"
+              echo
+              cat compare-summary.md
+            } >> "$GITHUB_STEP_SUMMARY"
+            [ "${status}" -eq 0 ] && exit 0
+            echo "::warning::The comparison with the base failed its limits (attempt ${attempt} of 2)"
+          done
+          exit 1
       # the load test server logs the requests with ACCESS_LOGS=1, the cost of which is the logger. Only the main scenario, as the others do not go through more of it.
       - name: Compare with the base with the access logs on
         if: always() && github.event_name == 'pull_request' && matrix.access-logs-comparison && steps.base.outputs.access-logs == 'true'
