@@ -350,6 +350,8 @@ export interface WorkerBudgetMember {
   findIdleWorker: () => IdleWorker | undefined;
   /** the requests that wait for a worker in the pool look again whether they can get one */
   wakeUp: () => void;
+  /** stops all of its workers, for a process that ends */
+  onClose: () => void;
 }
 
 /** A limit on the workers of several pools together, so that the processes of many servers and paths stay bounded. Made by `createWorkerBudget`. */
@@ -365,5 +367,7 @@ export interface WorkerBudget {
   /** a worker stopped or became idle, the requests that wait in the other pools may get one now */
   wakeUp: (except?: WorkerBudgetMember) => void;
   getStats: () => { limit: number; workers: number };
+  /** stops the workers of all the pools, which a process that ends has to do as nothing else stops them */
+  close: () => void;
 }
 export * from './cache';

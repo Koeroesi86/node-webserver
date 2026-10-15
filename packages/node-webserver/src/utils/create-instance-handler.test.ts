@@ -2,6 +2,8 @@ import { EventEmitter } from 'events';
 import { Agent } from 'http';
 import { middleware } from '@koeroesi86/node-worker-express';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
+import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
+import lambdaMiddleware from '../middlewares/lambda';
 import createInstanceHandler from './create-instance-handler';
 import createMockLogger from './mock-logger.test-helper';
 import retireAgent from './retire-agent';
@@ -77,6 +79,7 @@ describe('createInstanceHandler', () => {
       findIdleWorker: jest.fn(),
       wakeUp: jest.fn(),
       getStats: jest.fn(),
+      close: jest.fn(),
     };
     jest.mocked(middleware).mockClear();
 
@@ -85,6 +88,17 @@ describe('createInstanceHandler', () => {
     );
 
     expect(jest.mocked(middleware).mock.calls.map(([options]) => options.workerBudget)).toEqual([workerBudget, workerBudget]);
+  });
+
+  it('hands every lambda server the same stats registry, so that their lambdas count together', () => {
+    const lambdaStats = createLambdaStats();
+    jest.mocked(lambdaMiddleware).mockClear();
+
+    ['one.localhost', 'two.localhost'].forEach((hostname) =>
+      createInstanceHandler({ hostname, protocol: 'http', type: 'lambda', lambdaOptions: { lambda: '/a.js' } }, {}, { logger, lambdaStats })
+    );
+
+    expect(jest.mocked(lambdaMiddleware).mock.calls.map(([, , stats]) => stats)).toEqual([lambdaStats, lambdaStats]);
   });
 
   describe('a proxy server', () => {

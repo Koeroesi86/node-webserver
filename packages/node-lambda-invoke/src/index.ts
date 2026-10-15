@@ -4,13 +4,15 @@ import FileStorage from './classes/FileStorage';
 import IPCStorage from './classes/IPCStorage';
 import Worker from './classes/Worker';
 import { getLambdaStats } from './classes/LambdaPool';
+import createLambdaStats from './utils/create-lambda-stats';
 
-export { httpMiddleware, Lambda, FileStorage, IPCStorage, Worker, getLambdaStats };
+export { httpMiddleware, Lambda, FileStorage, IPCStorage, Worker, getLambdaStats, createLambdaStats };
 export type { HttpMiddleware } from './middlewares/http';
 export type {
   Communication,
   HttpMiddlewareOptions,
   LambdaEvent,
+  LambdaStats,
   Listener,
   Logger,
   RequestContext,
