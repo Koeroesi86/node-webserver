@@ -1,4 +1,4 @@
-import { join } from 'path';
+import { posix } from 'path';
 import type { ServiceDefinition } from '../types';
 
 const escapeXml = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -18,7 +18,10 @@ const createLaunchdPlist = (label: string, { name, nodePath, scriptPath, configP
     '  <key>KeepAlive</key><true/>',
     ...(user ? [`  <key>UserName</key>${string(user)}`] : []),
     ...(logFolder
-      ? [`  <key>StandardOutPath</key>${string(join(logFolder, `${name}.log`))}`, `  <key>StandardErrorPath</key>${string(join(logFolder, `${name}.log`))}`]
+      ? [
+          `  <key>StandardOutPath</key>${string(posix.join(logFolder, `${name}.log`))}`,
+          `  <key>StandardErrorPath</key>${string(posix.join(logFolder, `${name}.log`))}`,
+        ]
       : []),
     '</dict>',
     '</plist>',

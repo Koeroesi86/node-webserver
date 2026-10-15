@@ -1,4 +1,4 @@
-import { join } from 'path';
+import { posix } from 'path';
 import { LAUNCHD_FOLDER, LAUNCHD_LABEL_PREFIX, SYSTEMD_FOLDER } from '../constants';
 import createLaunchdPlist from './create-launchd-plist';
 import createSystemdUnit from './create-systemd-unit';
@@ -21,7 +21,7 @@ const getServiceFiles = (platform: NodeJS.Platform, definition: ServiceDefinitio
 
   if (platform === 'linux') {
     return {
-      filePath: join(SYSTEMD_FOLDER, `${name}.service`),
+      filePath: posix.join(SYSTEMD_FOLDER, `${name}.service`),
       content: createSystemdUnit(definition),
       install: [
         ['systemctl', 'daemon-reload'],
@@ -34,7 +34,7 @@ const getServiceFiles = (platform: NodeJS.Platform, definition: ServiceDefinitio
 
   if (platform === 'darwin') {
     const label = `${LAUNCHD_LABEL_PREFIX}.${name}`;
-    const filePath = join(LAUNCHD_FOLDER, `${label}.plist`);
+    const filePath = posix.join(LAUNCHD_FOLDER, `${label}.plist`);
     return {
       filePath,
       content: createLaunchdPlist(label, definition),
