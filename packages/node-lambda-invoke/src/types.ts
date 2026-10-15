@@ -38,6 +38,34 @@ export interface HttpMiddlewareOptions {
   /** variables added to the environment of the lambdas, which only get a few of the server (`PATH`, `HOME`, `TZ`, ...) */
   env?: Record<string, string>;
   communication?: Communication;
+  /** the registry (see `createLambdaStats`) where the middleware lists its lambdas for the stats. Defaults to the one of `getLambdaStats`. */
+  stats?: LambdaStats;
+}
+
+/** a lambda pool as the stats see it */
+export interface LambdaStatsSource {
+  readonly lambdaPath: string;
+  readonly started: number;
+  readonly starting: number;
+  readonly count: number;
+  readonly busy: number;
+  readonly waiting: number;
+  readonly abandoned: number;
+}
+
+/** the lambda pools of a server, for its stats. Made by `createLambdaStats`. */
+export interface LambdaStats {
+  add: (pool: LambdaStatsSource) => void;
+  /** a pool that is closed and has no lambda left stops counting */
+  remove: (pool: LambdaStatsSource) => void;
+  getStats: () => {
+    lambdas: number;
+    starting: number;
+    busy: number;
+    waiting: number;
+    abandoned: number;
+    files: Record<string, { lambdas: number; busy: number }>;
+  };
 }
 
 /** what API Gateway tells a lambda about the request */

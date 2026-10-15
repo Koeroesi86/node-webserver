@@ -1,5 +1,6 @@
 import type { EventEmitter } from 'events';
 import LambdaPool, { getLambdaStats, LambdaRequestAbandonedError, LambdaUnavailableError } from './LambdaPool';
+import createLambdaStats from '../utils/create-lambda-stats';
 import { DRAIN_AFTER, STOP_GRACE } from '../constants';
 import type Lambda from './Lambda';
 
@@ -300,6 +301,19 @@ describe('LambdaPool', () => {
       free(lambda);
 
       expect(fake().instances[0].terminate).toHaveBeenCalledWith('SIGTERM');
+    });
+
+    it('lists itself in the registry it is given and not in the default one', async () => {
+      const stats = createLambdaStats();
+      const pool = create({ lambdaPath: '/lambdas/own.js', stats });
+      free(await pool.getLambda());
+
+      expect(stats.getStats().files['/lambdas/own.js']).toEqual({ lambdas: 1, busy: 0 });
+      expect(getLambdaStats().files['/lambdas/own.js']).toBeUndefined();
+
+      pool.close();
+      fake().instances[0].emit('close', 0);
+      expect(stats.getStats().lambdas).toBe(0);
     });
 
     it('leaves the stats once its last lambda stopped', async () => {

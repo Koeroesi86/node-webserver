@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import WaitingLine from '@koeroesi86/node-worker/dist/waiting-line';
 import Lambda from './Lambda';
 import stdoutListener from '../middlewares/stdoutListener';
+import createLambdaStats from '../utils/create-lambda-stats';
 import scheduleLambdaDrain from '../utils/schedule-lambda-drain';
 import stopLambdaIfRetired from '../utils/stop-lambda-if-retired';
 import { DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT, DRAIN_AFTER, EVENT_STARTED, STOP_GRACE } from '../constants';
-import type { Communication, LambdaEvent, Logger } from '../types';
+import type { Communication, LambdaEvent, LambdaStats, Logger } from '../types';
 
 interface LambdaPoolOptions {
   lambdaPath: string;
@@ -24,6 +25,8 @@ interface LambdaPoolOptions {
   env?: Record<string, string>;
   logger?: Logger;
   communication: Communication;
+  /** where the pool lists itself for the stats, the one of `getLambdaStats` when not given */
+  stats?: LambdaStats;
 }
 
 /** the limit is reached and no lambda became free in time */
@@ -32,31 +35,11 @@ export class LambdaUnavailableError extends Error {}
 /** the client went away while the request waited for a lambda */
 export class LambdaRequestAbandonedError extends Error {}
 
-/** every pool of the process, for the stats */
-const pools = new Set<LambdaPool>();
+/** the stats of the pools made without a registry of their own, which `getLambdaStats` reads */
+const defaultStats = createLambdaStats();
 
-/** what the lambdas are doing right now, for metrics */
-export function getLambdaStats() {
-  const all = Array.from(pools);
-
-  return {
-    lambdas: all.reduce((result, pool) => result + pool.count, 0),
-    /** lambdas that were asked for and have not announced themselves yet */
-    starting: all.reduce((result, pool) => result + pool.starting, 0),
-    busy: all.reduce((result, pool) => result + pool.busy, 0),
-    /** requests that wait for a lambda to become free */
-    waiting: all.reduce((result, pool) => result + pool.waiting, 0),
-    /** requests whose client went away while they waited, since the process started */
-    abandoned: all.reduce((result, pool) => result + pool.abandoned, 0),
-    // several servers, or handlers, can use the same file
-    files: all
-      .filter(({ started }) => started > 0)
-      .reduce<Record<string, { lambdas: number; busy: number }>>((result, pool) => {
-        const { lambdas = 0, busy = 0 } = result[pool.lambdaPath] ?? {};
-        return { ...result, [pool.lambdaPath]: { lambdas: lambdas + pool.started, busy: busy + pool.busy } };
-      }, {}),
-  };
-}
+/** what the lambdas of the pools that were not given a registry are doing right now. Prefer `createLambdaStats` for a server of its own. */
+export const getLambdaStats = defaultStats.getStats;
 
 /** the lambdas of one handler of one file, under a limit of its own */
 class LambdaPool {
@@ -70,6 +53,7 @@ class LambdaPool {
   readonly restrictFileSystem: boolean;
   readonly env?: Record<string, string>;
   readonly logger: Logger;
+  private readonly stats: LambdaStats;
   private readonly instances = new Map<string, Lambda>();
   /** the requests in line, they get a lambda, or the promise of one that is starting */
   private readonly line: WaitingLine<undefined, Lambda | Promise<Lambda>>;
@@ -89,6 +73,7 @@ class LambdaPool {
     env,
     logger = () => {},
     communication,
+    stats = defaultStats,
   }: LambdaPoolOptions) {
     this.lambdaPath = lambdaPath;
     this.handlerKey = handlerKey;
@@ -100,6 +85,7 @@ class LambdaPool {
     this.restrictFileSystem = restrictFileSystem;
     this.env = env;
     this.logger = logger;
+    this.stats = stats;
 
     this.line = new WaitingLine({
       acquireTimeout,
@@ -109,7 +95,7 @@ class LambdaPool {
       createTimeoutError: () => new LambdaUnavailableError(`No lambda became available for ${lambdaPath} within ${acquireTimeout}ms.`),
       createAbandonedError: () => new LambdaRequestAbandonedError(`The request for ${lambdaPath} was abandoned.`),
     });
-    pools.add(this);
+    stats.add(this);
   }
 
   get started() {
@@ -219,7 +205,7 @@ class LambdaPool {
 
   /** a closed pool leaves the stats once its last lambda stopped */
   private forgetIfClosed() {
-    if (this.closed && this.count === 0) pools.delete(this);
+    if (this.closed && this.count === 0) this.stats.remove(this);
   }
 
   /** a free lambda, otherwise a new one while the limit allows, otherwise nothing */

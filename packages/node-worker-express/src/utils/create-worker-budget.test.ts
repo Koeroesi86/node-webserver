@@ -1,7 +1,12 @@
 import createWorkerBudget from './create-worker-budget';
 import type { IdleWorker, WorkerBudgetMember } from '../types';
 
-const member = (count: number, idle?: IdleWorker): WorkerBudgetMember => ({ getWorkerCount: () => count, findIdleWorker: () => idle, wakeUp: jest.fn() });
+const member = (count: number, idle?: IdleWorker): WorkerBudgetMember => ({
+  getWorkerCount: () => count,
+  findIdleWorker: () => idle,
+  wakeUp: jest.fn(),
+  onClose: jest.fn(),
+});
 
 describe('createWorkerBudget', () => {
   it('has room while the workers of its members together are below the limit', () => {
@@ -24,6 +29,19 @@ describe('createWorkerBudget', () => {
 
     expect(budget.hasRoom()).toBe(true);
     expect(budget.getStats()).toEqual({ limit: 2, workers: 1 });
+  });
+
+  it('stops the workers of the members that are in it when it is closed, and not those that left', () => {
+    const budget = createWorkerBudget();
+    const [staying, leaving] = [member(1), member(1)];
+    budget.join(staying);
+    budget.join(leaving);
+    budget.leave(leaving);
+
+    budget.close();
+
+    expect(staying.onClose).toHaveBeenCalledTimes(1);
+    expect(leaving.onClose).not.toHaveBeenCalled();
   });
 
   it('always has room with a limit of 0', () => {

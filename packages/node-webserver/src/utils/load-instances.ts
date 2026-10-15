@@ -2,6 +2,7 @@ import createInstanceHandler from './create-instance-handler';
 import loadInstanceModule from './load-instance-module';
 import readFingerprint from './read-fingerprint';
 import setupSecureContexts from './setupSecureContexts';
+import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { Configuration, LoadedInstance, Logger } from '../types';
 
@@ -26,11 +27,12 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
   return loaded ? [{ source, ...loaded, runtime: {}, fingerprint: readFingerprint(loaded.files) }] : [];
 };
 
-const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger, workerBudget?: WorkerBudget): LoadedInstance => ({
+const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger, workerBudget?: WorkerBudget, lambdaStats?: LambdaStats): LoadedInstance => ({
   ...candidate,
   ...createInstanceHandler(candidate.instance, candidate.runtime, {
     logger,
     workerBudget,
+    lambdaStats,
     previous: previous.find(({ source }) => source === candidate.source),
   }),
 });
@@ -40,14 +42,22 @@ const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger,
  * Everything is loaded and checked before anything is started, and what was started is stopped again when a server fails to start: on an error
  * this throws, and the servers of `previous` are left as they are.
  */
-const loadInstances = (servers: Configuration['servers'], previous: LoadedInstance[], logger: Logger, workerBudget?: WorkerBudget): LoadedInstance[] => {
+const loadInstances = (
+  servers: Configuration['servers'],
+  previous: LoadedInstance[],
+  logger: Logger,
+  workerBudget?: WorkerBudget,
+  lambdaStats?: LambdaStats
+): LoadedInstance[] => {
   const candidates = servers.flatMap((source) => findCandidate(source, previous));
   // the certificates are read again for every server, the running ones too, as they are renewed without the definition changing
   setupSecureContexts(candidates);
 
   const started: LoadedInstance[] = [];
   try {
-    return candidates.map((candidate) => (isLoaded(candidate) ? candidate : started[started.push(start(candidate, previous, logger, workerBudget)) - 1]));
+    return candidates.map((candidate) =>
+      isLoaded(candidate) ? candidate : started[started.push(start(candidate, previous, logger, workerBudget, lambdaStats)) - 1]
+    );
   } catch (error) {
     started.forEach(({ close }) => close(0));
     throw error;

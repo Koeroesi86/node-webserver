@@ -493,6 +493,31 @@ describe('WorkerPool', () => {
     });
   });
 
+  describe('stopping when the process exits', () => {
+    it('stops the workers of a pool with a budget of its own, until it is disposed of', async () => {
+      const before = process.listenerCount('exit');
+      const pool = createPool();
+      expect(process.listenerCount('exit')).toBe(before + 1);
+
+      await pool.dispose(1000);
+
+      expect(process.listenerCount('exit')).toBe(before);
+    });
+
+    it('leaves it to the budget that is given, which stops all of its pools at once', async () => {
+      const before = process.listenerCount('exit');
+      const budget = createWorkerBudget();
+      const pools = [createPool({ budget }), createPool({ budget })];
+      await pools[0].acquire(pathA, {}, 1);
+      await pools[1].acquire(pathB, {}, 1);
+      expect(process.listenerCount('exit')).toBe(before);
+
+      budget.close();
+
+      expect(FakeWorker.instances.map((worker) => worker.terminate.mock.calls.length)).toEqual([1, 1]);
+    });
+  });
+
   describe('dispose', () => {
     it('stops the idle workers at once, and resolves once they stopped', async () => {
       const pool = createPool();
