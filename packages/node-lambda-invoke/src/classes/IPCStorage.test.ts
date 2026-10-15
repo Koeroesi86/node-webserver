@@ -17,13 +17,6 @@ const request = { path: '/a', httpMethod: 'GET' } as RequestEvent;
 describe('IPCStorage', () => {
   beforeEach(() => IPCStorage.start());
 
-  it('names its keys by the id', () => {
-    const storage = new IPCStorage('abc', createEndpoint().instance);
-
-    expect(storage.requestKey).toBe('request-abc');
-    expect(storage.responseKey).toBe('response-abc');
-  });
-
   it('sends a request over, and finishes when the other side confirms it', async () => {
     const { emitter, send, instance } = createEndpoint();
     const done = new IPCStorage('abc', instance).setRequest(request);
@@ -41,9 +34,9 @@ describe('IPCStorage', () => {
     const { emitter, send, instance } = createEndpoint();
     const done = new IPCStorage('abc', instance).setResponse({ statusCode: 200 });
 
-    expect(send).toHaveBeenCalledWith({ type: 'GW_SET_RESONSE', id: 'abc', payload: { statusCode: 200 } });
+    expect(send).toHaveBeenCalledWith({ type: 'GW_SET_RESPONSE', id: 'abc', payload: { statusCode: 200 } });
 
-    emitter.emit('message', { type: 'GW_SET_RESONSE_FINISHED', id: 'abc' });
+    emitter.emit('message', { type: 'GW_SET_RESPONSE_FINISHED', id: 'abc' });
 
     await expect(done).resolves.toBeUndefined();
   });
@@ -62,9 +55,9 @@ describe('IPCStorage', () => {
     const { emitter, send, instance } = createEndpoint();
     const done = new IPCStorage('abc', instance).getResponse();
 
-    expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESONSE', id: 'abc' });
+    expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESPONSE', id: 'abc' });
 
-    emitter.emit('message', { type: 'GW_SET_RESONSE', id: 'abc', payload: { statusCode: 204 } });
+    emitter.emit('message', { type: 'GW_SET_RESPONSE', id: 'abc', payload: { statusCode: 204 } });
 
     await expect(done).resolves.toEqual({ statusCode: 204 });
   });
@@ -102,8 +95,8 @@ describe('IPCStorage', () => {
 
     emitter.emit('message', 'text');
     emitter.emit('message', null);
-    emitter.emit('message', { type: 'GW_SET_RESONSE', id: 'other', payload: { statusCode: 500 } });
-    emitter.emit('message', { type: 'GW_SET_RESONSE', id: 'abc', payload: { statusCode: 200 } });
+    emitter.emit('message', { type: 'GW_SET_RESPONSE', id: 'other', payload: { statusCode: 500 } });
+    emitter.emit('message', { type: 'GW_SET_RESPONSE', id: 'abc', payload: { statusCode: 200 } });
 
     await expect(done).resolves.toEqual({ statusCode: 200 });
   });
@@ -116,8 +109,36 @@ describe('IPCStorage', () => {
     send.mockClear();
     storage.getResponse();
 
-    expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESONSE', id: 'abc' });
+    expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESPONSE', id: 'abc' });
     expect(emitter.listenerCount('message')).toBe(2);
+  });
+
+  it('lets go of the request, the response and its listener once the response is handed over', async () => {
+    const { emitter, instance } = createEndpoint();
+    const send = jest.spyOn(process, 'send').mockImplementation(() => true);
+
+    try {
+      for (let index = 0; index < 20; index++) {
+        const id = `request-${index}`;
+        const storage = new IPCStorage(id, instance);
+        emitter.emit('message', { type: 'GW_SET_REQUEST', id, payload: request });
+        await storage.getRequest();
+        const done = storage.setResponse({ statusCode: 200 });
+        emitter.emit('message', { type: 'GW_SET_RESPONSE_FINISHED', id });
+        await done;
+      }
+
+      expect(emitter.listenerCount('message')).toBe(0);
+
+      const { send: sendAgain, instance: again } = createEndpoint();
+      new IPCStorage('request-0', again).getRequest();
+      new IPCStorage('request-19', again).getResponse();
+
+      expect(sendAgain).toHaveBeenCalledWith({ type: 'GW_GET_REQUEST', id: 'request-0' });
+      expect(sendAgain).toHaveBeenCalledWith({ type: 'GW_GET_RESPONSE', id: 'request-19' });
+    } finally {
+      send.mockRestore();
+    }
   });
 
   it('forgets everything when it starts', async () => {
@@ -127,7 +148,7 @@ describe('IPCStorage', () => {
     send.mockClear();
     new IPCStorage('abc', instance).getResponse();
 
-    expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESONSE', id: 'abc' });
+    expect(send).toHaveBeenCalledWith({ type: 'GW_GET_RESPONSE', id: 'abc' });
   });
 
   describe('attached to a lambda', () => {
@@ -163,9 +184,9 @@ describe('IPCStorage', () => {
       const { lambda, postMessage, receive } = createLambda();
       const storage = new IPCStorage('abc', lambda as unknown as StorageInstance);
 
-      receive({ type: 'GW_SET_RESONSE', id: 'abc', payload: { statusCode: 201 } });
+      receive({ type: 'GW_SET_RESPONSE', id: 'abc', payload: { statusCode: 201 } });
 
-      expect(postMessage).toHaveBeenCalledWith({ type: 'GW_SET_RESONSE_FINISHED', id: 'abc' });
+      expect(postMessage).toHaveBeenCalledWith({ type: 'GW_SET_RESPONSE_FINISHED', id: 'abc' });
       await expect(storage.getResponse()).resolves.toEqual({ statusCode: 201 });
     });
 
