@@ -26,7 +26,7 @@ pnpm --filter @koeroesi86/node-worker-express start
 
 A middleware without a `workerBudget` stops its workers when the process exits. With one it does not: call `budget.close()` from an exit listener, which stops the workers of all the pools in it at once.
 
-For all options see [types](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/src/types/index.ts).
+For all options see [types](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/src/types/middleware.ts).
 
 ## Streaming a response
 
