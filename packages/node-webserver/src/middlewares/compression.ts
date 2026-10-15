@@ -1,11 +1,10 @@
-import zlib from 'zlib';
 import type { Transform } from 'stream';
 import type { RequestHandler, Response } from 'express';
+import { compressionStreams, defaultEncodings } from '../utils/compression-streams';
 import type { CompressionEncoding, CompressionOptions } from '../types';
 
 type Headers = Record<string, unknown>;
 
-const defaultEncodings: CompressionEncoding[] = ['br', 'gzip', 'deflate'];
 const compressibleTypes =
   /^(text\/|application\/(json|(x-)?javascript|xml|wasm|manifest\+json|.+\+(json|xml))|image\/svg\+xml|font\/(ttf|otf)|application\/vnd\.ms-fontobject)/i;
 const bodylessStatuses = [204, 205, 304];
@@ -54,18 +53,6 @@ export function chooseEncoding(acceptEncoding: string, supported: CompressionEnc
     .sort((a, b) => weightOf(b.encoding) - weightOf(a.encoding) || a.index - b.index)[0]?.encoding;
 }
 
-const createStream = (encoding: CompressionEncoding, { level = 6, brotliQuality = 4 }: CompressionOptions, size?: number): Transform => {
-  // every write is flushed, so a response that is streamed reaches the client while it is produced instead of when a buffer fills
-  if (encoding === 'br') {
-    return zlib.createBrotliCompress({
-      flush: zlib.constants.BROTLI_OPERATION_FLUSH,
-      params: { [zlib.constants.BROTLI_PARAM_QUALITY]: brotliQuality, ...(size !== undefined && { [zlib.constants.BROTLI_PARAM_SIZE_HINT]: size }) },
-    });
-  }
-
-  return (encoding === 'gzip' ? zlib.createGzip : zlib.createDeflate)({ level, flush: zlib.constants.Z_SYNC_FLUSH });
-};
-
 /**
  * Compresses the responses that are worth it for the clients that accept it, with the zlib of node: the work runs on the threads of node, not on the one
  * that serves the requests. It takes the decision when the headers are written: text like types, no encoding yet, and a size above the threshold if it is known.
@@ -85,7 +72,7 @@ const compression =
     let stream: Transform | undefined;
 
     const startCompressing = (compressionEncoding: CompressionEncoding, length: number | undefined) => {
-      const compressor = createStream(compressionEncoding, options, length);
+      const compressor = compressionStreams[compressionEncoding](options, length);
       let released = false;
       const release = () => {
         if (released) return;

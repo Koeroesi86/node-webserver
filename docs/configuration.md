@@ -42,4 +42,4 @@ Every server has `hostname` (a wildcard like `*.example.com` is allowed), `proto
 | `proxy` | `proxyOptions`: `target` or `dynamic`, `changeOrigin`, `forwardedHeaders` |
 | any | `compression` |
 
-The reference for each option is in the [README of the server](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md), and the types are in `packages/node-webserver/src/types.ts`.
+The reference for each option is in the [README of the server](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md), and the types are in `packages/node-webserver/src/types/`.
