@@ -2,6 +2,7 @@ import { duplexPair } from 'stream';
 import { Protocols, WORKER_EVENT } from '../constants';
 import createChannel from './createChannel';
 import createWorkerSession from './create-worker-session';
+import { createSocketPair, readUntilClosed } from './socket-pair.test-helper';
 import type { InvokableWorker, RequestMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const request: RequestMessage = {
@@ -147,6 +148,67 @@ describe('createWorkerSession', () => {
     await until(() => types().includes(WORKER_EVENT.WS_CONNECTION_CLOSE_ACKNOWLEDGE));
     expect(session.contexts.size).toBe(0);
     close();
+  });
+
+  describe('a request whose connection was handed over', () => {
+    const handOff = { type: WORKER_EVENT.REQUEST_HANDOFF, requestId: 'h', event: request, prefix: Buffer.from('a').toString('base64'), length: 2, timeout: 0 };
+
+    it('reads the body from the connection, answers on it and tells the server when it is closed', async () => {
+      let body = '';
+      const { session, received, close } = setup(async ({ bodyStream }, callback) => {
+        for await (const chunk of bodyStream) body += chunk;
+        callback({ ...reply, body });
+      });
+      const pair = await createSocketPair();
+      const response = readUntilClosed(pair.client);
+
+      session.receiveHandOff(handOff, pair.connection);
+      pair.client.write('b');
+      await until(() => received.length > 0);
+
+      expect(body).toBe('ab');
+      expect(await response).toContain('200');
+      expect(received).toMatchObject([{ type: WORKER_EVENT.REQUEST_HANDOFF_DONE, requestId: 'h', event: { statusCode: 200 } }]);
+      await pair.close();
+      close();
+    });
+
+    it('answers a worker that throws with a 500 and logs the error', async () => {
+      const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const { session, received, close } = setup(() => {
+        throw new Error('fails');
+      });
+      const pair = await createSocketPair();
+      const response = readUntilClosed(pair.client);
+
+      session.receiveHandOff(handOff, pair.connection);
+      await until(() => received.length > 0);
+
+      expect(await response).toContain('500');
+      expect(received).toMatchObject([{ type: WORKER_EVENT.REQUEST_HANDOFF_DONE, event: { statusCode: 500 } }]);
+      expect(error).toHaveBeenCalledTimes(1);
+      error.mockRestore();
+      await pair.close();
+      close();
+    });
+
+    it('drops the questions of the worker for metrics once the connection is closed', async () => {
+      const { session, received, close } = setup(async ({ getMetrics }) => {
+        getMetrics();
+      });
+      const pair = await createSocketPair();
+
+      session.receiveHandOff(handOff, pair.connection);
+      await until(() => received.length > 0);
+      expect(session.contexts.size).toBe(1);
+      pair.client.destroy();
+      await until(() => received.length > 1);
+
+      expect(received.map(({ type }) => type)).toEqual([WORKER_EVENT.METRICS_REQUEST, WORKER_EVENT.REQUEST_HANDOFF_DONE]);
+      expect(session.contexts.size).toBe(0);
+      await pair.close();
+      close();
+    });
   });
 
   it('ignores the messages of requests it does not know', () => {
