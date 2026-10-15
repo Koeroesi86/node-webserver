@@ -160,6 +160,19 @@ describe('workerInvoke', () => {
         'utils/create-socket-responder',
         'utils/is-request-hand-off',
         'utils/frames',
+        'utils/close-ws-connection',
+        'utils/create-body-stream',
+        'utils/create-empty-body',
+        'utils/create-metrics-waiting',
+        'utils/create-request-contexts',
+        'utils/create-response-sender',
+        'utils/create-upload',
+        'utils/create-worker-event',
+        'utils/create-worker-session',
+        'utils/invoke-worker',
+        'utils/receive-ws-message',
+        'utils/send-ws-message',
+        'utils/to-response-message',
       ].map(async (file) => fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8')))))
     );
     await fs.writeFile(path.join(folder, 'worker.js'), workerSource);
