@@ -48,8 +48,9 @@ function exitListener(logger: Logger, getInstances: () => ServerState[], reason:
 /**
  * Stops the child processes of the servers when the process stops. The servers are asked for when that happens, as they change when the configuration is loaded again.
  * SIGUSR1 (which node also uses to start the inspector), SIGUSR2 and an uncaught exception always end the process at once, as the state may be broken.
+ * Returns a function that takes the listeners off again, so that a server that is stopped in a process that goes on (or a test) does not leave them behind.
  */
-function addExitListeners(logger: Logger, getInstances: () => ServerState[], { exitOnHangUp = true, gracefulStop }: ExitOptions = {}) {
+function addExitListeners(logger: Logger, getInstances: () => ServerState[], { exitOnHangUp = true, gracefulStop }: ExitOptions = {}): () => void {
   process.stdin.resume();
 
   cleanTmp(logger);
@@ -69,17 +70,19 @@ function addExitListeners(logger: Logger, getInstances: () => ServerState[], { e
     exitListener(logger, getInstances, reason, event);
   };
 
-  // do something when app is closing
-  process.once('exit', stopAtOnce('exit'));
+  const listeners: [NodeJS.Signals | 'exit' | 'uncaughtException', (event: unknown) => void][] = [
+    // do something when app is closing
+    ['exit', stopAtOnce('exit')],
+    ...signals.map((signal): [NodeJS.Signals, (event: unknown) => void] => [signal, gracefulStop ? stopSoftly(signal) : stopAtOnce(signal)]),
+    // catches "kill pid" (for example: nodemon restart)
+    ['SIGUSR1', stopAtOnce('SIGUSR1')],
+    ['SIGUSR2', stopAtOnce('SIGUSR2')],
+    //catches uncaught exceptions
+    ['uncaughtException', stopAtOnce('uncaughtException')],
+  ];
+  listeners.forEach(([event, listener]) => process.once(event, listener));
 
-  signals.forEach((signal) => process.once(signal, gracefulStop ? stopSoftly(signal) : stopAtOnce(signal)));
-
-  // catches "kill pid" (for example: nodemon restart)
-  process.once('SIGUSR1', stopAtOnce('SIGUSR1'));
-  process.once('SIGUSR2', stopAtOnce('SIGUSR2'));
-
-  //catches uncaught exceptions
-  process.once('uncaughtException', stopAtOnce('uncaughtException'));
+  return () => listeners.forEach(([event, listener]) => process.off(event, listener));
 }
 
 export default addExitListeners;

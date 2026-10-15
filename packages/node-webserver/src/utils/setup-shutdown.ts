@@ -12,14 +12,19 @@ interface ShutdownOptions {
   logger: Logger;
 }
 
-/** Stops the servers softly on SIGINT, SIGTERM and, unless it reloads the configuration, SIGHUP. */
-const setupShutdown = (servers: net.Server[], { reloadOnSighup, shutdownTimeout, reload, getLoaded, getInstances, logger }: ShutdownOptions) => {
+/** Stops the servers softly on SIGINT, SIGTERM and, unless it reloads the configuration, SIGHUP. Returns a function that takes these listeners off the process again. */
+const setupShutdown = (servers: net.Server[], { reloadOnSighup, shutdownTimeout, reload, getLoaded, getInstances, logger }: ShutdownOptions): (() => void) => {
   const gracefulStop = createGracefulStop(servers, (timeout) => Promise.all(getLoaded().map(({ close }) => close(timeout))).then(() => undefined));
-  addExitListeners(logger, getInstances, {
+  const removeExitListeners = addExitListeners(logger, getInstances, {
     exitOnHangUp: !reloadOnSighup,
     gracefulStop: () => gracefulStop(shutdownTimeout),
   });
   if (reloadOnSighup) process.on('SIGHUP', reload);
+
+  return () => {
+    removeExitListeners();
+    process.off('SIGHUP', reload);
+  };
 };
 
 export default setupShutdown;

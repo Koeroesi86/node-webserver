@@ -19,7 +19,10 @@ import type { Configuration, Logger } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
-const startServer = async (configuration: Partial<Configuration>, logger?: Logger): Promise<{ httpApp: Express; httpsApp: Express; reload: () => void }> => {
+const startServer = async (
+  configuration: Partial<Configuration>,
+  logger?: Logger
+): Promise<{ httpApp: Express; httpsApp: Express; reload: () => void; removeProcessHooks: () => void }> => {
   // one set for each call, so that a second server in the process does not share the middlewares of the first
   const httpApp = express();
   const httpsApp = express();
@@ -64,7 +67,7 @@ const startServer = async (configuration: Partial<Configuration>, logger?: Logge
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);
 
-  setupShutdown([httpServer, httpsServer], {
+  const removeProcessHooks = setupShutdown([httpServer, httpsServer], {
     reloadOnSighup,
     shutdownTimeout,
     reload,
@@ -74,7 +77,7 @@ const startServer = async (configuration: Partial<Configuration>, logger?: Logge
   });
   if (watchServers) watch();
 
-  return { httpApp, httpsApp, reload };
+  return { httpApp, httpsApp, reload, removeProcessHooks };
 };
 
 export default startServer;
