@@ -19,9 +19,15 @@ import type { Configuration, Logger } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
+export interface StartOptions {
+  /** whether the server stops softly on the signals, stops its children and workers when the process ends and flushes the logger then. Defaults to true. False leaves all of it to the caller. */
+  processHooks?: boolean;
+}
+
 const startServer = async (
   configuration: Partial<Configuration>,
-  logger?: Logger
+  logger?: Logger,
+  { processHooks = true }: StartOptions = {}
 ): Promise<{ httpApp: Express; httpsApp: Express; reload: () => void; removeProcessHooks: () => void }> => {
   // one set for each call, so that a second server in the process does not share the middlewares of the first
   const httpApp = express();
@@ -40,8 +46,6 @@ const startServer = async (
   // one for the whole process, so that the workers of the servers that are loaded again count against the same limit
   const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
   const unregisterWorkers = registerMetricsSource('workers', workerBudget.getStats);
-  // for all the pools of the budget at once, as they do not stop the workers themselves when the process ends
-  process.once('exit', workerBudget.close);
   // one for the server too, so that the lambdas of a second server in the process do not count in the stats of this one
   const lambdaStats = createLambdaStats();
 
@@ -82,14 +86,22 @@ const startServer = async (
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);
 
-  const removeProcessHooks = setupShutdown([httpServer, httpsServer], {
-    reloadOnSighup,
-    shutdownTimeout,
-    reload,
-    getLoaded: reloader.getLoaded,
-    getInstances: reloader.getInstances,
-    logger: log,
-  });
+  const removeShutdown = processHooks
+    ? setupShutdown([httpServer, httpsServer], {
+        reloadOnSighup,
+        shutdownTimeout,
+        reload,
+        getLoaded: reloader.getLoaded,
+        getInstances: reloader.getInstances,
+        logger: log,
+      })
+    : () => {};
+  // for all the pools of the budget at once, as they do not stop the workers themselves when the process ends
+  if (processHooks) process.once('exit', workerBudget.close);
+  const removeProcessHooks = () => {
+    removeShutdown();
+    process.off('exit', workerBudget.close);
+  };
   if (watchServers) watch();
 
   return { httpApp, httpsApp, reload, removeProcessHooks };
