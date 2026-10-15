@@ -248,7 +248,7 @@ class WorkerPool implements WorkerBudgetMember {
       return leastLoaded;
     }
 
-    // a path whose workers keep crashing gets no new one for a while: the busy ones that still run take the request, and without one it is refused
+    // a crashing path gets no new worker for a while: busy ones take the request, without one it is refused
     const backoff = this.restartBackoff.getBackoff(workerPath);
     if (backoff > 0 && leastLoaded !== undefined) {
       return leastLoaded;
@@ -264,18 +264,18 @@ class WorkerPool implements WorkerBudgetMember {
     return belowPathLimit && hasRoom ? this.createWorker(workerPath, options) : leastLoaded;
   };
 
+  private shouldWarm = (workerPath: string, count: number) =>
+    !this.closed && this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.restartBackoff.getBackoff(workerPath) === 0;
+
   /** Starts workers for the path ahead of its first request, so that one does not have to wait for a process to start. */
   warm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
-    while (!this.closed && this.getWorkerCountForPath(workerPath) < count && this.hasRoom() && this.restartBackoff.getBackoff(workerPath) === 0) {
+    while (this.shouldWarm(workerPath, count)) {
       this.createWorker(workerPath, options);
     }
     this.wakeUp();
   };
 
-  /**
-   * Like `warm`, and starts workers again whenever the path has fewer than `count`: after one stopped itself when it was idle, crashed, or was stopped to make room for another path.
-   * The overall limit still holds and requests that wait for a worker come first, so the workers kept warm only take room that nothing else needs.
-   */
+  /** Like `warm`, and again whenever the path has fewer than `count`. Only takes room that no waiting request needs. */
   keepWarm = (workerPath: string, options: SpawnOptions = {}, count = 1) => {
     this.minimums.set(workerPath, { options, count });
     this.refill(workerPath);
@@ -291,7 +291,7 @@ class WorkerPool implements WorkerBudgetMember {
       return;
     }
 
-    // a path whose workers keep crashing is tried again when the backoff is over, not by every worker that stops in the meantime
+    // retry once when the backoff is over, not on every worker that stops meanwhile
     const timer = setTimeout(() => {
       this.refillTimers.delete(workerPath);
       this.refill(workerPath);
