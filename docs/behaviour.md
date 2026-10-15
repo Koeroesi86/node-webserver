@@ -10,6 +10,7 @@ What the server does when things get busy, break or change. Defaults are the one
 | It waits longer than `limitRequestTimeout` (5 s), or `limitQueue` (1000) requests already wait | `503` with `Retry-After: 1` |
 | The client goes away while it waits | it leaves the line at once and is counted as `abandoned` |
 | A worker has had no request for `limitWorkerIdleTimeout` (5 min) | it is stopped; an idle worker is also stopped to make room for another file, but the last worker of a file only while it has no request |
+| A file is kept warm (`warmPaths`) and a worker of it stops, crashes or is stopped to make room | it is started again, but only into room that no waiting request needs, and after a crash only when the backoff is over; when a worker ends, waiting requests (also of other pools sharing the limit) are served first and the warm files take what is left |
 | Lambdas are all busy | requests queue, then `503` after `acquireTimeout` (10 s) |
 | A body is over `limitRequestBody` | `413` (no limit by default for workers, 6 MiB for lambdas) |
 | An upload stalls | `504` after `limitResponseTimeout` counted from the last part that moved |

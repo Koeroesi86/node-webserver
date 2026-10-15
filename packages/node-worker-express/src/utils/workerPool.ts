@@ -132,10 +132,7 @@ class WorkerPool implements WorkerBudgetMember {
   /** set while the pool is disposed of, called once its last worker stopped */
   private onDisposed?: () => void;
 
-  /**
-   * Stops the workers once they have answered the requests they took, or all of them after the timeout, and forgets the pool, for a server that is not used any more.
-   * Requests that still come are served, by a worker that is stopped after them. Resolves once the workers stopped.
-   */
+  /** Stops the workers after their requests, or all of them after the timeout, and forgets the pool. Requests that still come are served first. */
   dispose = (timeout = 0) =>
     new Promise<void>((resolve) => {
       this.stopKeepingWarm();
@@ -185,7 +182,7 @@ class WorkerPool implements WorkerBudgetMember {
 
   findIdleWorker = (): IdleWorker | undefined => this.eviction.findIdleWorker();
 
-  /** Makes room for the first worker of a path by stopping an idle worker: of this pool when its own limit is used up, of any pool of the budget otherwise. */
+  /** Stops an idle worker for the first worker of a path: of this pool at its own limit, of any pool of the budget otherwise. */
   private makeRoom = (): boolean => {
     const victim = this.belowOverallLimit() ? this.budget.findIdleWorker() : this.findIdleWorker();
     victim?.stop();
@@ -305,7 +302,7 @@ class WorkerPool implements WorkerBudgetMember {
       worker,
       registry: this.registry,
       onReleased: () => {
-        // a worker has room again, for the request that has waited longest, and an idle one can make room in the other pools of the budget
+        // a worker has room again for the request that waited longest
         this.wakeWaiting();
         // a pool that is disposed of keeps a worker only for as long as it has requests
         if (this.onDisposed) this.stopIdleWorkers();
@@ -317,10 +314,10 @@ class WorkerPool implements WorkerBudgetMember {
     return worker === undefined ? undefined : this.createLease(worker);
   };
 
-  /** looks at the requests that wait, in the order they came in, whenever a worker could have become available: a request that is finished, a worker that stopped or started */
+  /** serves the waiting requests in order, whenever a worker may have become available */
   wakeUp = () => this.acquisitionQueue.wakeUp(this.serve);
 
-  /** also the pools of the budget, as a room that opened can be the one a request of another pool waits for */
+  /** also the other pools of the budget, as the room can be what one of their requests waits for */
   private wakeWaiting = () => {
     this.wakeUp();
     this.budget.wakeUp(this);
@@ -333,19 +330,16 @@ class WorkerPool implements WorkerBudgetMember {
     active: this.registry.getActive(),
     /** requests that wait for a worker */
     ...this.acquisitionQueue.getStats(),
-    /** workers stopped as they had no request for the idle timeout, and ones stopped to make room for the first worker of another path, since the pool started */
+    /** workers stopped when idle or to make room for another path, since the pool started */
     evicted: this.eviction.getStats(),
-    /** the paths whose workers crashed in a row, with the number of crashes and the time until another one is started */
+    /** paths whose workers crashed in a row, with the crashes and the time until the next start */
     failing: this.restartBackoff.getStats(),
     paths: this.registry.getPathStats(),
   });
 
   /**
-   * Hands out a worker for the path: an idle one, otherwise a new one while fewer than `limit` run for the path, otherwise the least busy.
-   * A limit of 0 (or less) keeps a single worker for the path.
-   * When none could be started, as the overall limit is used up by other paths, the request waits in line. Rejects with a WorkerBusyError when too many wait already
-   * or when it waited for the acquire timeout, and with a WorkerUnavailableError when the workers of the path keep crashing.
-   * A request that waits leaves the line when the signal aborts, and rejects with a WorkerAbandonedError.
+   * Hands out an idle worker, else a new one below `limit` (0 or less keeps one), else the least busy; waits in line when the overall limit is used up.
+   * Rejects with WorkerBusyError (line full or acquire timeout), WorkerUnavailableError (path keeps crashing) or WorkerAbandonedError (signal aborted).
    */
   acquire = async (workerPath: string, options: SpawnOptions = {}, limit = 0, signal?: AbortSignal): Promise<WorkerLease> => {
     const worker = this.tryGetWorker(workerPath, options, limit);
