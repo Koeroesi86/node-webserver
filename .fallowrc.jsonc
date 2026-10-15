@@ -48,7 +48,7 @@
     // a zone without a rule may import anything, so the ones that import no other package have an empty one
     "rules": [
       { "from": "node-worker", "allow": [] },
-      { "from": "node-lambda-invoke", "allow": [] },
+      { "from": "node-lambda-invoke", "allow": ["node-worker"] },
       { "from": "tools", "allow": [] },
       { "from": "node-worker-express", "allow": ["node-worker"] },
       { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke"] },
