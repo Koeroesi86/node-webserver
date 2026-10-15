@@ -25,7 +25,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 | Folder | What it is |
 |---|---|
 | `packages/node-webserver` | front server: `src/utils/startServer.ts` builds two express apps (http, https with SNI) from the configuration, `src/middlewares/` has the `lambda` and `proxy` middlewares (the static worker is the one of `node-worker-express`), access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one per server type, `integration/` the integration test |
-| `packages/node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and OS service (`os-service`) |
+| `packages/node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and systemd or launchd service generator |
 | `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each in its own process |
 | `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node and the express middleware on it, which the worker pools are built on |
 | `tools/` | `@koeroesi86/tools`, never published: versioning for the pipeline and the k6 load tests (`tools/README.md`) |

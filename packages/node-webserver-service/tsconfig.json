@@ -13,7 +13,7 @@
     "noFallthroughCasesInSwitch": true,
     "declaration": true,
     "sourceMap": true,
-    "types": ["node", "jest", "os-service"]
+    "types": ["node", "jest"]
   },
   "include": ["src"]
 }

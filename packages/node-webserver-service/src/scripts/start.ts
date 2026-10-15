@@ -1,14 +1,18 @@
 import { copyFileSync, existsSync } from 'fs';
-import parseArgv from '../utils/parseArgv';
+import parseArguments from '../utils/parse-arguments';
+import resolveConfigurationPath from '../utils/resolve-configuration-path';
 import start from '../utils/start';
 import { DEFAULT_CONFIGURATION_PATH } from '../constants';
 
-const { configuration } = parseArgv();
+const { configuration } = parseArguments(process.argv.slice(2));
 
-const configPath = (typeof configuration === 'string' && configuration) || process.env.NODE_WEBSERVER_CONFIG || DEFAULT_CONFIGURATION_PATH;
+const configPath = resolveConfigurationPath(configuration, process.env.NODE_WEBSERVER_CONFIG, DEFAULT_CONFIGURATION_PATH);
 
 if (!existsSync(configPath)) {
   copyFileSync(DEFAULT_CONFIGURATION_PATH, configPath);
 }
 
-start(configPath);
+start(configPath).catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

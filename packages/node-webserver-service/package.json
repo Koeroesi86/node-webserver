@@ -25,13 +25,11 @@
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/start.js\""
   },
   "dependencies": {
-    "@koeroesi86/node-webserver": "workspace:*",
-    "os-service": "^2.2.0"
+    "@koeroesi86/node-webserver": "workspace:*"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
-    "@types/os-service": "^2.2.3",
     "jest": "^30.5.2",
     "nodemon": "^3.1.14",
     "rimraf": "^6.1.3",
