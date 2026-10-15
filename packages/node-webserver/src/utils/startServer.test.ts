@@ -38,13 +38,31 @@ describe('startServer', () => {
   it('hands back what takes the process listeners off again', async () => {
     const listen = jest.spyOn(net.Server.prototype, 'listen');
     const remove = jest.fn();
+    const exitListeners = process.listenerCount('exit');
     jest.mocked(setupShutdown).mockReturnValueOnce(remove);
 
     const server = await startServer(configuration, createMockLogger());
+    server.removeProcessHooks();
     await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
     listen.mockRestore();
 
-    expect(server.removeProcessHooks).toBe(remove);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(process.listenerCount('exit')).toBe(exitListeners);
+  });
+
+  it('leaves the process listeners to the caller when it is told to', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const exitListeners = process.listenerCount('exit');
+    jest.mocked(setupShutdown).mockClear();
+
+    const server = await startServer(configuration, createMockLogger(), { processHooks: false });
+    const during = process.listenerCount('exit');
+    expect(() => server.removeProcessHooks()).not.toThrow();
+    await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
+    listen.mockRestore();
+
+    expect(setupShutdown).not.toHaveBeenCalled();
+    expect(during).toBe(exitListeners);
   });
 
   it('takes its metrics sources and its exit listener away once its servers closed', async () => {
