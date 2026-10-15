@@ -47,4 +47,16 @@ describe('setupShutdown', () => {
     expect(process.listenerCount('SIGHUP')).toBe(before + 1);
     process.off('SIGHUP', options.reload);
   });
+
+  it('takes the listeners off again, the reload on SIGHUP with them', () => {
+    const removeExitListeners = jest.fn();
+    jest.mocked(addExitListeners).mockReturnValueOnce(removeExitListeners);
+    const before = process.listenerCount('SIGHUP');
+
+    const remove = setupShutdown([], { ...options, reloadOnSighup: true });
+    remove();
+
+    expect(removeExitListeners).toHaveBeenCalled();
+    expect(process.listenerCount('SIGHUP')).toBe(before);
+  });
 });

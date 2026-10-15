@@ -33,4 +33,16 @@ describe('startServer', () => {
 
     expect(jest.mocked(setupShutdown).mock.calls.at(-1)?.[1]).toMatchObject({ logger });
   });
+
+  it('hands back what takes the process listeners off again', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const remove = jest.fn();
+    jest.mocked(setupShutdown).mockReturnValueOnce(remove);
+
+    const server = await startServer(configuration, createMockLogger());
+    await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
+    listen.mockRestore();
+
+    expect(server.removeProcessHooks).toBe(remove);
+  });
 });

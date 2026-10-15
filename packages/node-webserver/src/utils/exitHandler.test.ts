@@ -65,6 +65,16 @@ describe('addExitListeners', () => {
     expect(kill).toHaveBeenCalledWith(process.pid, 'SIGINT');
   });
 
+  it('takes every listener it added off the process again', () => {
+    const off = jest.mocked(process.off);
+    const remove = addExitListeners(logger, () => []);
+
+    remove();
+
+    expect(off.mock.calls.map(([event]) => event).sort()).toEqual(Object.keys(listeners).sort());
+    off.mock.calls.forEach(([event, listener]) => expect(listener).toBe(listeners[String(event)]));
+  });
+
   it('stops on SIGHUP by default', () => {
     addExitListeners(logger, () => []);
 
