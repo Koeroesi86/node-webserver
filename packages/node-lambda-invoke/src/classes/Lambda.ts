@@ -1,4 +1,3 @@
-import { rmSync } from 'fs';
 import { rm } from 'fs/promises';
 import { resolve } from 'path';
 import Worker from './Worker';
@@ -6,15 +5,11 @@ import { DEFAULT_TIMEOUT, EVENT_REQUEST, EVENT_RESPONSE, LIFESPAN } from '../con
 import createLambdaEnvironment from '../utils/create-lambda-environment';
 import createLambdaFolder from '../utils/create-lambda-folder';
 import createPermissionFlags from '../utils/create-permission-flags';
+import trackLambdaFolder from '../utils/track-lambda-folder';
 import { getRegisteredPath } from '../registry';
 import type RequestEvent from './RequestEvent';
 import ResponseEvent from './ResponseEvent';
 import type { Communication, LambdaEvent, Listener, Logger, Storage, StorageDriverConstructor } from '../types';
-
-/** the folders of the lambda processes that run, removed when the server exits, which stops them as well. Only a kill leaves them, the next server sweeps them. */
-const lambdaFolders = new Set<string>();
-
-process.once('exit', () => lambdaFolders.forEach((folder) => rmSync(folder, { recursive: true, force: true })));
 
 class Lambda {
   private readonly _path: string;
@@ -77,7 +72,7 @@ class Lambda {
 
   createInstance(): Worker {
     const folder = createLambdaFolder(this._communication.type === 'file');
-    lambdaFolders.add(folder.root);
+    const untrackFolder = trackLambdaFolder(folder.root);
     this.storageFolder = folder.storage;
     const writableFolders = [folder.tmp, ...(folder.storage ? [folder.storage] : [])];
     const instance = new Worker(resolve(__dirname, '../middlewares/invoke.js'), {
@@ -91,7 +86,7 @@ class Lambda {
     });
     // what the lambda wrote is gone with it, as the storage of an environment of AWS is
     instance.addEventListenerOnce('close', () => {
-      lambdaFolders.delete(folder.root);
+      untrackFolder();
       rm(folder.root, { recursive: true, force: true }).catch((error) => this._logger(error));
     });
 
