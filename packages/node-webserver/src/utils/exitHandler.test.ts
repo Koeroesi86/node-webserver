@@ -1,10 +1,11 @@
 import addExitListeners from './exitHandler';
-import logger from './logger';
+import createMockLogger from './mock-logger.test-helper';
 
-jest.mock('./logger', () => ({ __esModule: true, default: { error: jest.fn(), info: jest.fn(), system: jest.fn(), flush: jest.fn() } }));
 jest.mock('fs', () => ({ existsSync: jest.fn(() => false), readdirSync: jest.fn(() => []) }));
 
 describe('addExitListeners', () => {
+  const logger = createMockLogger();
+
   let listeners: Record<string, (event: unknown) => void>;
   let kill: jest.SpyInstance;
 
@@ -28,7 +29,7 @@ describe('addExitListeners', () => {
     const order: string[] = [];
     jest.mocked(logger.flush).mockImplementation(() => order.push('flush'));
     kill.mockImplementation(() => order.push('kill') > 0);
-    addExitListeners(() => []);
+    addExitListeners(logger, () => []);
 
     listeners.SIGTERM('SIGTERM');
 
@@ -38,7 +39,9 @@ describe('addExitListeners', () => {
 
   it('stops the children of the servers', () => {
     const child = { kill: jest.fn() };
-    addExitListeners((() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[0]);
+    addExitListeners(logger, (() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<
+      typeof addExitListeners
+    >[1]);
 
     listeners.SIGINT('SIGINT');
 
@@ -46,7 +49,7 @@ describe('addExitListeners', () => {
   });
 
   it('does not raise a signal when the process is exiting anyway', () => {
-    addExitListeners(() => []);
+    addExitListeners(logger, () => []);
 
     listeners.exit(0);
 
@@ -55,7 +58,7 @@ describe('addExitListeners', () => {
   });
 
   it('raises SIGINT after an uncaught exception', () => {
-    addExitListeners(() => []);
+    addExitListeners(logger, () => []);
 
     listeners.uncaughtException(new Error('boom'));
 
@@ -63,13 +66,13 @@ describe('addExitListeners', () => {
   });
 
   it('stops on SIGHUP by default', () => {
-    addExitListeners(() => []);
+    addExitListeners(logger, () => []);
 
     expect(listeners.SIGHUP).toBeDefined();
   });
 
   it('leaves SIGHUP alone when the server loads the configuration again on it', () => {
-    addExitListeners(() => [], { exitOnHangUp: false });
+    addExitListeners(logger, () => [], { exitOnHangUp: false });
 
     expect(listeners.SIGHUP).toBeUndefined();
   });
@@ -78,9 +81,9 @@ describe('addExitListeners', () => {
     const before = { kill: jest.fn() };
     const after = { kill: jest.fn() };
     let children = [before];
-    addExitListeners((() => children.map((child) => ({ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }))) as unknown as Parameters<
+    addExitListeners(logger, (() => children.map((child) => ({ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }))) as unknown as Parameters<
       typeof addExitListeners
-    >[0]);
+    >[1]);
     children = [after];
 
     listeners.SIGTERM('SIGTERM');
@@ -104,7 +107,7 @@ describe('addExitListeners', () => {
 
     it.each(['SIGINT', 'SIGTERM', 'SIGHUP'])('waits for the stop on %s before the signal is raised again', async (signal) => {
       const { gracefulStop, finish } = stoppingAt();
-      addExitListeners(() => [], { gracefulStop });
+      addExitListeners(logger, () => [], { gracefulStop });
 
       const stopped = listeners[signal](signal);
       expect(gracefulStop).toHaveBeenCalled();
@@ -118,9 +121,13 @@ describe('addExitListeners', () => {
     it('ends at once on a second signal while it waits', async () => {
       const { gracefulStop } = stoppingAt();
       const child = { kill: jest.fn() };
-      addExitListeners((() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[0], {
-        gracefulStop,
-      });
+      addExitListeners(
+        logger,
+        (() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[1],
+        {
+          gracefulStop,
+        }
+      );
 
       void listeners.SIGTERM('SIGTERM');
       listeners.SIGTERM('SIGTERM');
@@ -132,7 +139,7 @@ describe('addExitListeners', () => {
     it('stops listening for a second signal once it raises the signal itself, so that the process ends', async () => {
       const { gracefulStop, finish } = stoppingAt();
       const off = jest.mocked(process.off);
-      addExitListeners(() => [], { gracefulStop });
+      addExitListeners(logger, () => [], { gracefulStop });
 
       const stopped = listeners.SIGTERM('SIGTERM');
       finish();
@@ -144,9 +151,13 @@ describe('addExitListeners', () => {
 
     it('still stops the children and raises the signal when the stop fails', async () => {
       const child = { kill: jest.fn() };
-      addExitListeners((() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[0], {
-        gracefulStop: () => Promise.reject(new Error('broken')),
-      });
+      addExitListeners(
+        logger,
+        (() => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { child } }]) as unknown as Parameters<typeof addExitListeners>[1],
+        {
+          gracefulStop: () => Promise.reject(new Error('broken')),
+        }
+      );
 
       await listeners.SIGTERM('SIGTERM');
 
@@ -156,7 +167,7 @@ describe('addExitListeners', () => {
 
     it.each(['SIGUSR1', 'SIGUSR2', 'uncaughtException'])('ends at once on %s, as the state may be broken', (reason) => {
       const { gracefulStop } = stoppingAt();
-      addExitListeners(() => [], { gracefulStop });
+      addExitListeners(logger, () => [], { gracefulStop });
 
       listeners[reason](new Error('boom'));
 
@@ -165,7 +176,7 @@ describe('addExitListeners', () => {
     });
 
     it('leaves SIGHUP to the reload', () => {
-      addExitListeners(() => [], { exitOnHangUp: false, gracefulStop: jest.fn() });
+      addExitListeners(logger, () => [], { exitOnHangUp: false, gracefulStop: jest.fn() });
 
       expect(listeners.SIGHUP).toBeUndefined();
     });

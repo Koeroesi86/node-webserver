@@ -1,8 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import type { HttpMiddleware } from '@koeroesi86/node-lambda-invoke';
-import logger from '../utils/logger';
-import type { LambdaOptions, ServerConfig } from '../types';
+import type { LambdaOptions, LogFunction, ServerConfig } from '../types';
 import createLambdaRouteTable from './lambda-route-table';
 
 type LambdaHandler = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & { close: () => void };
@@ -18,11 +17,11 @@ const pathnameOf = ({ url = '/' }: IncomingMessage) => {
   return (queryStart === -1 ? url : url.slice(0, queryStart)) || '/';
 };
 
-const createLambda = (config: LambdaOptions | undefined, lambda: string, handler: string | undefined, limit: number | undefined) =>
+const createLambda = (log: LogFunction, config: LambdaOptions | undefined, lambda: string, handler: string | undefined, limit: number | undefined) =>
   httpMiddleware({
     lambdaPath: lambda.replace(/\\/g, '/'),
     handlerKey: handler || 'handler',
-    logger: logger.info,
+    logger: log,
     communication: { type: config?.communication || 'ipc' },
     limit,
     acquireTimeout: config?.acquireTimeout,
@@ -33,8 +32,8 @@ const createLambda = (config: LambdaOptions | undefined, lambda: string, handler
     env: config?.env,
   });
 
-const createFallbackLambda = (config: LambdaOptions | undefined) =>
-  config?.lambda ? createLambda(config, config.lambda, config.handler, config.limit) : undefined;
+const createFallbackLambda = (log: LogFunction, config: LambdaOptions | undefined) =>
+  config?.lambda ? createLambda(log, config, config.lambda, config.handler, config.limit) : undefined;
 
 const dispatchRequest =
   (match: ReturnType<typeof createLambdaRouteTable>, fallback: HttpMiddleware | undefined): ((request: IncomingMessage, response: ServerResponse) => void) =>
@@ -47,19 +46,19 @@ const dispatchRequest =
 
 const closeLambdas = (started: HttpMiddleware[]) => started.forEach((route) => route.close());
 
-const lambdaMiddleware = (instance: ServerConfig): LambdaHandler => {
+const lambdaMiddleware = (instance: ServerConfig, log: LogFunction): LambdaHandler => {
   const { lambdaOptions: config } = instance;
   const routes = config?.routes ?? [];
 
   if (routes.length === 0) {
-    return createLambda(config, config?.lambda || '', config?.handler, config?.limit);
+    return createLambda(log, config, config?.lambda || '', config?.handler, config?.limit);
   }
 
   // the routes are matched before a lambda is taken, and each one has the pool and so the limit of its own lambda and handler
   const started: HttpMiddleware[] = [];
   try {
-    const match = createLambdaRouteTable(routes, ({ lambda, handler, limit }) => createLambda(config, lambda, handler, limit ?? config?.limit), started);
-    const fallback = createFallbackLambda(config);
+    const match = createLambdaRouteTable(routes, ({ lambda, handler, limit }) => createLambda(log, config, lambda, handler, limit ?? config?.limit), started);
+    const fallback = createFallbackLambda(log, config);
     if (fallback) started.push(fallback);
 
     return Object.assign(dispatchRequest(match, fallback), { close: () => closeLambdas(started) });

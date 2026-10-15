@@ -1,0 +1,36 @@
+import net from 'net';
+import setupShutdown from './setup-shutdown';
+import startServer from './startServer';
+import createMockLogger from './mock-logger.test-helper';
+
+// the exit listeners belong to the process, not to the server under test
+jest.mock('./setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
+
+describe('startServer', () => {
+  const configuration = { servers: [], portHttp: 0, portHttps: 0, statsDomain: false as const, watchServers: false };
+
+  it('gives every call apps of its own', async () => {
+    // the call does not hand its servers back, so the ones that listen are closed through the spy
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const logger = createMockLogger();
+
+    const first = await startServer(configuration, logger);
+    const second = await startServer(configuration, logger);
+    await Promise.all(listen.mock.contexts.map((server: net.Server) => new Promise((resolve) => server.close(resolve))));
+    listen.mockRestore();
+
+    expect(second.httpApp).not.toBe(first.httpApp);
+    expect(second.httpsApp).not.toBe(first.httpsApp);
+  });
+
+  it('hands its logger on to the shutdown, which flushes it when the process exits', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const logger = createMockLogger();
+
+    await startServer(configuration, logger);
+    await Promise.all(listen.mock.contexts.map((server: net.Server) => new Promise((resolve) => server.close(resolve))));
+    listen.mockRestore();
+
+    expect(jest.mocked(setupShutdown).mock.calls.at(-1)?.[1]).toMatchObject({ logger });
+  });
+});

@@ -1,5 +1,9 @@
 import benchmarkVirtualHosts from '../utils/benchmark-virtual-hosts';
-import logger from '../utils/logger';
+import createLogger from '../utils/create-logger';
+import Configuration from '../configuration.example';
+
+const logger = createLogger(Configuration);
+process.on('exit', logger.flush);
 
 /** `HOST_COUNTS` (comma separated) and `REQUESTS` (per count and routing) */
 const hostCounts = (process.env.HOST_COUNTS ?? '1,10,100,1000,5000').split(',').map(Number);

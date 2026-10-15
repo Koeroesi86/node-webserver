@@ -1,10 +1,9 @@
 import { EventEmitter } from 'events';
 import accessLogsMiddleware from './accessLogs';
 import { isHandedOff, isRequestHandedOff } from '@koeroesi86/node-worker-express';
-import logger from '../utils/logger';
+import createMockLogger from '../utils/mock-logger.test-helper';
 import type { NextFunction, Request, Response } from 'express';
 
-jest.mock('../utils/logger', () => ({ __esModule: true, default: { success: jest.fn(), error: jest.fn(), isEnabled: jest.fn() } }));
 jest.mock('@koeroesi86/node-worker-express', () => ({
   isHandedOff: jest.fn(() => false),
   isRequestHandedOff: jest.fn(() => false),
@@ -12,9 +11,9 @@ jest.mock('@koeroesi86/node-worker-express', () => ({
 }));
 jest.mock('../utils/getDate', () => ({ __esModule: true, default: () => '2026-01-01 00:00:00' }));
 
-const mockedLogger = jest.mocked(logger);
+const logger = createMockLogger();
 
-const enable = (...levels: string[]) => mockedLogger.isEnabled.mockImplementation((level) => levels.includes(level));
+const enable = (...levels: string[]) => logger.isEnabled.mockImplementation((level) => levels.includes(level));
 
 const createRequest = (headers: Record<string, string> = {}) =>
   ({
@@ -45,7 +44,7 @@ describe('accessLogsMiddleware', () => {
   const run = (statusCode: number, statusMessage?: string, headers?: Record<string, string>) => {
     const response = createResponse(statusCode, statusMessage);
     const next = jest.fn();
-    accessLogsMiddleware({ alias: 'http' })(createRequest(headers), response, next as NextFunction);
+    accessLogsMiddleware({ alias: 'http', logger })(createRequest(headers), response, next as NextFunction);
     jest.runAllTimers();
     response.emit('finish');
 
@@ -58,7 +57,7 @@ describe('accessLogsMiddleware', () => {
     it('logs the request with its headers in alphabetical order', () => {
       run(200);
 
-      expect(mockedLogger.success).toHaveBeenCalledWith(
+      expect(logger.success).toHaveBeenCalledWith(
         '[2026-01-01 00:00:00] [http] REQUEST GET http://web.localhost/page?x=1 HEADERS {"accept":"*/*","host":"web.localhost","user-agent":"test"}'
       );
     });
@@ -69,18 +68,18 @@ describe('accessLogsMiddleware', () => {
       Object.defineProperty(request, 'protocol', { get: protocol });
       const response = createResponse(200);
 
-      accessLogsMiddleware({ alias: 'http' })(request, response, jest.fn());
+      accessLogsMiddleware({ alias: 'http', logger })(request, response, jest.fn());
       jest.runAllTimers();
       response.emit('finish');
 
-      expect(mockedLogger.success).toHaveBeenCalledTimes(2);
+      expect(logger.success).toHaveBeenCalledTimes(2);
       expect(protocol).toHaveBeenCalledTimes(1);
     });
 
     it('leaves the credentials out of the headers it logs', () => {
       run(200, 'OK', { authorization: 'Bearer secret', 'proxy-authorization': 'Basic secret' });
 
-      expect(mockedLogger.success).toHaveBeenCalledWith(
+      expect(logger.success).toHaveBeenCalledWith(
         '[2026-01-01 00:00:00] [http] REQUEST GET http://web.localhost/page?x=1 HEADERS {"accept":"*/*","authorization":"[redacted]","host":"web.localhost","proxy-authorization":"[redacted]","user-agent":"test"}'
       );
     });
@@ -88,23 +87,23 @@ describe('accessLogsMiddleware', () => {
     it('logs a response below 400 as a success, with its size', () => {
       run(200);
 
-      expect(mockedLogger.success).toHaveBeenLastCalledWith('[2026-01-01 00:00:00] [http] RESPONSE GET http://web.localhost/page?x=1 200 OK 12b sent');
-      expect(mockedLogger.error).not.toHaveBeenCalled();
+      expect(logger.success).toHaveBeenLastCalledWith('[2026-01-01 00:00:00] [http] RESPONSE GET http://web.localhost/page?x=1 200 OK 12b sent');
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('logs a response from 400 as an error', () => {
       run(404, 'Not Found');
 
-      expect(mockedLogger.error).toHaveBeenCalledWith('[2026-01-01 00:00:00] [http] RESPONSE GET http://web.localhost/page?x=1 404 Not Found 12b sent');
+      expect(logger.error).toHaveBeenCalledWith('[2026-01-01 00:00:00] [http] RESPONSE GET http://web.localhost/page?x=1 404 Not Found 12b sent');
     });
 
     it('leaves out the status message of a response of HTTP/2, which has none', () => {
       const response = createResponse(200);
-      accessLogsMiddleware({ alias: 'https' })({ ...createRequest(), httpVersionMajor: 2 } as unknown as Request, response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ alias: 'https', logger })({ ...createRequest(), httpVersionMajor: 2 } as unknown as Request, response, jest.fn() as NextFunction);
       jest.runAllTimers();
       response.emit('finish');
 
-      expect(mockedLogger.success).toHaveBeenLastCalledWith('[2026-01-01 00:00:00] [https] RESPONSE GET http://web.localhost/page?x=1 200 12b sent');
+      expect(logger.success).toHaveBeenLastCalledWith('[2026-01-01 00:00:00] [https] RESPONSE GET http://web.localhost/page?x=1 200 12b sent');
     });
 
     it('goes on to the next middleware', () => {
@@ -129,15 +128,15 @@ describe('accessLogsMiddleware', () => {
       const response = createResponse(200);
       const next = jest.fn();
 
-      accessLogsMiddleware({})(untouchable(), response, next as NextFunction);
+      accessLogsMiddleware({ logger })(untouchable(), response, next as NextFunction);
       jest.runAllTimers();
       response.emit('finish');
 
       expect(next).toHaveBeenCalledTimes(1);
       expect(jest.getTimerCount()).toBe(0);
       expect(response.listenerCount('finish')).toBe(0);
-      expect(mockedLogger.success).not.toHaveBeenCalled();
-      expect(mockedLogger.error).not.toHaveBeenCalled();
+      expect(logger.success).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('logs nothing that is off when only the errors are on, and does not build the line of a success', () => {
@@ -146,12 +145,12 @@ describe('accessLogsMiddleware', () => {
       const request = createRequest();
       const get = jest.spyOn(request, 'get');
 
-      accessLogsMiddleware({})(request, response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ logger })(request, response, jest.fn() as NextFunction);
       jest.runAllTimers();
       response.emit('finish');
 
       expect(get).not.toHaveBeenCalled();
-      expect(mockedLogger.success).not.toHaveBeenCalled();
+      expect(logger.success).not.toHaveBeenCalled();
     });
 
     it('logs a response whose connection went to a worker when it closes, as it does not finish here', () => {
@@ -159,11 +158,11 @@ describe('accessLogsMiddleware', () => {
       const response = createResponse(200);
       jest.mocked(isHandedOff).mockReturnValueOnce(true);
 
-      accessLogsMiddleware({})(createRequest(), response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ logger })(createRequest(), response, jest.fn() as NextFunction);
       jest.runAllTimers();
       response.emit('close');
 
-      expect(mockedLogger.success).toHaveBeenCalledWith(expect.stringContaining('RESPONSE GET http://web.localhost/page?x=1 200 OK 12b sent'));
+      expect(logger.success).toHaveBeenCalledWith(expect.stringContaining('RESPONSE GET http://web.localhost/page?x=1 200 OK 12b sent'));
     });
 
     it('logs a response of a handed over request once the worker is done, not when the connection closes, as the status is not known before', () => {
@@ -172,14 +171,14 @@ describe('accessLogsMiddleware', () => {
       jest.mocked(isHandedOff).mockReturnValue(true);
       jest.mocked(isRequestHandedOff).mockReturnValue(true);
 
-      accessLogsMiddleware({})(createRequest(), response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ logger })(createRequest(), response, jest.fn() as NextFunction);
       jest.runAllTimers();
       response.emit('close');
-      expect(mockedLogger.success).not.toHaveBeenCalledWith(expect.stringContaining('RESPONSE'));
+      expect(logger.success).not.toHaveBeenCalledWith(expect.stringContaining('RESPONSE'));
       Object.assign(response, { statusCode: 500, statusMessage: 'Internal Server Error' });
       response.emit('request-hand-off-done');
 
-      expect(mockedLogger.error).toHaveBeenCalledWith(expect.stringContaining('RESPONSE GET http://web.localhost/page?x=1 500 Internal Server Error 12b sent'));
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('RESPONSE GET http://web.localhost/page?x=1 500 Internal Server Error 12b sent'));
       jest.mocked(isHandedOff).mockReturnValue(false);
       jest.mocked(isRequestHandedOff).mockReturnValue(false);
     });
@@ -188,23 +187,23 @@ describe('accessLogsMiddleware', () => {
       enable('success', 'error');
       const response = createResponse(200);
 
-      accessLogsMiddleware({})(createRequest(), response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ logger })(createRequest(), response, jest.fn() as NextFunction);
       jest.runAllTimers();
       response.emit('close');
 
-      expect(mockedLogger.success).not.toHaveBeenCalledWith(expect.stringContaining('RESPONSE'));
+      expect(logger.success).not.toHaveBeenCalledWith(expect.stringContaining('RESPONSE'));
     });
 
     it('logs the error responses when only the errors are on', () => {
       enable('error');
       const response = createResponse(500, 'Internal Server Error');
 
-      accessLogsMiddleware({})(createRequest(), response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ logger })(createRequest(), response, jest.fn() as NextFunction);
       jest.runAllTimers();
       response.emit('finish');
 
-      expect(mockedLogger.error).toHaveBeenCalledTimes(1);
-      expect(mockedLogger.success).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledTimes(1);
+      expect(logger.success).not.toHaveBeenCalled();
     });
 
     it('does not build the line of an error when only the successes are on', () => {
@@ -212,13 +211,13 @@ describe('accessLogsMiddleware', () => {
       const response = createResponse(404, 'Not Found');
       const request = createRequest();
 
-      accessLogsMiddleware({})(request, response, jest.fn() as NextFunction);
+      accessLogsMiddleware({ logger })(request, response, jest.fn() as NextFunction);
       jest.runAllTimers();
       const get = jest.spyOn(request, 'get');
       response.emit('finish');
 
       expect(get).not.toHaveBeenCalled();
-      expect(mockedLogger.error).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
     });
   });
 });

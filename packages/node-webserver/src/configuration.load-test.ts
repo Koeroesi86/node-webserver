@@ -153,7 +153,6 @@ const withHandOffRequests = (server: ServerConfig): ServerConfig =>
 /**
  * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
- * The logger reads its levels from NODE_WEBSERVER_CONFIG, so this module has to be selected through it, load-test-env does that.
  *
  * `lambda-crash.localhost`, `lambda-overload.localhost` and `lambda-file.localhost` serve `examples/lambda-failures/exampleLambda.js` for the lambda scenario (`lambda.ts`):
  * a lambda that crashes, more requests than lambdas, and the `file` communication.

@@ -4,9 +4,8 @@ import https from 'https';
 import net from 'net';
 import { once } from 'events';
 import proxyServerMiddleware from './proxy-server';
+import createMockLogger from '../utils/mock-logger.test-helper';
 import type { ProxyOptions, ServerConfig } from '../types';
-
-jest.mock('../utils/logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn(), info: jest.fn(), warning: jest.fn() } }));
 
 interface Reply {
   status: number;
@@ -59,7 +58,7 @@ const startProxy = async (proxyOptions: ProxyOptions, { trustLoopback = false, h
   const app = express();
   app.set('trust proxy', trustLoopback ? ['loopback'] : []);
   const instance: ServerConfig = { hostname, protocol: 'https', type: 'proxy', proxyOptions };
-  app.use(proxyServerMiddleware(instance));
+  app.use(proxyServerMiddleware(instance, createMockLogger()));
   const { port } = await listen(http.createServer(app));
 
   return port;
@@ -106,13 +105,25 @@ describe('proxyServerMiddleware', () => {
     ['neither a target nor a dynamic one', {}],
     ['both a target and a dynamic one', { target: 'http://127.0.0.1:1', dynamic: { token } }],
   ])('refuses %s', (_, proxyOptions) => {
-    expect(() => proxyServerMiddleware({ hostname: 'app.localhost', protocol: 'https', type: 'proxy', proxyOptions })).toThrow('needs either a target');
+    expect(() => proxyServerMiddleware({ hostname: 'app.localhost', protocol: 'https', type: 'proxy', proxyOptions }, createMockLogger())).toThrow(
+      'needs either a target'
+    );
   });
 
   it('needs a token for a dynamic target', () => {
     expect(() =>
-      proxyServerMiddleware({ hostname: 'app.localhost', protocol: 'https', type: 'proxy', proxyOptions: { dynamic: { tokenEnv: 'NOT_SET_ANYWHERE' } } })
+      proxyServerMiddleware(
+        { hostname: 'app.localhost', protocol: 'https', type: 'proxy', proxyOptions: { dynamic: { tokenEnv: 'NOT_SET_ANYWHERE' } } },
+        createMockLogger()
+      )
     ).toThrow('needs a token');
+  });
+
+  it('warns that the control path of a dynamic target over http only accepts requests that a trusted proxy received over HTTPS', () => {
+    const logger = createMockLogger();
+    proxyServerMiddleware({ hostname: 'app.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token } } }, logger).close();
+
+    expect(logger.warning).toHaveBeenCalledWith(expect.stringContaining('app.localhost is served over http'));
   });
 
   describe('with a fixed target', () => {

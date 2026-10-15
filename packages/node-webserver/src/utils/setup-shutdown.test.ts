@@ -1,13 +1,14 @@
 import addExitListeners from './exitHandler';
 import createGracefulStop from './create-graceful-stop';
 import setupShutdown from './setup-shutdown';
+import createMockLogger from './mock-logger.test-helper';
 
 jest.mock('./exitHandler', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('./create-graceful-stop', () => ({ __esModule: true, default: jest.fn() }));
 
 describe('setupShutdown', () => {
   const stop = jest.fn(async () => undefined);
-  const options = { shutdownTimeout: 7, reload: jest.fn(), getLoaded: () => [], getInstances: () => [] };
+  const options = { logger: createMockLogger(), shutdownTimeout: 7, reload: jest.fn(), getLoaded: () => [], getInstances: () => [] };
 
   beforeEach(() => {
     jest.mocked(addExitListeners).mockClear();
@@ -18,7 +19,7 @@ describe('setupShutdown', () => {
 
   it('stops softly with the shutdown timeout and ends the process on SIGHUP', async () => {
     setupShutdown([], { ...options, reloadOnSighup: false });
-    const { exitOnHangUp, gracefulStop } = jest.mocked(addExitListeners).mock.calls[0][1] ?? {};
+    const { exitOnHangUp, gracefulStop } = jest.mocked(addExitListeners).mock.calls[0][2] ?? {};
 
     await gracefulStop?.();
 
@@ -42,7 +43,7 @@ describe('setupShutdown', () => {
 
     setupShutdown([], { ...options, reloadOnSighup: true });
 
-    expect(jest.mocked(addExitListeners).mock.calls[0][1]?.exitOnHangUp).toBe(false);
+    expect(jest.mocked(addExitListeners).mock.calls[0][2]?.exitOnHangUp).toBe(false);
     expect(process.listenerCount('SIGHUP')).toBe(before + 1);
     process.off('SIGHUP', options.reload);
   });

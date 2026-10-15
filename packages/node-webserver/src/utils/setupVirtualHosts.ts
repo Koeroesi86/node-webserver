@@ -2,15 +2,14 @@ import type { RequestHandler } from 'express';
 import getURL from './getURL';
 import virtualHostRouter from './virtual-host-router';
 import getDate from './getDate';
-import logger from './logger';
-import type { Configuration, ServerState } from '../types';
+import type { Configuration, Logger, ServerState } from '../types';
 
 interface StartedHost extends ServerState {
   handler: RequestHandler;
 }
 
 /** the handler of the http server and the one of the https server, which pass every request to the server of its host name */
-function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configuration>): Record<'http' | 'https', RequestHandler> {
+function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configuration>, logger: Logger): Record<'http' | 'https', RequestHandler> {
   const { portHttp, portHttps } = Configuration;
   const ports: Record<string, number | undefined> = { http: portHttp, https: portHttps };
 

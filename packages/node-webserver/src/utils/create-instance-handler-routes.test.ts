@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import loadInstances from './load-instances';
+import createMockLogger from './mock-logger.test-helper';
 import type { ServerConfig } from '../types';
 
 // the real middleware, as the routes are checked by it: a mistake in them has to stop the server while its configuration is loaded
@@ -27,11 +28,11 @@ describe('the routes of a worker server', () => {
     ['a worker that is not a file', { path: '/items', worker: 'missing.js' }, /is not a file/],
     ['a pattern that is not valid', { pattern: '/items/(', worker: 'worker.js' }, /is not valid/],
   ])('stop the servers from loading with %s', (_, route, message) => {
-    expect(() => loadInstances([server([route])], [])).toThrow(message);
+    expect(() => loadInstances([server([route])], [], createMockLogger())).toThrow(message);
   });
 
   it('load when they are valid', async () => {
-    const [loaded] = loadInstances([server([{ pattern: '/items/(?<id>[0-9]+)', worker: 'worker.js' }])], []);
+    const [loaded] = loadInstances([server([{ pattern: '/items/(?<id>[0-9]+)', worker: 'worker.js' }])], [], createMockLogger());
 
     await loaded.close(0);
     expect(loaded.instance.hostname).toBe('routes.localhost');
