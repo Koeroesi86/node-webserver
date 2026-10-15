@@ -1,7 +1,7 @@
-import path from 'path';
 import { Duplex } from 'stream';
 import Worker from '@koeroesi86/node-worker';
 import createChannel from './createChannel';
+import createWorkerCommand from './create-worker-command';
 import type { Channel } from './createChannel';
 import type { WorkerInputEvent, WorkerOutputEvent } from '../types';
 
@@ -17,15 +17,6 @@ interface SpawnParams {
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
 }
-
-const createWorkerCommand = (workerPath: string) => {
-  const ext = path.extname(workerPath);
-  switch (ext) {
-    case '.js':
-    default:
-      return `node --expose-gc ${path.resolve(__dirname, '../workerInvoke.js')} ${workerPath}`;
-  }
-};
 
 /** Starts the process of a worker with its stdio layout, and the channel its messages go through. */
 const spawnWorker = ({ workerPath, options, onMessage, onStdout, onStderr }: SpawnParams): { instance: Worker; channel: Channel<WorkerInputEvent> } => {
