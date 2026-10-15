@@ -1,12 +1,11 @@
 import type { RequestHandler } from 'express';
 import type { SecureContext } from 'tls';
 import { RETIRE_TIMEOUT, RELOAD_DEBOUNCE } from '../constants';
-import type { Configuration, LoadedInstance, ServerState } from '../types';
+import type { Configuration, LoadedInstance, Logger, ServerState } from '../types';
 import createContextLookup from './create-context-lookup';
 import debounce from './debounce';
 import getDate from './getDate';
 import getWatchedFiles from './get-watched-files';
-import logger from './logger';
 import setupVirtualHosts from './setupVirtualHosts';
 import watchFiles from './watch-files';
 
@@ -26,10 +25,11 @@ const createServerReloader = (
   servers: Configuration['servers'],
   configuration: Partial<Configuration>,
   watchServers: boolean,
-  loadInstances: InstanceLoader
+  loadInstances: InstanceLoader,
+  logger: Logger
 ): ServerReloader => {
   let loaded: LoadedInstance[] = [];
-  let hosts = setupVirtualHosts([], configuration);
+  let hosts = setupVirtualHosts([], configuration, logger);
   let findSecureContext: (domain: string) => SecureContext | undefined = () => undefined;
   const retiring = new Set<LoadedInstance>();
   let stopWatching = () => {};
@@ -38,7 +38,7 @@ const createServerReloader = (
     const added = next.filter((instance) => !loaded.includes(instance));
     const removed = loaded.filter((instance) => !next.includes(instance));
 
-    hosts = setupVirtualHosts(next, configuration);
+    hosts = setupVirtualHosts(next, configuration, logger);
     findSecureContext = createContextLookup(
       next
         .filter(({ instance }) => instance.protocol === 'https')

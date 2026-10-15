@@ -22,6 +22,15 @@ export interface LogLevels {
   warning?: boolean;
 }
 
+export type LogFunction = (...args: unknown[]) => void;
+
+export interface Logger extends Record<keyof LogLevels, LogFunction> {
+  /** writes everything that waits, also when nothing does */
+  flush: () => void;
+  /** whether lines of the level are logged, to spare building the ones that would be dropped */
+  isEnabled: (level: keyof LogLevels) => boolean;
+}
+
 export interface ChildOptions {
   command: string;
   args?: string[] | ((port: number[]) => string[]);
@@ -265,3 +274,5 @@ export interface ProxyRequestOptions {
   /** how long the target may stay silent, in milliseconds, before the request is given up with 504 */
   timeout: number;
 }
+
+export type LoggerConfiguration = Pick<Configuration, 'logLevels' | 'fileLogPath' | 'fileLogFlushInterval'>;

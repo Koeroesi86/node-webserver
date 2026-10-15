@@ -5,10 +5,10 @@ import net from 'net';
 import { once } from 'events';
 import proxyMiddleware from './proxy';
 import { addPort, clearPorts } from '../utils/ports';
+import createMockLogger from '../utils/mock-logger.test-helper';
 import type { ServerConfig, ServerRuntime } from '../types';
 
 jest.mock('child_process', () => ({ spawn: jest.fn(() => ({ pid: 1 })) }));
-jest.mock('../utils/logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn(), info: jest.fn(), warning: jest.fn() } }));
 
 const instance = (extra: Partial<ServerConfig> = {}): ServerConfig => ({
   hostname: 'child.localhost',
@@ -21,7 +21,7 @@ const instance = (extra: Partial<ServerConfig> = {}): ServerConfig => ({
 });
 
 describe('proxyMiddleware', () => {
-  const start = (server: ServerConfig, runtime: ServerRuntime = {}) => proxyMiddleware(server, runtime);
+  const start = (server: ServerConfig, runtime: ServerRuntime = {}) => proxyMiddleware(server, runtime, createMockLogger());
 
   beforeEach(() => {
     clearPorts();
@@ -36,7 +36,7 @@ describe('proxyMiddleware', () => {
     addPort(3001);
     const server = instance();
     const runtime: ServerRuntime = {};
-    proxyMiddleware(server, runtime);
+    proxyMiddleware(server, runtime, createMockLogger());
 
     expect(spawn).toHaveBeenCalledWith('node', ['server.js', '--port', '3001'], { stdio: 'pipe' });
     expect(server.proxyOptions).toMatchObject({ hostname: 'localhost', port: [3001] });
@@ -95,7 +95,7 @@ describe('proxyMiddleware', () => {
         serverOptions: { protocol: 'http', proxyTarget: `http://127.0.0.1:${childPort}` },
       });
       const app = express();
-      app.use(proxyMiddleware(server, runtime));
+      app.use(proxyMiddleware(server, runtime, createMockLogger()));
 
       return listen(http.createServer(app));
     };

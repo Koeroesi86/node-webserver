@@ -7,7 +7,6 @@
   "files": [
     "dist",
     "!dist/scripts/load-test-server.*",
-    "!dist/scripts/load-test-env.*",
     "!dist/configuration.load-test.*",
     "examples",
     "logs/.gitkeep",

@@ -4,10 +4,11 @@ import http from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import createTargetStore from './create-target-store';
-
-jest.mock('./logger', () => ({ __esModule: true, default: { error: jest.fn(), warning: jest.fn() } }));
+import createMockLogger from './mock-logger.test-helper';
 
 describe('createTargetStore', () => {
+  const logger = createMockLogger();
+
   let folder: string;
   let persistPath: string;
 
@@ -22,7 +23,7 @@ describe('createTargetStore', () => {
   });
 
   it('keeps the agent of a target that is set again, and replaces it for another target', () => {
-    const store = createTargetStore({});
+    const store = createTargetStore({ logger });
     const first = store.set(new URL('http://203.0.113.7:8080'));
     const again = store.set(new URL('http://203.0.113.7:8080'));
     const other = store.set(new URL('http://203.0.113.8:8080'));
@@ -33,7 +34,7 @@ describe('createTargetStore', () => {
   });
 
   it('forgets a target once it expired', () => {
-    const store = createTargetStore({});
+    const store = createTargetStore({ logger });
     store.set(new URL('http://203.0.113.7'), Date.now() + 1000);
     const now = Date.now();
 
@@ -42,15 +43,15 @@ describe('createTargetStore', () => {
   });
 
   it('keeps the target in its file, for the next start', async () => {
-    const store = createTargetStore({ persistPath });
+    const store = createTargetStore({ logger, persistPath });
     const set = store.set(new URL('http://203.0.113.7:8080'), Date.now() + 60000);
     await store.saved();
 
-    expect(createTargetStore({ persistPath }).get()).toMatchObject({ url: set.url, setAt: set.setAt, expiresAt: set.expiresAt });
+    expect(createTargetStore({ logger, persistPath }).get()).toMatchObject({ url: set.url, setAt: set.setAt, expiresAt: set.expiresAt });
   });
 
   it('removes the file with the target', async () => {
-    const store = createTargetStore({ persistPath });
+    const store = createTargetStore({ logger, persistPath });
     store.set(new URL('http://203.0.113.7:8080'));
     store.unset();
     await store.saved();
@@ -60,9 +61,9 @@ describe('createTargetStore', () => {
 
   it('takes over the target of the server it replaces, with connections of its own, over the one in its file', async () => {
     writeFileSync(persistPath, JSON.stringify({ target: 'http://203.0.113.9/', setAt: 1 }));
-    const seed = createTargetStore({}).set(new URL('http://203.0.113.7:8080'), Date.now() + 60000);
+    const seed = createTargetStore({ logger }).set(new URL('http://203.0.113.7:8080'), Date.now() + 60000);
 
-    const store = createTargetStore({ persistPath }, seed);
+    const store = createTargetStore({ logger, persistPath }, seed);
     await store.saved();
 
     expect(store.get()).toMatchObject({ url: seed.url, setAt: seed.setAt, expiresAt: seed.expiresAt });
@@ -71,9 +72,9 @@ describe('createTargetStore', () => {
   });
 
   it('does not take over a target that expired', () => {
-    const seed = createTargetStore({}).set(new URL('http://203.0.113.7:8080'), Date.now() - 1);
+    const seed = createTargetStore({ logger }).set(new URL('http://203.0.113.7:8080'), Date.now() - 1);
 
-    expect(createTargetStore({}, seed).get()).toBeUndefined();
+    expect(createTargetStore({ logger }, seed).get()).toBeUndefined();
   });
 
   it('closes the connections to its target once they are idle when it is closed', async () => {
@@ -81,7 +82,7 @@ describe('createTargetStore', () => {
     upstream.listen(0, '127.0.0.1');
     await once(upstream, 'listening');
     const address = upstream.address();
-    const store = createTargetStore({});
+    const store = createTargetStore({ logger });
     const { agent, url } = store.set(new URL(`http://127.0.0.1:${address && typeof address === 'object' ? address.port : 0}`));
     const response = await new Promise<http.IncomingMessage>((resolve) => http.get(url, { agent }, resolve));
     response.resume();
@@ -100,7 +101,7 @@ describe('createTargetStore', () => {
   it('does not restore a target that expired while the server was down', () => {
     writeFileSync(persistPath, JSON.stringify({ target: 'http://203.0.113.7/', setAt: 1, expiresAt: Date.now() - 1 }));
 
-    expect(createTargetStore({ persistPath }).get()).toBeUndefined();
+    expect(createTargetStore({ logger, persistPath }).get()).toBeUndefined();
   });
 
   it.each(['not json', JSON.stringify({ target: 1, setAt: 1 }), JSON.stringify({ target: 'not a url', setAt: 1 })])(
@@ -108,7 +109,7 @@ describe('createTargetStore', () => {
     (content) => {
       writeFileSync(persistPath, content);
 
-      expect(createTargetStore({ persistPath }).get()).toBeUndefined();
+      expect(createTargetStore({ logger, persistPath }).get()).toBeUndefined();
       expect(readFileSync(persistPath, 'utf8')).toBe(content);
     }
   );

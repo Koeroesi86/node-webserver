@@ -3,8 +3,7 @@ import vHost from 'vhost';
 import pidUsage from 'pidusage';
 import getURL from './getURL';
 import getDate from './getDate';
-import logger from './logger';
-import type { Configuration, ServerRuntime, ServerState } from '../types';
+import type { Configuration, Logger, ServerRuntime, ServerState } from '../types';
 
 type Lambdas = NonNullable<ServerRuntime['lambdas']>;
 
@@ -68,7 +67,7 @@ function refreshStats(getInstances: () => ServerState[], refreshInterval = 10000
   setTimeout(() => refreshStats(getInstances, refreshInterval), refreshInterval);
 }
 
-function setupStatsHandler(getInstances: () => ServerState[], httpApp: Express, Configuration: Partial<Configuration>) {
+function setupStatsHandler(getInstances: () => ServerState[], httpApp: Express, Configuration: Partial<Configuration>, logger: Logger) {
   const { portHttp, statsDomain, statsRefreshInterval } = Configuration;
   if (statsDomain) {
     refreshStats(getInstances, statsRefreshInterval);

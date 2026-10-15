@@ -3,6 +3,7 @@ import { Agent } from 'http';
 import { middleware } from '@koeroesi86/node-worker-express';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import createInstanceHandler from './create-instance-handler';
+import createMockLogger from './mock-logger.test-helper';
 import retireAgent from './retire-agent';
 import type { Request, Response } from 'express';
 import type { LoadedInstance, ServerConfig, ServerRuntime } from '../types';
@@ -15,6 +16,8 @@ jest.mock('../middlewares/lambda', () => ({ __esModule: true, default: jest.fn((
 jest.mock('@koeroesi86/node-worker-express', () => ({ middleware: jest.fn(() => Object.assign(jest.fn(), { close: jest.fn(async () => {}) })) }));
 
 describe('createInstanceHandler', () => {
+  const logger = createMockLogger();
+
   const child = (): { instance: ServerConfig; runtime: ServerRuntime } => ({
     instance: { hostname: 'child.localhost', protocol: 'http', type: 'child' },
     runtime: {
@@ -25,7 +28,7 @@ describe('createInstanceHandler', () => {
 
   it('stops a child server once it answered its requests', async () => {
     const { instance, runtime } = child();
-    const { handler, close } = createInstanceHandler(instance, runtime);
+    const { handler, close } = createInstanceHandler(instance, runtime, { logger });
     const response = new EventEmitter() as unknown as Response;
     handler({} as Request, response, jest.fn());
     const closed = jest.fn();
@@ -42,7 +45,7 @@ describe('createInstanceHandler', () => {
   });
 
   it('leaves the waiting for the requests of a worker server to its pool', async () => {
-    const { close } = createInstanceHandler({ hostname: 'worker.localhost', protocol: 'http', type: 'worker', options: { root: '/' } }, {});
+    const { close } = createInstanceHandler({ hostname: 'worker.localhost', protocol: 'http', type: 'worker', options: { root: '/' } }, {}, { logger });
 
     await close(1000);
 
@@ -62,7 +65,7 @@ describe('createInstanceHandler', () => {
     jest.mocked(middleware).mockClear();
 
     ['one.localhost', 'two.localhost'].forEach((hostname) =>
-      createInstanceHandler({ hostname, protocol: 'http', type: 'worker', options: { root: '/' } }, {}, { workerBudget })
+      createInstanceHandler({ hostname, protocol: 'http', type: 'worker', options: { root: '/' } }, {}, { logger, workerBudget })
     );
 
     expect(jest.mocked(middleware).mock.calls.map(([options]) => options.workerBudget)).toEqual([workerBudget, workerBudget]);
@@ -89,7 +92,7 @@ describe('createInstanceHandler', () => {
     it('keeps the target that was registered with the server it replaces', () => {
       const previous = register(proxy());
 
-      const { registeredTarget } = createInstanceHandler(proxy(), {}, { previous });
+      const { registeredTarget } = createInstanceHandler(proxy(), {}, { logger, previous });
 
       expect(registeredTarget?.()).toMatchObject({ url: new URL('http://203.0.113.7:8080'), setAt: 1 });
     });
@@ -97,12 +100,12 @@ describe('createInstanceHandler', () => {
     it('does not take the target of a server of another host', () => {
       const previous = register(proxy('other.localhost'));
 
-      expect(createInstanceHandler(proxy(), {}, { previous }).registeredTarget?.()).toBeUndefined();
+      expect(createInstanceHandler(proxy(), {}, { logger, previous }).registeredTarget?.()).toBeUndefined();
     });
 
     it('closes the connections to its target once their requests are answered', async () => {
       const previous = register(proxy());
-      const { registeredTarget, close } = createInstanceHandler(proxy(), {}, { previous });
+      const { registeredTarget, close } = createInstanceHandler(proxy(), {}, { logger, previous });
       const agent = registeredTarget?.()?.agent;
 
       await close(1000);

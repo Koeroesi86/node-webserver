@@ -1,10 +1,10 @@
 import setupChildListener from './setupChildListener';
-import type { ServerState } from '../types';
+import type { Logger, ServerState } from '../types';
 
-const setupChildListeners = (hosts: ServerState[] = []) => {
+const setupChildListeners = (logger: Logger, hosts: ServerState[] = []) => {
   hosts.forEach(({ runtime: { child } }) => {
     if (child) {
-      setupChildListener(child);
+      setupChildListener(child, logger);
     }
   });
 };

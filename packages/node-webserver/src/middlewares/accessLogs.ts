@@ -1,8 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { isHandedOff, isRequestHandedOff, requestHandOffDoneEvent } from '@koeroesi86/node-worker-express';
 import getDate from '../utils/getDate';
-import logger from '../utils/logger';
-import type { LogLevels } from '../types';
+import type { Logger, LogLevels } from '../types';
 
 // the host header is read from the parsed headers, request.get() lowercases the name and looks at the special cases of express for every call
 const fullUrl = (request: Request) => `${request.protocol}://${request.headers.host}${request.originalUrl}`;
@@ -21,7 +20,7 @@ const serialiseHeaders = (request: Request) =>
 
 const getResponseLevel = (statusCode: number): keyof LogLevels => (statusCode < 400 ? 'success' : 'error');
 
-const accessLogsMiddleware = ({ alias = 'APP' }: { alias?: string }) => {
+const accessLogsMiddleware = ({ alias = 'APP', logger }: { alias?: string; logger: Logger }) => {
   // the levels do not change while the server runs, and a line that is not logged must not be built: that takes a sorted copy of the headers and a string
   const logsRequests = logger.isEnabled('success');
   const logsResponses = logger.isEnabled('success') || logger.isEnabled('error');

@@ -3,16 +3,16 @@ import { CONTROL_BODY_LIMIT, CONTROL_FAILURES_PER_WINDOW, CONTROL_RATE_WINDOW, C
 import createRateLimiter from '../utils/create-rate-limiter';
 import getClientAddress from '../utils/get-client-address';
 import getDate from '../utils/getDate';
-import logger from '../utils/logger';
 import readBody from '../utils/read-body';
 import resolveRegisteredTarget from '../utils/resolve-registered-target';
 import tokensMatch from '../utils/tokens-match';
-import type { DynamicTargetOptions, ProxyTarget, TargetStore } from '../types';
+import type { DynamicTargetOptions, Logger, ProxyTarget, TargetStore } from '../types';
 
 interface ControlOptions extends DynamicTargetOptions {
   hostname: string;
   token: string;
   store: TargetStore;
+  logger: Logger;
 }
 
 const send = (response: Response, status: number, body?: object) => (body ? response.status(status).json(body) : response.status(status).end());
@@ -36,7 +36,7 @@ const parse = (text: string): unknown => {
  * with the token of this host, over HTTPS only. The token is never logged, and an address that fails too often is refused for the rest of the window.
  */
 const proxyControl = (options: ControlOptions): RequestHandler => {
-  const { hostname, token, store, ttl } = options;
+  const { hostname, token, store, ttl, logger } = options;
   const failures = createRateLimiter(CONTROL_FAILURES_PER_WINDOW, CONTROL_RATE_WINDOW);
   const updates = createRateLimiter(CONTROL_UPDATES_PER_WINDOW, CONTROL_RATE_WINDOW);
 

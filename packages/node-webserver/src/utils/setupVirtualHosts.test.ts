@@ -4,6 +4,7 @@ import zlib from 'zlib';
 import { middleware } from '@koeroesi86/node-worker-express';
 import createInstanceHandler from './create-instance-handler';
 import setupVirtualHosts from './setupVirtualHosts';
+import createMockLogger from './mock-logger.test-helper';
 import type { Express, RequestHandler } from 'express';
 import type { ServerConfig, ServerRuntime } from '../types';
 
@@ -16,7 +17,6 @@ jest.mock('@koeroesi86/node-worker-express', () => ({
     response.end(text);
   }),
 }));
-jest.mock('./logger', () => ({ __esModule: true, default: { system: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 
 describe('setupVirtualHosts', () => {
   const servers: http.Server[] = [];
@@ -45,9 +45,10 @@ describe('setupVirtualHosts', () => {
     const hosts = setupVirtualHosts(
       instances.map((current) => {
         const runtime = {};
-        return { instance: current, runtime, ...createInstanceHandler(current, runtime) };
+        return { instance: current, runtime, ...createInstanceHandler(current, runtime, { logger: createMockLogger() }) };
       }),
-      ports
+      ports,
+      createMockLogger()
     );
     const httpApp = express();
     const httpsApp = express();
@@ -130,7 +131,8 @@ describe('setupVirtualHosts', () => {
         { instance: instance({ hostname: 'a.localhost' }), runtime: {}, handler: answer('a') },
         { instance: instance({ hostname: 'b.localhost' }), runtime: {}, handler: answer('b') },
       ],
-      ports
+      ports,
+      createMockLogger()
     );
     const httpApp = express();
     httpApp.use(hosts.http);
@@ -146,7 +148,8 @@ describe('setupVirtualHosts', () => {
     const runtimes = [{}, {}] as Array<ServerRuntime>;
     setupVirtualHosts(
       [http, https].map((current, index) => ({ instance: current, runtime: runtimes[index], handler: jest.fn() })),
-      { portHttp: 8080, portHttps: 443 }
+      { portHttp: 8080, portHttps: 443 },
+      createMockLogger()
     );
 
     expect(runtimes.map(({ url }) => url)).toEqual(['http://a.localhost:8080', 'https://b.localhost']);

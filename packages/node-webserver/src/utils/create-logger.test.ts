@@ -1,18 +1,18 @@
 import path from 'path';
+import type { Logger } from '../types';
 
 const logFolder = path.resolve('/logs');
 
 interface Setup {
-  logger: typeof import('./logger').default;
+  logger: Logger;
   fs: { openSync: jest.Mock; write: jest.Mock; writeSync: jest.Mock };
-  onExit: () => void;
   /** what is in the file of the level, as the disk has it */
   content: (level: string) => string | undefined;
   /** lets the writes that were started finish, as the disk would */
   finishWrites: () => void;
 }
 
-describe('logger', () => {
+describe('createLogger', () => {
   let consoleLog: jest.SpyInstance;
 
   beforeEach(() => {
@@ -26,7 +26,7 @@ describe('logger', () => {
     jest.resetModules();
   });
 
-  /** the logger reads its configuration and the file system when it is imported. The disk keeps what is written at the position it is written to */
+  /** the disk keeps what is written at the position it is written to */
   const load = (configuration: object = {}): Setup => {
     const disk = new Map<string, Buffer>();
     const paths = new Map<number, string>();
@@ -59,19 +59,11 @@ describe('logger', () => {
       mkdirSync: jest.fn(),
       existsSync: jest.fn(() => true),
     }));
-    jest.doMock('../configuration.example', () => ({ fileLogPath: logFolder, logLevels: { info: true, error: true, success: false }, ...configuration }));
-    const exitListeners: Array<() => void> = [];
-    jest.spyOn(process, 'on').mockImplementation((event, listener) => {
-      if (event === 'exit') exitListeners.push(() => listener(0));
-      return process;
-    });
-
-    const { default: logger } = require('./logger');
+    const logger = require('./create-logger').default({ fileLogPath: logFolder, logLevels: { info: true, error: true, success: false }, ...configuration });
 
     return {
       logger,
       fs,
-      onExit: () => exitListeners.forEach((listener) => listener()),
       content: (level) =>
         Array.from(disk.entries())
           .find(([file]) => file.endsWith(`.${level}.log`))?.[1]
@@ -79,6 +71,31 @@ describe('logger', () => {
       finishWrites: () => started.splice(0).forEach((finish) => finish()),
     };
   };
+
+  it('has no effect beyond its folder until it is used: no process hook, no file, no console', () => {
+    const onProcess = jest.spyOn(process, 'on');
+    const { fs } = load();
+
+    expect(onProcess).not.toHaveBeenCalled();
+    expect(fs.openSync).not.toHaveBeenCalled();
+    expect(consoleLog).not.toHaveBeenCalled();
+  });
+
+  it('needs no configuration file, and is independent of another logger', () => {
+    const first = load();
+    const second = load({ logLevels: { info: false } });
+
+    first.logger.info('only here');
+    second.logger.info('not logged');
+    first.logger.flush();
+
+    expect(consoleLog).toHaveBeenCalledTimes(1);
+    expect(consoleLog).toHaveBeenCalledWith('only here');
+  });
+
+  it('refuses a configuration without fileLogPath', () => {
+    expect(() => load({ fileLogPath: undefined })).toThrow('fileLogPath');
+  });
 
   it('collects the lines of a file and writes them together after the flush interval', () => {
     const { logger, fs, content, finishWrites } = load();
@@ -196,11 +213,11 @@ describe('logger', () => {
       expect(consoleLog).toHaveBeenCalledTimes(1);
     });
 
-    it('is written when the process exits', () => {
-      const { logger, onExit } = load();
+    it('is written when flushed', () => {
+      const { logger } = load();
 
       logger.info('last words');
-      onExit();
+      logger.flush();
 
       expect(consoleLog).toHaveBeenCalledWith('last words');
     });
@@ -255,22 +272,22 @@ describe('logger', () => {
     expect(content('info')).toBe('one\n');
   });
 
-  it('writes what is waiting when the process exits', () => {
-    const { logger, content, onExit } = load();
+  it('writes what is waiting when flushed at exit', () => {
+    const { logger, content } = load();
     logger.info('last words');
 
-    onExit();
+    logger.flush();
 
     expect(content('info')).toBe('last words\n');
   });
 
-  it('writes a chunk that is on its way to the disk when the process exits, once and before the lines that came after it', () => {
-    const { logger, fs, content, finishWrites, onExit } = load();
+  it('writes a chunk that is on its way to the disk when flushed at exit, once and before the lines that came after it', () => {
+    const { logger, fs, content, finishWrites } = load();
     logger.info('first');
     jest.advanceTimersByTime(100);
     logger.info('second');
 
-    onExit();
+    logger.flush();
     expect(content('info')).toBe('first\nsecond\n');
 
     // the write that was on its way finishes late, and is not written a second time behind the others

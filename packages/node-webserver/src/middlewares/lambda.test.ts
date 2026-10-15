@@ -9,7 +9,6 @@ import createLambdaRouteTable from './lambda-route-table';
 import type { ServerConfig } from '../types';
 
 jest.mock('@koeroesi86/node-lambda-invoke', () => ({ httpMiddleware: jest.fn(() => 'the handler') }));
-jest.mock('../utils/logger', () => ({ __esModule: true, default: { info: jest.fn() } }));
 
 const instance = (lambdaOptions: ServerConfig['lambdaOptions']): ServerConfig => ({
   hostname: 'lambda.localhost',
@@ -24,7 +23,7 @@ describe('lambdaMiddleware', () => {
   });
 
   it('calls the middleware of the library with its options object, not with positional arguments', () => {
-    const handler = lambdaMiddleware(instance({ lambda: '/lambdas/a.js', handler: 'main' }));
+    const handler = lambdaMiddleware(instance({ lambda: '/lambdas/a.js', handler: 'main' }), jest.fn());
 
     expect(handler).toBe('the handler');
     expect(httpMiddleware).toHaveBeenCalledTimes(1);
@@ -32,21 +31,29 @@ describe('lambdaMiddleware', () => {
     expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ lambdaPath: '/lambdas/a.js', handlerKey: 'main', logger: expect.any(Function) });
   });
 
+  it('hands the log function on to the library', () => {
+    const log = jest.fn();
+    lambdaMiddleware(instance({ lambda: '/lambdas/a.js' }), log);
+
+    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ logger: log });
+  });
+
   it('uses the handler key `handler` and the communication `ipc` unless told otherwise', () => {
-    lambdaMiddleware(instance({ lambda: '/lambdas/a.js' }));
+    lambdaMiddleware(instance({ lambda: '/lambdas/a.js' }), jest.fn());
 
     expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ handlerKey: 'handler', communication: { type: 'ipc' } });
   });
 
   it('passes the communication, the limit and the acquire timeout on', () => {
-    lambdaMiddleware(instance({ lambda: '/lambdas/a.js', communication: 'file', limit: 3, acquireTimeout: 500 }));
+    lambdaMiddleware(instance({ lambda: '/lambdas/a.js', communication: 'file', limit: 3, acquireTimeout: 500 }), jest.fn());
 
     expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ communication: { type: 'file' }, limit: 3, acquireTimeout: 500 });
   });
 
   it('passes the timeouts, the limit of the body and the environment on', () => {
     lambdaMiddleware(
-      instance({ lambda: '/lambdas/a.js', startTimeout: 2000, timeout: 30000, limitRequestBody: 1024, restrictFileSystem: false, env: { TABLE: 'users' } })
+      instance({ lambda: '/lambdas/a.js', startTimeout: 2000, timeout: 30000, limitRequestBody: 1024, restrictFileSystem: false, env: { TABLE: 'users' } }),
+      jest.fn()
     );
 
     expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({
@@ -59,13 +66,13 @@ describe('lambdaMiddleware', () => {
   });
 
   it('leaves the limit to the default of the library when there is none', () => {
-    lambdaMiddleware(instance({ lambda: '/lambdas/a.js' }));
+    lambdaMiddleware(instance({ lambda: '/lambdas/a.js' }), jest.fn());
 
     expect(jest.mocked(httpMiddleware).mock.calls[0][0].limit).toBeUndefined();
   });
 
   it('writes the path of the lambda with slashes, as the lambda worker is started with it', () => {
-    lambdaMiddleware(instance({ lambda: 'C:\\lambdas\\a.js' }));
+    lambdaMiddleware(instance({ lambda: 'C:\\lambdas\\a.js' }), jest.fn());
 
     expect(jest.mocked(httpMiddleware).mock.calls[0][0].lambdaPath).toBe('C:/lambdas/a.js');
   });
@@ -128,7 +135,8 @@ describe('lambdaMiddleware', () => {
             { path: '/orders', lambda: orders, handler: 'list' },
             { pattern: '/orders/(?<id>[0-9]+)', lambda: orders, handler: 'get' },
           ],
-        })
+        }),
+        jest.fn()
       );
       const list = requestFor('/orders?x=1');
       const get = requestFor('/orders/42');
@@ -149,7 +157,8 @@ describe('lambdaMiddleware', () => {
             { pattern: '/items/.*', lambda: items },
             { path: '/items/1', lambda: orders },
           ],
-        })
+        }),
+        jest.fn()
       );
 
       handler(requestFor('/items/1'), responseFor(), jest.fn());
@@ -167,7 +176,8 @@ describe('lambdaMiddleware', () => {
             { path: '/orders', lambda: orders },
             { path: '/items', lambda: items, limit: 1 },
           ],
-        })
+        }),
+        jest.fn()
       );
 
       expect(created.map(({ options }) => [options.lambdaPath, options.limit, options.acquireTimeout])).toEqual([
@@ -177,7 +187,7 @@ describe('lambdaMiddleware', () => {
     });
 
     it('answers 404 without invoking a lambda when no route matches', () => {
-      const handler = lambdaMiddleware(instance({ routes: [{ path: '/orders', lambda: orders }] }));
+      const handler = lambdaMiddleware(instance({ routes: [{ path: '/orders', lambda: orders }] }), jest.fn());
       const response = responseFor();
 
       handler(requestFor('/missing'), response, jest.fn());
@@ -188,7 +198,7 @@ describe('lambdaMiddleware', () => {
     });
 
     it('sends the paths that no route matches to `lambda`, which stays what it was', () => {
-      const handler = lambdaMiddleware(instance({ lambda: rest, handler: 'main', routes: [{ path: '/orders', lambda: orders }] }));
+      const handler = lambdaMiddleware(instance({ lambda: rest, handler: 'main', routes: [{ path: '/orders', lambda: orders }] }), jest.fn());
       const request = requestFor('/anything');
 
       handler(request, responseFor(), jest.fn());
@@ -197,7 +207,7 @@ describe('lambdaMiddleware', () => {
     });
 
     it('stops the lambdas of every route when it is closed', () => {
-      const handler = lambdaMiddleware(instance({ lambda: rest, routes: [{ path: '/orders', lambda: orders }] }));
+      const handler = lambdaMiddleware(instance({ lambda: rest, routes: [{ path: '/orders', lambda: orders }] }), jest.fn());
 
       handler.close();
 
@@ -210,7 +220,7 @@ describe('lambdaMiddleware', () => {
       ['whose lambda is not a file', { path: '/orders', lambda: path.join(os.tmpdir(), 'missing-lambda.js') }, /is not a file/],
       ['with an invalid pattern', { pattern: '/orders/(', lambda: orders }, /is not valid/],
     ])('refuses a route %s, and leaves no lambdas behind', (_, route, message) => {
-      expect(() => lambdaMiddleware(instance({ routes: [{ path: '/first', lambda: items }, route] }))).toThrow(message);
+      expect(() => lambdaMiddleware(instance({ routes: [{ path: '/first', lambda: items }, route] }), jest.fn())).toThrow(message);
 
       created.forEach(({ middleware }) => expect(middleware.close).toHaveBeenCalledTimes(1));
     });

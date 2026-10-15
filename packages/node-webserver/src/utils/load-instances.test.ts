@@ -4,6 +4,7 @@ import path from 'path';
 import tls from 'tls';
 import createInstanceHandler from './create-instance-handler';
 import loadInstances from './load-instances';
+import createMockLogger from './mock-logger.test-helper';
 import type { ServerConfig } from '../types';
 
 // a server starts processes, a handler that remembers whether it was stopped is enough here
@@ -35,22 +36,22 @@ describe('loadInstances', () => {
   it('loads the servers of the files and the ones of the configuration', () => {
     const inline: ServerConfig = { hostname: 'inline.localhost', protocol: 'http' };
 
-    const loaded = loadInstances([server('a.js', 'a.localhost'), inline], []);
+    const loaded = loadInstances([server('a.js', 'a.localhost'), inline], [], createMockLogger());
 
     expect(loaded.map(({ instance }) => instance.hostname)).toEqual(['a.localhost', 'inline.localhost']);
     expect(createInstanceHandler).toHaveBeenCalledTimes(2);
   });
 
   it('leaves out a file that does not exist', () => {
-    expect(loadInstances([path.join(folder, 'missing.js')], [])).toEqual([]);
+    expect(loadInstances([path.join(folder, 'missing.js')], [], createMockLogger())).toEqual([]);
   });
 
   it('keeps a server whose files did not change, with what it started', () => {
     const inline: ServerConfig = { hostname: 'inline.localhost', protocol: 'http' };
     const servers = [server('a.js', 'a.localhost'), inline];
-    const previous = loadInstances(servers, []);
+    const previous = loadInstances(servers, [], createMockLogger());
 
-    const loaded = loadInstances(servers, previous);
+    const loaded = loadInstances(servers, previous, createMockLogger());
 
     expect(loaded).toEqual(previous);
     expect(loaded[0]).toBe(previous[0]);
@@ -60,10 +61,10 @@ describe('loadInstances', () => {
 
   it('picks up a changed file, and leaves stopping the old server to the caller', () => {
     const file = server('a.js', 'a.localhost');
-    const previous = loadInstances([file], []);
+    const previous = loadInstances([file], [], createMockLogger());
     server('a.js', 'b.localhost');
 
-    const loaded = loadInstances([file], previous);
+    const loaded = loadInstances([file], previous, createMockLogger());
 
     expect(loaded[0].instance.hostname).toBe('b.localhost');
     expect(loaded[0]).not.toBe(previous[0]);
@@ -72,26 +73,26 @@ describe('loadInstances', () => {
 
   it('drops a server whose file was removed', () => {
     const file = server('a.js', 'a.localhost');
-    const previous = loadInstances([file, server('b.js', 'b.localhost')], []);
+    const previous = loadInstances([file, server('b.js', 'b.localhost')], [], createMockLogger());
     fs.rmSync(file);
 
-    const loaded = loadInstances([file, path.join(folder, 'b.js')], previous);
+    const loaded = loadInstances([file, path.join(folder, 'b.js')], previous, createMockLogger());
 
     expect(loaded.map(({ instance }) => instance.hostname)).toEqual(['b.localhost']);
   });
 
   it('throws for a broken file, without starting anything', () => {
     const file = server('a.js', 'a.localhost');
-    const previous = loadInstances([file, server('b.js', 'b.localhost')], []);
+    const previous = loadInstances([file, server('b.js', 'b.localhost')], [], createMockLogger());
     write('b.js', 'module.exports = {');
     server('a.js', 'c.localhost');
 
-    expect(() => loadInstances([file, path.join(folder, 'b.js')], previous)).toThrow('Unexpected');
+    expect(() => loadInstances([file, path.join(folder, 'b.js')], previous, createMockLogger())).toThrow('Unexpected');
     expect(createInstanceHandler).toHaveBeenCalledTimes(2);
   });
 
   it('throws for a file that does not export a server', () => {
-    expect(() => loadInstances([write('a.js', `module.exports = { hostname: 'a.localhost' };`)], [])).toThrow('does not export a server');
+    expect(() => loadInstances([write('a.js', `module.exports = { hostname: 'a.localhost' };`)], [], createMockLogger())).toThrow('does not export a server');
   });
 
   it('stops the servers it started when another one fails to start', () => {
@@ -103,7 +104,7 @@ describe('loadInstances', () => {
         throw new Error('options are required');
       });
 
-    expect(() => loadInstances([server('a.js', 'a.localhost'), server('b.js', 'b.localhost')], [])).toThrow('options are required');
+    expect(() => loadInstances([server('a.js', 'a.localhost'), server('b.js', 'b.localhost')], [], createMockLogger())).toThrow('options are required');
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -114,15 +115,15 @@ describe('loadInstances', () => {
     // the files are no real key and certificate, an empty context stands in for theirs
     const emptyContext = tls.createSecureContext();
     const createSecureContext = jest.spyOn(tls, 'createSecureContext').mockReturnValue(emptyContext);
-    const previous = loadInstances([file], []);
+    const previous = loadInstances([file], [], createMockLogger());
     write('cert.pem', 'two');
 
-    const loaded = loadInstances([file], previous);
+    const loaded = loadInstances([file], previous, createMockLogger());
     fs.rmSync(cert);
 
     expect(loaded[0]).toBe(previous[0]);
     expect(createSecureContext).toHaveBeenLastCalledWith(expect.objectContaining({ cert: 'two' }));
-    expect(() => loadInstances([file], loaded)).toThrow('ENOENT');
+    expect(() => loadInstances([file], loaded, createMockLogger())).toThrow('ENOENT');
     expect(createInstanceHandler).toHaveBeenCalledTimes(1);
   });
 });

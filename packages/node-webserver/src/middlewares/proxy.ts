@@ -4,9 +4,9 @@ import type { RequestHandler } from 'express';
 import { getFreePort } from '../utils/ports';
 import { PROXY_PROTOCOLS } from '../constants';
 import proxyServerMiddleware from './proxy-server';
-import type { ServerConfig, ServerRuntime } from '../types';
+import type { Logger, ServerConfig, ServerRuntime } from '../types';
 
-const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime): RequestHandler => {
+const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime, logger: Logger): RequestHandler => {
   const { childOptions, proxyOptions, serverOptions } = instance;
 
   if (!childOptions || !proxyOptions || !serverOptions) {
@@ -32,7 +32,7 @@ const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime): Reques
   runtime.child = spawn(command, childArgs || [], { stdio: 'pipe' });
 
   // the requests go the way those of a `proxy` server with a fixed target do (websockets, 502 and 504, forwarded headers), without a control path
-  const proxy = proxyServerMiddleware({ ...instance, proxyOptions: { ...proxyOptions, target: serverOptions.proxyTarget, dynamic: undefined } });
+  const proxy = proxyServerMiddleware({ ...instance, proxyOptions: { ...proxyOptions, target: serverOptions.proxyTarget, dynamic: undefined } }, logger);
   runtime.proxy = proxy;
 
   return proxy;

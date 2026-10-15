@@ -1,8 +1,7 @@
 import { resolve } from 'path';
 import { readdirSync, existsSync, rmSync } from 'fs';
-import logger from './logger';
 import { PACKAGE_ROOT } from '../constants';
-import type { ServerState } from '../types';
+import type { Logger, ServerState } from '../types';
 
 type ExitReason = NodeJS.Signals | 'exit' | 'uncaughtException';
 
@@ -13,7 +12,7 @@ export interface ExitOptions {
   gracefulStop?: () => Promise<void>;
 }
 
-function cleanTmp() {
+function cleanTmp(logger: Logger) {
   const tmpLocation = resolve(PACKAGE_ROOT, 'tmp');
   if (existsSync(tmpLocation) && readdirSync(tmpLocation).length > 0) {
     readdirSync(tmpLocation)
@@ -31,14 +30,14 @@ function exitHandler(hosts: ServerState[]) {
   });
 }
 
-function exitListener(getInstances: () => ServerState[], reason: ExitReason, event: unknown) {
+function exitListener(logger: Logger, getInstances: () => ServerState[], reason: ExitReason, event: unknown) {
   logger.error(`${reason} triggered:\n`, event);
   // the signal is raised again below, and a process ended by a signal does not run its exit handlers
   logger.flush();
 
   exitHandler(getInstances());
 
-  cleanTmp();
+  cleanTmp(logger);
 
   // the process is already exiting, there is nothing left to signal ('exit' is not a signal)
   if (reason === 'exit') return;
@@ -50,12 +49,12 @@ function exitListener(getInstances: () => ServerState[], reason: ExitReason, eve
  * Stops the child processes of the servers when the process stops. The servers are asked for when that happens, as they change when the configuration is loaded again.
  * SIGUSR1 (which node also uses to start the inspector), SIGUSR2 and an uncaught exception always end the process at once, as the state may be broken.
  */
-function addExitListeners(getInstances: () => ServerState[], { exitOnHangUp = true, gracefulStop }: ExitOptions = {}) {
+function addExitListeners(logger: Logger, getInstances: () => ServerState[], { exitOnHangUp = true, gracefulStop }: ExitOptions = {}) {
   process.stdin.resume();
 
-  cleanTmp();
+  cleanTmp(logger);
 
-  const stopAtOnce = (reason: ExitReason) => (event: unknown) => exitListener(getInstances, reason, event);
+  const stopAtOnce = (reason: ExitReason) => (event: unknown) => exitListener(logger, getInstances, reason, event);
   const signals: NodeJS.Signals[] = exitOnHangUp ? ['SIGINT', 'SIGTERM', 'SIGHUP'] : ['SIGINT', 'SIGTERM'];
 
   const stopSoftly = (reason: NodeJS.Signals) => async (event: unknown) => {
@@ -67,7 +66,7 @@ function addExitListeners(getInstances: () => ServerState[], { exitOnHangUp = tr
 
     // the signal is raised again below, which these would catch
     second.forEach(({ signal, listener }) => process.off(signal, listener));
-    exitListener(getInstances, reason, event);
+    exitListener(logger, getInstances, reason, event);
   };
 
   // do something when app is closing
