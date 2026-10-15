@@ -293,7 +293,8 @@ describe('workerInvoke', () => {
   it('tells a worker that a websocket message too big for the channel was not sent', async () => {
     sendUpgrade('a', '/ws-too-big');
 
-    await until(() => fsSync.existsSync(path.join(folder, 'ws-too-big')));
+    // the file exists before the worker has written to it, which Windows shows
+    await until(() => fsSync.existsSync(path.join(folder, 'ws-too-big')) && fsSync.readFileSync(path.join(folder, 'ws-too-big'), 'utf8') !== '');
 
     expect(fsSync.readFileSync(path.join(folder, 'ws-too-big'), 'utf8')).toBe('false');
     expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND)).toHaveLength(0);
