@@ -52,6 +52,22 @@ describe('createInstanceHandler', () => {
     expect(jest.mocked(middleware).mock.results[0].value.close).toHaveBeenCalledWith(1000);
   });
 
+  it('logs what a worker writes, and still hands it to the callbacks of the options', () => {
+    const onStdout = jest.fn();
+    const onStderr = jest.fn();
+    jest.mocked(middleware).mockClear();
+    createInstanceHandler({ hostname: 'worker.localhost', protocol: 'http', type: 'worker', options: { root: '/', onStdout, onStderr } }, {}, { logger });
+    const options = jest.mocked(middleware).mock.calls[0][0];
+
+    options.onStdout?.(Buffer.from('out\n'));
+    options.onStderr?.(Buffer.from('err\n'));
+
+    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] out$/));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] err$/));
+    expect(onStdout).toHaveBeenCalledWith(Buffer.from('out\n'));
+    expect(onStderr).toHaveBeenCalledWith(Buffer.from('err\n'));
+  });
+
   it('hands every worker server the same budget, so that their workers count together', () => {
     const workerBudget: WorkerBudget = {
       limit: 2,

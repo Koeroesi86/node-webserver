@@ -1,4 +1,5 @@
 import net from 'net';
+import setupShutdown from './setup-shutdown';
 import startServer from './startServer';
 import createMockLogger from './mock-logger.test-helper';
 
@@ -20,5 +21,16 @@ describe('startServer', () => {
 
     expect(second.httpApp).not.toBe(first.httpApp);
     expect(second.httpsApp).not.toBe(first.httpsApp);
+  });
+
+  it('hands its logger on to the shutdown, which flushes it when the process exits', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const logger = createMockLogger();
+
+    await startServer(configuration, logger);
+    await Promise.all(listen.mock.contexts.map((server: net.Server) => new Promise((resolve) => server.close(resolve))));
+    listen.mockRestore();
+
+    expect(jest.mocked(setupShutdown).mock.calls.at(-1)?.[1]).toMatchObject({ logger });
   });
 });
