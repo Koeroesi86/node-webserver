@@ -1,4 +1,5 @@
 import net from 'net';
+import { getServerMetrics } from '@koeroesi86/node-worker-express';
 import setupShutdown from './setup-shutdown';
 import startServer from './startServer';
 import createMockLogger from './mock-logger.test-helper';
@@ -44,5 +45,21 @@ describe('startServer', () => {
     listen.mockRestore();
 
     expect(server.removeProcessHooks).toBe(remove);
+  });
+
+  it('takes its metrics sources and its exit listener away once its servers closed', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const exitListeners = process.listenerCount('exit');
+    const sources = () => Object.keys(getServerMetrics().sources);
+
+    await startServer(configuration, createMockLogger());
+    expect(sources()).toEqual(expect.arrayContaining(['workers', 'lambdas']));
+    expect(process.listenerCount('exit')).toBe(exitListeners + 1);
+    await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
+    listen.mockRestore();
+
+    expect(sources()).not.toContain('workers');
+    expect(sources()).not.toContain('lambdas');
+    expect(process.listenerCount('exit')).toBe(exitListeners);
   });
 });

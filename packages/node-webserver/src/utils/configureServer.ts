@@ -32,7 +32,8 @@ const configureServer = (
     dropped += 1;
   });
 
-  registerMetricsSource(`connections:${name}`, () => ({ open, dropped, maxConnections, keepAliveTimeout }));
+  const unregisterMetrics = registerMetricsSource(`connections:${name}`, () => ({ open, dropped, maxConnections, keepAliveTimeout }));
+  server.once('close', unregisterMetrics);
 };
 
 export default configureServer;

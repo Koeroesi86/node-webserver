@@ -82,6 +82,6 @@ A lambda answers one request at a time. It is an AWS Lambda handler behind API G
 the answers, the storage and the differences in full. In short:
 
 * the handler gets the event of the proxy integration, with `body` and `isBase64Encoded`, and a context with `awsRequestId` and `getRemainingTimeInMillis()`; it can be `async` or use the callback, be nested (`controllers.users.get`) and be in an ES module;
-* requests that find all lambdas busy wait in line, first come first served, without polling, and leave it when their client goes away. `getLambdaStats()` reports `waiting` (the line) and `abandoned` (requests that left it);
+* requests that find all lambdas busy wait in line, first come first served, without polling, and leave it when their client goes away. `getLambdaStats()` reports `waiting` (the line) and `abandoned` (requests that left it) for the middlewares that were not given a `stats` registry; `createLambdaStats()` makes one for a server of its own (`stats` option of `httpMiddleware`, read with its `getStats()`), so that a second server in the process does not count in it;
 * failures are answered the way API Gateway answers them, with a JSON `message`: 502 `Internal server error` for a failed handler, a malformed response or a lambda that does not start or exits, 504 `Endpoint request timed out`, 503 `Service Unavailable` and 413 `Request Entity Too Large`;
 * a lambda has a `/tmp` of its own (`os.tmpdir()`) and cannot write anywhere else, it is drained after 14 minutes and 30 seconds and stopped when it is idle.

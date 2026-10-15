@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
+import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import compressionMiddleware from '../middlewares/compression';
 import proxyMiddleware from '../middlewares/proxy';
 import proxyServerMiddleware from '../middlewares/proxy-server';
@@ -14,6 +15,8 @@ interface Context {
   logger: Logger;
   /** shared by the worker servers, so that their processes together stay under its limit */
   workerBudget?: WorkerBudget;
+  /** shared by the lambda servers, for the stats of the server */
+  lambdaStats?: LambdaStats;
   /** the server of the same entry that runs now, which this one replaces */
   previous?: LoadedInstance;
 }
@@ -44,7 +47,7 @@ function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudge
   });
 }
 
-function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, { logger, workerBudget, previous }: Context): InstanceHandler {
+function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, { logger, workerBudget, lambdaStats, previous }: Context): InstanceHandler {
   if (instance.type === 'child') {
     // the requests are counted for the child servers only, as the pools of the workers and the lambdas know which of theirs are busy themselves
     const { handler, idle } = trackRequests(proxyMiddleware(instance, runtime, logger));
@@ -65,7 +68,7 @@ function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, { logger,
     return { handler, close: async () => handler.close(), registeredTarget: handler.registeredTarget };
   }
   if (instance.type === 'lambda') {
-    const handler = lambdaMiddleware(instance, logger.info);
+    const handler = lambdaMiddleware(instance, logger.info, lambdaStats);
     // the pool stops a busy lambda once it answered, which its own timeout bounds
     return { handler, close: async () => handler.close() };
   }

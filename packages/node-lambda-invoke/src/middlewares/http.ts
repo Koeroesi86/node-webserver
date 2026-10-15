@@ -64,6 +64,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     env,
     restrictFileSystem,
     communication = {},
+    stats,
   } = options;
   const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
   const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
@@ -88,6 +89,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     env,
     logger,
     communication: currentCommunication,
+    stats,
   });
   const handle = (request: IncomingMessage, response: ServerResponse, pathParameters?: Record<string, string>) => {
     const requestId = randomUUID();

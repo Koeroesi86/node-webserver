@@ -20,12 +20,6 @@ import type { IdleWorker, WorkerBudget, WorkerBudgetMember, WorkerInputEvent } f
 export type { WorkerLease } from './create-worker-lease';
 export type { SpawnOptions } from './spawn-worker';
 
-const pools: WorkerPool[] = [];
-
-process.once('exit', () => {
-  pools.forEach((pool) => pool.onClose());
-});
-
 interface WorkerPoolParams {
   overallLimit?: number;
   /** how long a request may wait for a worker when none can be started, in milliseconds */
@@ -82,7 +76,7 @@ class WorkerPool implements WorkerBudgetMember {
     onStderr,
     restartBackoff = { minUptime: WorkerMinUptime, ...WorkerRestartBackoff },
     idleTimeout = 0,
-    budget = createWorkerBudget(),
+    budget,
   }: WorkerPoolParams) {
     this.overallLimit = overallLimit;
     this.acquireTimeout = acquireTimeout;
@@ -110,9 +104,10 @@ class WorkerPool implements WorkerBudgetMember {
       refillWarmPaths: () => this.minimums.forEach((_, warmPath) => this.refill(warmPath)),
     });
     this.idleTimeout = idleTimeout;
-    this.budget = budget;
-    budget.join(this);
-    pools.push(this);
+    this.budget = budget ?? createWorkerBudget();
+    this.budget.join(this);
+    // a budget that was given is closed by whoever made it, for all its pools at once, not with a listener for each pool
+    if (!budget) process.once('exit', this.onClose);
   }
 
   /** stops a worker, which is not a crash */
@@ -149,7 +144,7 @@ class WorkerPool implements WorkerBudgetMember {
       timer.unref();
       this.onDisposed = () => {
         clearTimeout(timer);
-        pools.splice(pools.indexOf(this), 1);
+        process.off('exit', this.onClose);
         this.budget.leave(this);
         resolve();
       };

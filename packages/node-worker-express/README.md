@@ -24,6 +24,8 @@ pnpm --filter @koeroesi86/node-worker-express start
 
 `middleware.close(timeout)` stops the workers of a middleware that is not used any more, each once it answered the requests it took, or all of them after `timeout` milliseconds, and removes its pool from the metrics and from its `workerBudget`. It resolves once the workers stopped.
 
+A middleware without a `workerBudget` stops its workers when the process exits. With one it does not: call `budget.close()` from an exit listener, which stops the workers of all the pools in it at once.
+
 For all options see [types](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/src/types/index.ts).
 
 ## Streaming a response

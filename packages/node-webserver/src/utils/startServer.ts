@@ -2,7 +2,7 @@ import express from 'express';
 import type { Express } from 'express';
 import http from 'http';
 import type net from 'net';
-import { getLambdaStats } from '@koeroesi86/node-lambda-invoke';
+import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
 import accessLogsMiddleware from '../middlewares/accessLogs';
 import applyTrustedProxies from './apply-trusted-proxies';
@@ -39,9 +39,19 @@ const startServer = async (
   applyTrustedProxies(trustedProxies, [httpApp], [httpsApp, http2App]);
   // one for the whole process, so that the workers of the servers that are loaded again count against the same limit
   const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
-  registerMetricsSource('workers', workerBudget.getStats);
+  const unregisterWorkers = registerMetricsSource('workers', workerBudget.getStats);
+  // for all the pools of the budget at once, as they do not stop the workers themselves when the process ends
+  process.once('exit', workerBudget.close);
+  // one for the server too, so that the lambdas of a second server in the process do not count in the stats of this one
+  const lambdaStats = createLambdaStats();
 
-  const reloader = createServerReloader(servers, configuration, watchServers, (previous) => loadInstances(servers, previous, log, workerBudget), log);
+  const reloader = createServerReloader(
+    servers,
+    configuration,
+    watchServers,
+    (previous) => loadInstances(servers, previous, log, workerBudget, lambdaStats),
+    log
+  );
   const { reload, watch } = reloader;
 
   /** access logs */
@@ -62,7 +72,12 @@ const startServer = async (
 
   configureServer(httpServer, 'http', hydratedConfiguration);
   configureServer(httpsServer, 'https', hydratedConfiguration);
-  registerMetricsSource('lambdas', getLambdaStats);
+  const unregisterLambdas = registerMetricsSource('lambdas', lambdaStats.getStats);
+  httpServer.once('close', () => {
+    unregisterWorkers();
+    unregisterLambdas();
+    process.off('exit', workerBudget.close);
+  });
 
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);

@@ -91,6 +91,15 @@ describe('configureServer', () => {
     expect(metricsOf('unlimited')).toMatchObject({ dropped: 0 });
   });
 
+  it('takes its metrics source away when the server closes', async () => {
+    await listen('closing', { maxConnections: 10 });
+    expect(metricsOf('closing')).toBeDefined();
+
+    await new Promise((resolve) => server.close(resolve));
+
+    expect(metricsOf('closing')).toBeUndefined();
+  });
+
   it('counts the connections that are open, and stops counting the ones that closed', async () => {
     const port = await listen('counted', { maxConnections: 10 });
 
