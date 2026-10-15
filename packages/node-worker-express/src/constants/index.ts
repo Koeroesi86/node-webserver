@@ -1,6 +1,6 @@
 import os from 'os';
 import path from 'path';
-import type { MiddlewareOptions } from '../types';
+import type { MiddlewareOptions, ResponseEvent } from '../types';
 
 export enum WORKER_EVENT {
   REQUEST = 'WORKER_REQUEST',
@@ -152,4 +152,12 @@ export const DefaultOptions: MiddlewareOptions = {
   env: {},
   staticWorker: path.resolve(__dirname, '../staticWorker.js'),
   cwd: process.cwd(),
+};
+
+/** what a request is answered with when its worker fails before it answered */
+export const InternalServerError: ResponseEvent = {
+  statusCode: 500,
+  headers: { 'Content-Type': 'text/plain' },
+  body: 'Internal Server Error',
+  isBase64Encoded: false,
 };

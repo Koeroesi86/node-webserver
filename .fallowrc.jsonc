@@ -63,12 +63,6 @@
     "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
     "thresholdOverrides": [
       {
-        "files": ["packages/node-worker-express/src/workerInvoke.ts"],
-        "functions": ["messageListener", "sendWsMessage"],
-        "maxCrap": 120,
-        "reason": "runs in the process of a worker, which jest does not measure: workerInvoke.test.ts starts it and checks what it answers"
-      },
-      {
         "files": ["packages/node-lambda-invoke/src/middlewares/http.ts"],
         "functions": ["createHttpMiddleware", "handleRequest", "<arrow>"],
         "maxCrap": 60,
