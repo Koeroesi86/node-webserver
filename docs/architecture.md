@@ -44,7 +44,7 @@ node-webserver-service ────┘                   └─► node-worker-e
 | Package | Role |
 |---|---|
 | `node-webserver` | the front server and its configuration |
-| `node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and OS service |
+| `node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and systemd or launchd service generator |
 | `node-lambda-invoke` | runs Lambda style handlers locally, each in its own process |
 | `node-worker-express` | the express middleware and the worker pools on top of `node-worker` |
 | `node-worker` | WebWorker-like API for Node |
