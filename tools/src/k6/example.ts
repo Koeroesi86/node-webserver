@@ -1,62 +1,34 @@
-import http, { type RefinedResponse, type ResponseType } from 'k6/http';
+import http from 'k6/http';
 import ws from 'k6/ws';
 import crypto from 'k6/crypto';
 import { check } from 'k6';
 import { Rate } from 'k6/metrics';
+import {
+  baseUrl,
+  hostname,
+  lambdaHostname,
+  compressedHostname,
+  uploadHostname,
+  healthHostname,
+  proxiedHostname,
+  httpsPort,
+  secureHostname,
+  wsUrl,
+  wsHoldSeconds,
+  wsMinMessages,
+  minRequestRate,
+  p95Factor,
+  p95Overrides,
+} from './example-config.ts';
+import type { Response, Route } from './example-route.ts';
 
-const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
-const hostname = __ENV.HOSTNAME_HEADER || 'web.localhost';
-const lambdaHostname = 'lambda.localhost';
-const compressedHostname = 'compressed.localhost';
-const uploadHostname = 'upload.localhost';
-const healthHostname = 'health.localhost';
-const proxiedHostname = 'proxied.localhost';
-// the https and secure websocket routes are only tested when the server runs with a certificate, see README.md
-const httpsPort = __ENV.HTTPS_PORT;
-const secureHostname = 'secure.localhost';
-const wsUrl = baseUrl.replace(/^http/, 'ws');
-// the example worker pushes a frame every second, so this many whole seconds of listening is expected to yield this many frames
-const wsHoldSeconds = Number(__ENV.WS_HOLD_SECONDS || 3.5);
-const wsMinMessages = Math.floor(wsHoldSeconds) - 1;
 const wsSessionOk = new Rate('ws_session_ok');
-// the thresholds are about twice the worst values seen on the 4 core GitHub runners with 20 HTTP and 10 websocket VUs, over several runs of the same code (the numbers below are from before the server and k6 got cores of their own, see README.md):
-// 2190-3900 req/s overall (runners differ by up to 1.8 times), p95 of 6-10 ms for the worker, secure, static and compressed routes, 12-18 ms for the 404, 10-16 ms streamed,
-// 20-23 ms for the lambda, 100-200 ms to connect a websocket
-const minRequestRate = Number(__ENV.MIN_REQUEST_RATE || 1000);
-// the p95 allowed for some routes (and for ws_connecting) instead of their own, for systems where starting processes takes long: `lambda=1500,upload=200` (milliseconds)
-// P95_FACTOR scales the p95 allowed for every route, and for ws_connecting, for systems where everything is slower
-const p95Factor = Number(__ENV.P95_FACTOR || 1);
-const p95Overrides: Record<string, number> = Object.fromEntries(
-  (__ENV.P95_OVERRIDES || '')
-    .split(',')
-    .filter(Boolean)
-    .map((entry) => entry.split('='))
-    .map(([route, milliseconds]) => [route, Number(milliseconds)])
-);
 const postBody = JSON.stringify({ hello: 'world' });
 // four parts of 64 KiB on their way to the worker, all byte values included
 const uploadBody = new Uint8Array(256 * 1024).map((_, index) => (index * 31) % 251).buffer;
 const uploadSha256 = crypto.sha256(uploadBody, 'hex');
 const streamChunks = 8;
 const streamChunkSize = 4096;
-
-type Response = RefinedResponse<ResponseType | undefined>;
-
-interface Route {
-  method: string;
-  /** a function makes the url anew for every request */
-  url: string | (() => string);
-  host?: string;
-  headers?: Record<string, string>;
-  body?: string | ArrayBuffer;
-  /** the body of the response is read as bytes */
-  binary?: boolean;
-  status: number;
-  /** only every n-th iteration requests the route */
-  every?: number;
-  validate: (response: Response) => boolean;
-  maxP95: number;
-}
 
 const bodyIncludes = (response: Response, text: string) => typeof response.body === 'string' && response.body.includes(text);
 
