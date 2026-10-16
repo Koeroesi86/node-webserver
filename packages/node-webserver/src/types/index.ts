@@ -5,3 +5,4 @@ export * from './compression';
 export * from './server';
 export * from './configuration';
 export * from './instance';
+export * from './log-file';
