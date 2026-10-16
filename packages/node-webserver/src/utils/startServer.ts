@@ -3,7 +3,7 @@ import type { Express } from 'express';
 import http from 'http';
 import type net from 'net';
 import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
-import { createWorkerBudget, registerMetricsSource } from '@koeroesi86/node-worker-express';
+import { createWorkerBudget } from '@koeroesi86/node-worker-express';
 import accessLogsMiddleware from '../middlewares/accessLogs';
 import applyTrustedProxies from './apply-trusted-proxies';
 import configureServer from './configureServer';
@@ -13,7 +13,8 @@ import createHttpsServer from './create-https-server';
 import createServerReloader from './create-server-reloader';
 import hydrateConfiguration from './hydrate-configuration';
 import loadInstances from './load-instances';
-import setupShutdown from './setup-shutdown';
+import registerServerMetrics from './register-server-metrics';
+import setupProcessHooks from './setup-process-hooks';
 import setupStatsHandler from './setupStatsHandler';
 import type { Configuration, Logger } from '../types';
 
@@ -45,9 +46,9 @@ const startServer = async (
   applyTrustedProxies(trustedProxies, [httpApp], [httpsApp, http2App]);
   // one for the whole process, so that the workers of the servers that are loaded again count against the same limit
   const workerBudget = createWorkerBudget(hydratedConfiguration.workerLimit);
-  const unregisterWorkers = registerMetricsSource('workers', workerBudget.getStats);
   // one for the server too, so that the lambdas of a second server in the process do not count in the stats of this one
   const lambdaStats = createLambdaStats();
+  const unregisterMetrics = registerServerMetrics(workerBudget.getStats, lambdaStats);
 
   const reloader = createServerReloader(
     servers,
@@ -76,35 +77,26 @@ const startServer = async (
 
   configureServer(httpServer, 'http', hydratedConfiguration);
   configureServer(httpsServer, 'https', hydratedConfiguration);
-  const unregisterLambdas = registerMetricsSource('lambdas', lambdaStats.getStats);
-  httpServer.once('close', () => {
-    unregisterWorkers();
-    unregisterLambdas();
-    process.off('exit', workerBudget.close);
-  });
 
   await listen(httpServer, hydratedConfiguration.portHttp);
   await listen(httpsServer, hydratedConfiguration.portHttps);
 
-  const removeShutdown = processHooks
-    ? setupShutdown([httpServer, httpsServer], {
-        reloadOnSighup,
-        shutdownTimeout,
-        reload,
-        getLoaded: reloader.getLoaded,
-        getInstances: reloader.getInstances,
-        logger: log,
-      })
-    : () => {};
-  // for all the pools of the budget at once, as they do not stop the workers themselves when the process ends
-  if (processHooks) process.once('exit', workerBudget.close);
-  const removeProcessHooks = () => {
-    removeShutdown();
-    process.off('exit', workerBudget.close);
-  };
+  // the lines that wait in the logger are written by the exit listeners that the hooks add
+  const hooks = setupProcessHooks(processHooks, [httpServer, httpsServer], workerBudget, {
+    reloadOnSighup,
+    shutdownTimeout,
+    reload,
+    getLoaded: reloader.getLoaded,
+    getInstances: reloader.getInstances,
+    logger: log,
+  });
+  httpServer.once('close', () => {
+    unregisterMetrics();
+    hooks.removeWorkerBudget();
+  });
   if (watchServers) watch();
 
-  return { httpApp, httpsApp, reload, removeProcessHooks };
+  return { httpApp, httpsApp, reload, removeProcessHooks: hooks.remove };
 };
 
 export default startServer;
