@@ -52,3 +52,9 @@ export const RETIRE_TIMEOUT = 30000;
 
 /** how long a stop of the process (SIGINT, SIGTERM, SIGHUP) waits for the requests in flight, in milliseconds, before the rest is cut */
 export const DEFAULT_SHUTDOWN_TIMEOUT = 30000;
+
+/** a log buffer that grows beyond this many characters is written right away */
+export const LOG_MAX_BUFFER_SIZE = 64 * 1024;
+
+/** log lines are dropped, and counted, once this many characters wait because the disk does not keep up, so the memory cannot grow without a limit */
+export const LOG_MAX_QUEUE_SIZE = 16 * 1024 * 1024;
