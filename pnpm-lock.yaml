@@ -272,9 +272,6 @@ importers:
       mime-types:
         specifier: ^3.0.2
         version: 3.0.2
-      moment:
-        specifier: ^2.31.0
-        version: 2.31.0
       nodemon:
         specifier: ^2.0.15
         version: 2.0.22

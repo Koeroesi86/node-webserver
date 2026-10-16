@@ -2,7 +2,6 @@ const { resolve } = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
 const etag = require('etag');
-const moment = require('moment');
 
 module.exports.handler = (event, context, callback) => {
   const path = `${event.path.replace(/\.{2,}/, '')}${/\/$/.test(event.path) ? 'index.html' : ''}`;
@@ -21,7 +20,7 @@ module.exports.handler = (event, context, callback) => {
         'Content-Length': bodyBuffer.length,
         'Cache-Control': 'public, max-age=0',
         ETag: currentEtag,
-        ...(stats.mtime && { 'Last-Modified': moment(stats.mtime).format('ddd, DD MMM YYYY HH:mm:ss') + ' GMT' }),
+        ...(stats.mtime && { 'Last-Modified': stats.mtime.toUTCString() }),
       },
       body: body,
       isBase64Encoded: !isText,

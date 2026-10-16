@@ -1,4 +1,3 @@
-import moment from 'moment';
 import getDate from './getDate';
 
 describe('getDate', () => {
@@ -20,14 +19,14 @@ describe('getDate', () => {
     expect(at(new Date(2026, 9, 7, 14, 5, 9, 370).getTime())).toBe('2026-10-07 14:05:09.37');
   });
 
-  it('gives the same as the format that moment gave, for many moments of the year, in every time zone', () => {
+  it('has the date and time of the locale that formats them the same way, for many moments of the year, in every time zone', () => {
     const start = new Date(2025, 0, 1).getTime();
     // a prime step, to meet all milliseconds, hours and days, including the changes of the clocks
     const times = Array.from({ length: 4000 }, (_, index) => start + index * 7919123);
 
     times.forEach((time) => {
       jest.setSystemTime(time);
-      expect(getDate()).toBe(moment().format('YYYY-MM-DD HH:mm:ss.SS'));
+      expect(getDate().slice(0, 19)).toBe(new Date(time).toLocaleString('sv-SE'));
     });
   });
 
