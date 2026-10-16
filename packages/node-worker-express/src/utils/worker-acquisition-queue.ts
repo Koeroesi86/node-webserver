@@ -1,4 +1,4 @@
-import WaitingLine from '@koeroesi86/node-worker/dist/waiting-line';
+import { WaitingLine } from '@koeroesi86/node-worker';
 import WorkerAbandonedError from './workerAbandonedError';
 import WorkerBusyError from './workerBusyError';
 

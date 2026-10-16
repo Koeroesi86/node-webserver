@@ -1,26 +1,39 @@
 import type { EventEmitter } from 'events';
-import LambdaPool, { getLambdaStats, LambdaRequestAbandonedError, LambdaUnavailableError } from './LambdaPool';
+import LambdaPool, { getLambdaStats } from './LambdaPool';
+import LambdaRequestAbandonedError from './LambdaRequestAbandonedError';
+import LambdaUnavailableError from './LambdaUnavailableError';
 import createLambdaStats from '../utils/create-lambda-stats';
 import { DRAIN_AFTER, STOP_GRACE } from '../constants';
 import type Lambda from './Lambda';
 
 /** lambdas that start, or fail to, when the test says so, instead of processes */
-jest.mock('./Lambda', () => {
+jest.mock('../utils/start-lambda', () => {
   const { EventEmitter: Emitter } = require('events');
 
   class FakeLambda extends Emitter {
     static instances: FakeLambda[] = [];
     static exitOnStart = false;
     busy = false;
-    createdAt?: number;
-    onFree = () => {};
+    retiring = false;
+    freeListener = () => {};
     stdout = undefined;
     stderr = undefined;
 
-    constructor() {
-      super();
-      FakeLambda.instances.push(this);
-      queueMicrotask(() => (FakeLambda.exitOnStart ? this.emit('close', 1) : this.emit('message', { type: 'LAMBDA_EVENT_STARTED' })));
+    reserve() {
+      this.busy = true;
+    }
+
+    retire() {
+      this.retiring = true;
+    }
+
+    onFree(listener: () => void) {
+      this.freeListener = listener;
+    }
+
+    markFree() {
+      this.busy = false;
+      this.freeListener();
     }
 
     addEventListener(event: string, listener: () => void) {
@@ -38,14 +51,23 @@ jest.mock('./Lambda', () => {
     terminate = jest.fn();
   }
 
-  return { __esModule: true, default: FakeLambda };
+  const startLambda = async () => {
+    // the pool only learns about the exit through the promise, as with a process that fails to start
+    if (FakeLambda.exitOnStart) throw new Error('Lambda /lambdas/a.js did not start: it exited with code 1');
+
+    const lambda = new FakeLambda();
+    FakeLambda.instances.push(lambda);
+    return lambda;
+  };
+
+  return { __esModule: true, default: Object.assign(startLambda, { FakeLambda }) };
 });
 
 interface FakeLambdas {
-  default: { instances: (EventEmitter & { terminate: jest.Mock; retiring: boolean })[]; exitOnStart: boolean };
+  default: { FakeLambda: { instances: (EventEmitter & { terminate: jest.Mock; retiring: boolean })[]; exitOnStart: boolean } };
 }
 
-const fake = () => jest.requireMock<FakeLambdas>('./Lambda').default;
+const fake = () => jest.requireMock<FakeLambdas>('../utils/start-lambda').default.FakeLambda;
 
 const settled = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -65,8 +87,7 @@ describe('LambdaPool', () => {
 
   /** a free lambda is handed over the way the invocation of a request lets go of it */
   const free = (lambda: Lambda) => {
-    lambda.busy = false;
-    lambda.onFree();
+    lambda.markFree();
   };
 
   beforeEach(() => {

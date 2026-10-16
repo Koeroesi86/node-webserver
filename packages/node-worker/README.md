@@ -30,3 +30,11 @@ Or checkout the pproject and run
 pnpm --filter @koeroesi86/node-worker example
 ```
 
+
+## Waiting line
+
+The queue the worker pools are built on is exported next to the class: it hands a resource to the requests in line, the first one first, and rejects a request that waits too long or whose client went away.
+
+```javascript
+const { WaitingLine } = require('@koeroesi86/node-worker');
+```

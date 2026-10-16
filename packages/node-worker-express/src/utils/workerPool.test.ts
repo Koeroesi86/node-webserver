@@ -55,7 +55,8 @@ jest.mock('@koeroesi86/node-worker', () => {
     };
   }
 
-  return { __esModule: true, default: FakeWorker };
+  // the waiting line is the real one: the pool is built on it
+  return { __esModule: true, default: FakeWorker, WaitingLine: jest.requireActual('@koeroesi86/node-worker').WaitingLine };
 });
 
 const FakeWorker = jest.requireMock('@koeroesi86/node-worker').default;
