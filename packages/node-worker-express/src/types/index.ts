@@ -6,3 +6,4 @@ export * from './routes';
 export * from './middleware';
 export * from './budget';
 export * from './cache';
+export * from './worker-pool';

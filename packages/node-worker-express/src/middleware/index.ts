@@ -32,7 +32,7 @@ const createRequestId = () => `${requestIdPrefix}-${(requestCount += 1).toString
 const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const config = {
     ...DefaultOptions,
-    ...(options && options),
+    ...options,
   };
   if (!config.root) {
     throw new Error('No root path defined in configuration!');

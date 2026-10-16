@@ -17,14 +17,16 @@ const pathnameOf = ({ url = '/' }: IncomingMessage) => {
   return (queryStart === -1 ? url : url.slice(0, queryStart)) || '/';
 };
 
-const createLambda = (
-  log: LogFunction,
-  config: LambdaOptions | undefined,
-  lambda: string,
-  handler: string | undefined,
-  limit: number | undefined,
-  stats?: LambdaStats
-) =>
+interface CreateLambdaParams {
+  log: LogFunction;
+  config: LambdaOptions | undefined;
+  lambda: string;
+  handler: string | undefined;
+  limit: number | undefined;
+  stats?: LambdaStats;
+}
+
+const createLambda = ({ log, config, lambda, handler, limit, stats }: CreateLambdaParams) =>
   httpMiddleware({
     lambdaPath: lambda.replace(/\\/g, '/'),
     handlerKey: handler || 'handler',
@@ -41,7 +43,7 @@ const createLambda = (
   });
 
 const createFallbackLambda = (log: LogFunction, config: LambdaOptions | undefined, stats?: LambdaStats) =>
-  config?.lambda ? createLambda(log, config, config.lambda, config.handler, config.limit, stats) : undefined;
+  config?.lambda ? createLambda({ log, config, lambda: config.lambda, handler: config.handler, limit: config.limit, stats }) : undefined;
 
 const dispatchRequest =
   (match: ReturnType<typeof createLambdaRouteTable>, fallback: HttpMiddleware | undefined): ((request: IncomingMessage, response: ServerResponse) => void) =>
@@ -60,7 +62,7 @@ const lambdaMiddleware = (instance: ServerConfig, log: LogFunction, stats?: Lamb
   const routes = config?.routes ?? [];
 
   if (routes.length === 0) {
-    return createLambda(log, config, config?.lambda || '', config?.handler, config?.limit, stats);
+    return createLambda({ log, config, lambda: config?.lambda || '', handler: config?.handler, limit: config?.limit, stats });
   }
 
   // the routes are matched before a lambda is taken, and each one has the pool and so the limit of its own lambda and handler
@@ -68,7 +70,7 @@ const lambdaMiddleware = (instance: ServerConfig, log: LogFunction, stats?: Lamb
   try {
     const match = createLambdaRouteTable(
       routes,
-      ({ lambda, handler, limit }) => createLambda(log, config, lambda, handler, limit ?? config?.limit, stats),
+      ({ lambda, handler, limit }) => createLambda({ log, config, lambda, handler, limit: limit ?? config?.limit, stats }),
       started
     );
     const fallback = createFallbackLambda(log, config, stats);
