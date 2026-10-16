@@ -1,173 +1,25 @@
-import type { Transform } from 'stream';
-import type { RequestHandler, Response } from 'express';
-import { compressionStreams, defaultEncodings } from '../utils/compression-streams';
-import type { CompressionEncoding, CompressionOptions } from '../types';
-
-type Headers = Record<string, unknown>;
-
-const compressibleTypes =
-  /^(text\/|application\/(json|(x-)?javascript|xml|wasm|manifest\+json|.+\+(json|xml))|image\/svg\+xml|font\/(ttf|otf)|application\/vnd\.ms-fontobject)/i;
-const bodylessStatuses = [204, 205, 304];
-
-/**
- * the responses being compressed in this process. zlib runs on the threadpool of node, which the file system and DNS share: a cap keeps a burst of
- * compressed responses from queueing the reads of files behind it, the ones over it are sent as they are.
- */
-let compressing = 0;
-
-const lowerCased = (headers: Headers) => Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
-const asString = (value: unknown) => (Array.isArray(value) ? value.join(', ') : `${value ?? ''}`);
-
-/** caches have to know that the answer depends on what the client accepts, also when this one is not compressed */
-const varyOnEncoding = (isCompressible: boolean, vary: string): Headers =>
-  isCompressible && !/(^|,)\s*(\*|accept-encoding)\s*(,|$)/i.test(vary) ? { Vary: vary ? `${vary}, Accept-Encoding` : 'Accept-Encoding' } : {};
-
-/** a status that has a body, an answer that is not encoded yet, not a part of one (its range is of the bytes as they are) and that the origin does not ask to leave as it is */
-const isOpenToEncoding = (statusCode: number, headers: Headers) =>
-  statusCode >= 200 &&
-  !bodylessStatuses.includes(statusCode) &&
-  headers['content-range'] === undefined &&
-  (headers['content-encoding'] === undefined || headers['content-encoding'] === 'identity') &&
-  !/(^|,)\s*no-transform\s*(,|$)/i.test(asString(headers['cache-control']));
-
-/** The encoding to use: what the client accepts with the highest weight, the order of the options settles ties. */
-export function chooseEncoding(acceptEncoding: string, supported: CompressionEncoding[]): CompressionEncoding | undefined {
-  const weights = new Map<string, number>(
-    acceptEncoding
-      .toLowerCase()
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((part) => {
-        const [name, ...parameters] = part.split(';').map((piece) => piece.trim());
-        const weight = parameters.find((parameter) => parameter.startsWith('q='))?.slice(2);
-
-        return [name, weight === undefined ? 1 : Number(weight) || 0];
-      })
-  );
-  const weightOf = (encoding: CompressionEncoding) => weights.get(encoding) ?? weights.get('*') ?? 0;
-
-  return supported
-    .filter((encoding) => weightOf(encoding) > 0)
-    .map((encoding, index) => ({ encoding, index }))
-    .sort((a, b) => weightOf(b.encoding) - weightOf(a.encoding) || a.index - b.index)[0]?.encoding;
-}
+import type { RequestHandler } from 'express';
+import { defaultEncodings } from '../utils/compression-streams';
+import asString from '../utils/as-string';
+import chooseEncoding from '../utils/choose-encoding';
+import createCompressionBudget from '../utils/create-compression-budget';
+import decideCompression from '../utils/decide-compression';
+import patchResponse from '../utils/patch-response';
+import type { CompressionBudget, CompressionOptions } from '../types';
 
 /**
  * Compresses the responses that are worth it for the clients that accept it, with the zlib of node: the work runs on the threads of node, not on the one
  * that serves the requests. It takes the decision when the headers are written: text like types, no encoding yet, and a size above the threshold if it is known.
+ * The `budget` counts the compressed responses for the `concurrency` option, shared by the middlewares of one server.
  */
 const compression =
-  (options: CompressionOptions = {}): RequestHandler =>
+  (options: CompressionOptions = {}, budget: CompressionBudget = createCompressionBudget()): RequestHandler =>
   (request, response, next) => {
-    const { threshold = 1024, encodings = defaultEncodings, concurrency = 0 } = options;
-    const encoding = chooseEncoding(asString(request.headers['accept-encoding']), encodings);
-    const { writeHead, write, end } = response;
-    const original = {
-      writeHead: (...args: unknown[]) => Reflect.apply(writeHead, response, args),
-      write: (...args: unknown[]) => Reflect.apply(write, response, args),
-      end: (...args: unknown[]) => Reflect.apply(end, response, args),
-    };
-    let decided = false;
-    let stream: Transform | undefined;
+    const encoding = chooseEncoding(asString(request.headers['accept-encoding']), options.encodings ?? defaultEncodings);
 
-    const startCompressing = (compressionEncoding: CompressionEncoding, length: number | undefined) => {
-      const compressor = compressionStreams[compressionEncoding](options, length);
-      let released = false;
-      const release = () => {
-        if (released) return;
-        released = true;
-        compressing -= 1;
-      };
-      compressing += 1;
-      // the compressed data goes out through the original write, and the source waits when the client does not keep up
-      compressor.on('data', (chunk: Buffer) => {
-        if (original.write(chunk) === false) compressor.pause();
-      });
-      compressor.on('end', () => {
-        // before the response ends, so that the next request of the client already finds the place free
-        release();
-        original.end();
-      });
-      compressor.on('close', release);
-      compressor.on('error', () => response.destroy());
-      response.on('drain', () => compressor.resume());
-      response.on('close', () => compressor.destroy());
-      stream = compressor;
-    };
-
-    /** the response head after the decision, `headers` are what is about to be sent: the ones given to writeHead on top of the ones set before */
-    const decide = (statusCode: number, headers: Headers, bodySize?: number): Headers => {
-      decided = true;
-      const type = asString(headers['content-type']).split(';')[0].trim();
-      const length = headers['content-length'] === undefined ? bodySize : Number(headers['content-length']);
-      const isCompressible = compressibleTypes.test(type);
-      const vary = asString(headers.vary);
-      const varied = varyOnEncoding(isCompressible, vary);
-      const mayCompress =
-        encoding !== undefined &&
-        isCompressible &&
-        request.method !== 'HEAD' &&
-        isOpenToEncoding(statusCode, headers) &&
-        (length === undefined || Number.isNaN(length) || length >= threshold) &&
-        (concurrency === 0 || compressing < concurrency);
-
-      if (!mayCompress) return varied;
-
-      startCompressing(encoding, Number.isNaN(length) ? undefined : length);
-      const etag = asString(headers.etag);
-
-      // the size is not known any more, and a strong validator would promise the same bytes as the uncompressed answer
-      return { ...varied, 'Content-Encoding': encoding, 'Content-Length': undefined, ...(etag && !etag.startsWith('W/') && { ETag: `W/${etag}` }) };
-    };
-
-    /** the head to write: the given headers without the ones that are to be replaced, and the replacements */
-    const applyHead = (given: Headers | undefined, changes: Headers): Headers => {
-      const replaced = new Set(Object.keys(changes).map((name) => name.toLowerCase()));
-      const kept = Object.entries(given ?? {}).filter(([name]) => !replaced.has(name.toLowerCase()));
-
-      return { ...Object.fromEntries(kept), ...Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined)) };
-    };
-
-    /** what was set before with setHeader is changed there */
-    const applyChanges = (changes: Headers) =>
-      Object.entries(changes).forEach(([name, value]) => (value === undefined ? response.removeHeader(name) : response.setHeader(name, value as string)));
-
-    /** for the first write or end without writeHead: the head is made of what was set before, then written */
-    const writeImplicitHead = (bodySize?: number) => {
-      applyChanges(decide(response.statusCode, lowerCased(response.getHeaders()), bodySize));
-      response.writeHead(response.statusCode);
-    };
-
-    Object.assign(response, {
-      writeHead: (statusCode: number, ...rest: unknown[]) => {
-        const given = rest.find((argument): argument is Headers => typeof argument === 'object' && argument !== null && !Array.isArray(argument));
-        // a list of header names and values is rare and cannot be changed in place
-        if (decided || rest.some(Array.isArray)) {
-          decided = true;
-          return original.writeHead(statusCode, ...rest);
-        }
-
-        const changes = decide(statusCode, { ...lowerCased(response.getHeaders()), ...lowerCased(given ?? {}) });
-        applyChanges(changes);
-
-        // what was given to writeHead takes precedence over what was set before, so it is changed there as well
-        return original.writeHead(statusCode, ...rest.filter((argument) => argument !== given), applyHead(given, changes));
-      },
-      write: (chunk: unknown, ...rest: unknown[]) => {
-        if (!decided) writeImplicitHead();
-
-        return stream ? Reflect.apply(stream.write, stream, [chunk, ...rest]) : original.write(chunk, ...rest);
-      },
-      end: (chunk?: unknown, ...rest: unknown[]) => {
-        if (!decided) writeImplicitHead(typeof chunk === 'string' || Buffer.isBuffer(chunk) ? Buffer.byteLength(chunk) : undefined);
-
-        if (!stream) return original.end(chunk, ...rest);
-
-        return Reflect.apply(stream.end, stream, chunk === undefined || typeof chunk === 'function' ? [chunk] : [chunk, ...rest]);
-      },
-    } satisfies Partial<Record<keyof Response, unknown>>);
-
+    patchResponse(response, (statusCode, headers, output, bodySize) =>
+      decideCompression({ request, response, output, encoding, options, budget }, statusCode, headers, bodySize)
+    );
     next();
   };
 
