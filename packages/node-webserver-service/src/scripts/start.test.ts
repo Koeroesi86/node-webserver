@@ -1,6 +1,11 @@
+import { resolve } from 'path';
+
 const start = jest.fn();
 const copyFileSync = jest.fn();
 const existsSync = jest.fn();
+
+/** the script resolves the path, which gets a drive letter on Windows */
+const configPath = resolve('nws-dev-configuration.js');
 
 jest.mock('../utils/start', () => ({ __esModule: true, default: (...args: unknown[]) => start(...args) }));
 jest.mock('fs', () => ({ copyFileSync: (...args: unknown[]) => copyFileSync(...args), existsSync: (...args: unknown[]) => existsSync(...args) }));
@@ -14,7 +19,7 @@ describe('start script', () => {
     [start, copyFileSync, existsSync].forEach((mock) => mock.mockReset());
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     process.exitCode = undefined;
-    process.argv = ['node', 'start.js', '--configuration', '/tmp/nws-dev-configuration.js'];
+    process.argv = ['node', 'start.js', '--configuration', configPath];
   });
 
   afterEach(() => {
@@ -36,8 +41,8 @@ describe('start script', () => {
 
     await runScript();
 
-    expect(copyFileSync).toHaveBeenCalledWith(expect.stringMatching(/configuration\.example\.js$/), '/tmp/nws-dev-configuration.js');
-    expect(start).toHaveBeenCalledWith('/tmp/nws-dev-configuration.js');
+    expect(copyFileSync).toHaveBeenCalledWith(expect.stringMatching(/configuration\.example\.js$/), configPath);
+    expect(start).toHaveBeenCalledWith(configPath);
     expect(process.exitCode).toBeUndefined();
   });
 
