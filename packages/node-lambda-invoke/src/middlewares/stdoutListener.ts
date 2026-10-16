@@ -1,8 +1,6 @@
-import moment from 'moment';
+import getDate from '../utils/get-date';
 import type Lambda from '../classes/Lambda';
 import type { Logger } from '../types';
-
-const getDate = () => moment().format('YYYY-MM-DD HH:mm:ss.SS');
 
 const stdoutListener = (lambdaInstance: Lambda, logger: Logger = () => {}) => {
   const messageListener = (data: Buffer | string) => {

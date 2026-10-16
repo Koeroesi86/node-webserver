@@ -201,9 +201,6 @@ importers:
       '@koeroesi86/node-worker':
         specifier: workspace:*
         version: link:../node-worker
-      moment:
-        specifier: ^2.24.0
-        version: 2.31.0
     devDependencies:
       '@types/jest':
         specifier: ^30.0.0
