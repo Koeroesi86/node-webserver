@@ -7,6 +7,7 @@ import { createWorkerBudget } from '@koeroesi86/node-worker-express';
 import accessLogsMiddleware from '../middlewares/accessLogs';
 import applyTrustedProxies from './apply-trusted-proxies';
 import configureServer from './configureServer';
+import createCompressionBudget from './create-compression-budget';
 import createHttp2App from './create-http2-app';
 import createLogger from './create-logger';
 import createHttpsServer from './create-https-server';
@@ -49,12 +50,14 @@ const startServer = async (
   // one for the server too, so that the lambdas of a second server in the process do not count in the stats of this one
   const lambdaStats = createLambdaStats();
   const unregisterMetrics = registerServerMetrics(workerBudget.getStats, lambdaStats);
+  // and the limit of the compressed responses, which every server of the process has for itself
+  const compressionBudget = createCompressionBudget();
 
   const reloader = createServerReloader(
     servers,
     configuration,
     watchServers,
-    (previous) => loadInstances(servers, previous, log, workerBudget, lambdaStats),
+    (previous) => loadInstances(servers, previous, log, { workerBudget, lambdaStats, compressionBudget }),
     log
   );
   const { reload, watch } = reloader;

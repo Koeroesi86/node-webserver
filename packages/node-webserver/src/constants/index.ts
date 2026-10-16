@@ -58,3 +58,10 @@ export const LOG_MAX_BUFFER_SIZE = 64 * 1024;
 
 /** log lines are dropped, and counted, once this many characters wait because the disk does not keep up, so the memory cannot grow without a limit */
 export const LOG_MAX_QUEUE_SIZE = 16 * 1024 * 1024;
+
+/** the content types worth compressing: text like ones, and fonts and documents that are not compressed in themselves */
+export const COMPRESSIBLE_TYPES =
+  /^(text\/|application\/(json|(x-)?javascript|xml|wasm|manifest\+json|.+\+(json|xml))|image\/svg\+xml|font\/(ttf|otf)|application\/vnd\.ms-fontobject)/i;
+
+/** the statuses that have no body to compress */
+export const BODYLESS_STATUSES = [204, 205, 304];

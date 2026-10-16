@@ -9,7 +9,7 @@ import lambdaMiddleware from '../middlewares/lambda';
 import getDate from './getDate';
 import trackRequests from './track-requests';
 import untilIdle from './until-idle';
-import type { InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
+import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
 
 interface Context {
   logger: Logger;
@@ -17,6 +17,8 @@ interface Context {
   workerBudget?: WorkerBudget;
   /** shared by the lambda servers, for the stats of the server */
   lambdaStats?: LambdaStats;
+  /** shared by the servers that compress, so that their `concurrency` counts the responses of all of them */
+  compressionBudget?: CompressionBudget;
   /** the server of the same entry that runs now, which this one replaces */
   previous?: LoadedInstance;
 }
@@ -94,8 +96,9 @@ const compose =
 function createInstanceHandler(instance: ServerConfig, runtime: ServerRuntime, context: Context): InstanceHandler {
   const { compression } = instance;
   const started = getMiddleware(instance, runtime, context);
+  const compress = compression ? compressionMiddleware(compression === true ? {} : compression, context.compressionBudget) : undefined;
 
-  return { ...started, handler: compression ? compose(compressionMiddleware(compression === true ? {} : compression), started.handler) : started.handler };
+  return { ...started, handler: compress ? compose(compress, started.handler) : started.handler };
 }
 
 export default createInstanceHandler;

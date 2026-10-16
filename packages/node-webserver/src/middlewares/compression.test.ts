@@ -2,29 +2,11 @@ import express from 'express';
 import http from 'http';
 import zlib from 'zlib';
 import type { RequestHandler } from 'express';
-import compression, { chooseEncoding } from './compression';
-import type { CompressionOptions } from '../types';
+import compression from './compression';
+import createCompressionBudget from '../utils/create-compression-budget';
+import type { CompressionBudget, CompressionOptions } from '../types';
 
 const text = 'It works! '.repeat(500);
-
-describe('chooseEncoding', () => {
-  it.each([
-    ['gzip, deflate, br', ['br', 'gzip', 'deflate'], 'br'],
-    ['gzip, deflate, br', ['gzip', 'br'], 'gzip'],
-    ['gzip;q=0.5, br;q=0.9', ['br', 'gzip'], 'br'],
-    ['gzip;q=0.9, br;q=0.5', ['br', 'gzip'], 'gzip'],
-    ['gzip;q=0, deflate', ['gzip', 'deflate'], 'deflate'],
-    ['*', ['br', 'gzip'], 'br'],
-    ['*;q=0.1, gzip', ['br', 'gzip'], 'gzip'],
-    ['GZIP', ['gzip'], 'gzip'],
-    ['identity', ['gzip'], undefined],
-    ['', ['gzip'], undefined],
-    ['compress', ['gzip'], undefined],
-    ['gzip;q=nonsense', ['gzip'], undefined],
-  ] as const)('for %j with %j chooses %s', (accept, supported, expected) => {
-    expect(chooseEncoding(accept, [...supported])).toBe(expected);
-  });
-});
 
 describe('compression', () => {
   let server: http.Server;
@@ -35,10 +17,10 @@ describe('compression', () => {
     await new Promise((resolve) => server.close(resolve));
   });
 
-  const serve = async (handler: RequestHandler, options?: CompressionOptions) => {
+  const serve = async (handler: RequestHandler, options?: CompressionOptions, budget?: CompressionBudget) => {
     const app = express();
     app.disable('x-powered-by');
-    app.use(compression(options));
+    app.use(compression(options, budget));
     app.use(handler);
     server = http.createServer(app);
     await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -192,6 +174,22 @@ describe('compression', () => {
       expect(whileHeld.headers.vary).toBe('Accept-Encoding');
       expect(whileHeld.body.toString()).toBe(text);
       expect(afterwards.headers['content-encoding']).toBe('gzip');
+    });
+
+    it('counts the places in the budget it is given, not in the ones of other budgets', async () => {
+      const budget = createCompressionBudget();
+      const otherBudget = createCompressionBudget();
+      const releaseOther = otherBudget.acquire();
+      await serve((request, response) => response.writeHead(200, { 'Content-Type': 'text/plain' }).end(text), { concurrency: 1 }, budget);
+
+      const withOtherBusy = await get('gzip');
+      const releaseOwn = budget.acquire();
+      const withOwnBusy = await get('gzip');
+      releaseOwn();
+      releaseOther();
+
+      expect(withOtherBusy.headers['content-encoding']).toBe('gzip');
+      expect(withOwnBusy.headers['content-encoding']).toBeUndefined();
     });
 
     it('frees the place of a response the client gave up on', async () => {

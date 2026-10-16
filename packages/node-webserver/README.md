@@ -36,7 +36,7 @@ threads of node, not on the one that serves the requests, but it still takes CPU
 
 Those threads are the threadpool of node, which the file system work and the look up of host names (like `localhost` of a proxied server) use as well.
 Node starts 4 threads, set `UV_THREADPOOL_SIZE` in the environment of the server for more (up to 1024): it is read when the threadpool starts, so it has to be set
-before the process starts. `concurrency` caps how many responses of the whole process are compressed at the same time, so that a burst of compressed responses does not
+before the process starts. `concurrency` caps how many responses of the whole server (all its virtual hosts) are compressed at the same time, so that a burst of compressed responses does not
 make the reads of files wait. The ones over the cap are sent as they are, and a streamed response holds its place until it ends. There is no cap by default (0).
 
 ### Routes
