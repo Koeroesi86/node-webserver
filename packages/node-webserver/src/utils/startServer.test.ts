@@ -80,4 +80,21 @@ describe('startServer', () => {
     expect(sources()).not.toContain('lambdas');
     expect(process.listenerCount('exit')).toBe(exitListeners);
   });
+
+  it('leaves the exit listeners at their start with two servers in one process', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const exitListeners = process.listenerCount('exit');
+    jest.mocked(setupShutdown).mockReturnValue(jest.fn());
+
+    const first = await startServer(configuration, createMockLogger());
+    const second = await startServer(configuration, createMockLogger());
+    const during = process.listenerCount('exit');
+    first.removeProcessHooks();
+    second.removeProcessHooks();
+    await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
+    listen.mockRestore();
+
+    expect(during).toBe(exitListeners + 2);
+    expect(process.listenerCount('exit')).toBe(exitListeners);
+  });
 });

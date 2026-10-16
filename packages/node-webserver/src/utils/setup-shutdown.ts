@@ -3,7 +3,7 @@ import addExitListeners from './exitHandler';
 import createGracefulStop from './create-graceful-stop';
 import type { LoadedInstance, Logger, ServerState } from '../types';
 
-interface ShutdownOptions {
+export interface ShutdownOptions {
   reloadOnSighup: boolean;
   shutdownTimeout: number;
   reload: () => void;
