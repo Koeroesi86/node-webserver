@@ -1,39 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import WaitingLine from '@koeroesi86/node-worker/dist/waiting-line';
-import Lambda from './Lambda';
-import stdoutListener from '../middlewares/stdoutListener';
+import { WaitingLine } from '@koeroesi86/node-worker';
+import type Lambda from './Lambda';
+import LambdaRequestAbandonedError from './LambdaRequestAbandonedError';
+import LambdaUnavailableError from './LambdaUnavailableError';
 import createLambdaStats from '../utils/create-lambda-stats';
 import scheduleLambdaDrain from '../utils/schedule-lambda-drain';
+import startLambda from '../utils/start-lambda';
 import stopLambdaIfRetired from '../utils/stop-lambda-if-retired';
-import { DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT, DRAIN_AFTER, EVENT_STARTED, STOP_GRACE } from '../constants';
-import type { Communication, LambdaEvent, LambdaStats, Logger } from '../types';
-
-interface LambdaPoolOptions {
-  lambdaPath: string;
-  handlerKey: string;
-  /** how many lambdas this pool may run, 0 or nothing for no limit */
-  limit?: number;
-  /** how long a request may wait for a lambda when the limit is reached, in milliseconds */
-  acquireTimeout?: number;
-  /** how long a lambda may take to start, in milliseconds */
-  startTimeout?: number;
-  /** how long a handler may take to answer, in milliseconds, a lambda is allowed to run that long past the time it is drained */
-  timeout?: number;
-  /** whether the lambdas can only write to their own folders */
-  restrictFileSystem?: boolean;
-  /** variables added to the environment of the lambdas */
-  env?: Record<string, string>;
-  logger?: Logger;
-  communication: Communication;
-  /** where the pool lists itself for the stats, the one of `getLambdaStats` when not given */
-  stats?: LambdaStats;
-}
-
-/** the limit is reached and no lambda became free in time */
-export class LambdaUnavailableError extends Error {}
-
-/** the client went away while the request waited for a lambda */
-export class LambdaRequestAbandonedError extends Error {}
+import { DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT, DRAIN_AFTER, STOP_GRACE } from '../constants';
+import type { Communication, LambdaPoolOptions, LambdaStats, Logger } from '../types';
 
 /** the stats of the pools made without a registry of their own, which `getLambdaStats` reads */
 const defaultStats = createLambdaStats();
@@ -126,56 +101,32 @@ class LambdaPool {
     return Array.from(this.instances.values()).find((instance) => !instance.busy && !instance.retiring);
   }
 
-  createLambda = () =>
-    new Promise<{ id: string; instance: Lambda }>((resolve, reject) => {
-      const currentId = randomUUID();
-      const currentLambdaInstance = new Lambda(this.lambdaPath, this.handlerKey, this.logger, this.communication, this.env, {
-        // the pool stops it when it is time, this is for when that does not work out
-        maxLifetime: DRAIN_AFTER + this.timeout + STOP_GRACE,
-        restrictFileSystem: this.restrictFileSystem,
-      });
-      // a lambda that cannot start answers nobody, so the request waiting for it has to fail instead of waiting forever
-      const failedToStart = (reason: unknown) => {
-        clearTimeout(startTimer);
-        reject(new Error(`Lambda ${this.lambdaPath} did not start: ${reason}`));
-      };
-      // a module that hangs while it is loaded would keep its request and its place under the limit forever
-      const startTimer = setTimeout(() => {
-        failedToStart(`it took longer than ${this.startTimeout}ms`);
-        currentLambdaInstance.terminate('SIGKILL');
-      }, this.startTimeout);
-
-      const lambdaStartListener = (message: LambdaEvent) => {
-        if (message.type === EVENT_STARTED) {
-          this.logger(`[${currentId}] started`);
-          clearTimeout(startTimer);
-          currentLambdaInstance.removeEventListener('message', lambdaStartListener);
-          resolve({ id: currentId, instance: currentLambdaInstance });
-        }
-      };
-      currentLambdaInstance.addEventListener('message', lambdaStartListener);
-
-      currentLambdaInstance.addEventListenerOnce('error', failedToStart);
-      currentLambdaInstance.addEventListenerOnce('close', (code: number | null) => failedToStart(`it exited with code ${code}`));
-
-      stdoutListener(currentLambdaInstance, this.logger);
-    });
-
   private async startLambda(): Promise<Lambda> {
     this.startingCount += 1;
 
     try {
-      const { id, instance } = await this.createLambda();
+      const id = randomUUID();
+      const instance = await startLambda({
+        id,
+        lambdaPath: this.lambdaPath,
+        handlerKey: this.handlerKey,
+        communication: this.communication,
+        env: this.env,
+        logger: this.logger,
+        startTimeout: this.startTimeout,
+        // the pool stops it when it is time, this is for when that does not work out
+        maxLifetime: DRAIN_AFTER + this.timeout + STOP_GRACE,
+        restrictFileSystem: this.restrictFileSystem,
+      });
       // taken by the request that asked for it, before anything else can pick it from the registry
-      instance.busy = true;
-      instance.createdAt = Date.now();
+      instance.reserve();
       // a request that still came to a closed pool gets a lambda of its own, which stops once it answered
-      instance.retiring = this.closed;
+      if (this.closed) instance.retire();
       scheduleLambdaDrain(instance, id, this.logger);
-      instance.onFree = () => {
+      instance.onFree(() => {
         stopLambdaIfRetired(instance);
         this.drain();
-      };
+      });
       this.instances.set(id, instance);
       instance.addEventListenerOnce('close', () => {
         // a lambda that is gone must not be handed out, nor count against the limit, and its place goes to the first request in line
@@ -197,7 +148,7 @@ class LambdaPool {
   close() {
     this.closed = true;
     this.instances.forEach((instance) => {
-      instance.retiring = true;
+      instance.retire();
       stopLambdaIfRetired(instance);
     });
     this.forgetIfClosed();
@@ -214,7 +165,7 @@ class LambdaPool {
 
     if (lambda !== undefined) {
       // marked right away: the invocation starts later, and requests in between must not get the same lambda, as it answers one at a time
-      lambda.busy = true;
+      lambda.reserve();
       return lambda;
     }
 
@@ -228,8 +179,7 @@ class LambdaPool {
 
   /** gives a lambda back that was handed out, but not used */
   release(lambda: Lambda) {
-    lambda.busy = false;
-    this.drain();
+    lambda.markFree();
   }
 
   /**

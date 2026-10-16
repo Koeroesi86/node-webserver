@@ -132,3 +132,24 @@ export interface StorageDriverConstructor {
   new (id: string, instance: StorageInstance, folder?: string): Storage;
   start?: () => void;
 }
+
+export interface LambdaPoolOptions {
+  lambdaPath: string;
+  handlerKey: string;
+  /** how many lambdas this pool may run, 0 or nothing for no limit */
+  limit?: number;
+  /** how long a request may wait for a lambda when the limit is reached, in milliseconds */
+  acquireTimeout?: number;
+  /** how long a lambda may take to start, in milliseconds */
+  startTimeout?: number;
+  /** how long a handler may take to answer, in milliseconds, a lambda is allowed to run that long past the time it is drained */
+  timeout?: number;
+  /** whether the lambdas can only write to their own folders */
+  restrictFileSystem?: boolean;
+  /** variables added to the environment of the lambdas */
+  env?: Record<string, string>;
+  logger?: Logger;
+  communication: Communication;
+  /** where the pool lists itself for the stats, the one of `getLambdaStats` when not given */
+  stats?: LambdaStats;
+}

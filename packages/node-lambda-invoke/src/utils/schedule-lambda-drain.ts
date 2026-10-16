@@ -6,7 +6,7 @@ import type { Logger } from '../types';
 /** a lambda that has had its time is stopped when it is free, a request that runs on it is let finish */
 const scheduleLambdaDrain = (instance: Lambda, id: string, logger: Logger) => {
   const drainTimer = setTimeout(() => {
-    instance.retiring = true;
+    instance.retire();
     logger(`[${id}] draining`);
     stopLambdaIfRetired(instance);
   }, DRAIN_AFTER);

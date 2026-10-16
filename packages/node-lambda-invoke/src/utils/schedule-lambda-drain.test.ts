@@ -9,6 +9,9 @@ const createInstance = (busy: boolean) => {
     retiring: false,
     busy,
     terminate,
+    retire: () => {
+      instance.retiring = true;
+    },
     addEventListenerOnce: (_event: string, listener: () => void) => closeListeners.push(listener),
   };
 

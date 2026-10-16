@@ -7,6 +7,9 @@ export type InvocationOutcome = { type: 'response'; responseEvent: ResponseEvent
 /** hands the request to the lambda, settles with its response, or when the lambda exits, or when it took longer than the timeout */
 const invokeLambda = (lambda: Lambda, requestId: string, requestEvent: RequestEvent, timeout: number) =>
   new Promise<InvocationOutcome>((resolve) => {
+    // it exited since it was handed out, and nothing would tell the request until the timeout
+    if (!lambda.running) return resolve({ type: 'closed' });
+
     const settle = (outcome: InvocationOutcome) => {
       clearTimeout(timer);
       lambda.removeEventListener('close', closeListener);
