@@ -115,11 +115,11 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
 
       const event = buildRequestEvent({ request, protocol, pathname, pathFragments, query, rootPath, pathParameters, streamsBody });
 
-      // the slot of a websocket connection is taken before the worker is, so that connections above the limit do not queue for one
+      // a websocket slot is taken before the worker, so connections above the limit do not queue for one
       const served = await runInSlot(
         () => (protocol === Protocols.websocket ? webSocketSlots.take(indexPath) : noop),
         () => {
-          // by the worker file, like the paths of the pool, so every static file, found or not, counts in the one of the static worker (a missing path answered above only in the totals)
+          // by worker file like the pool, so every static file counts in the static worker's (a missing path answered above only in the totals)
           tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
           return acquireLease(response, indexPath, isWorker);
         },

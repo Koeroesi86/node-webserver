@@ -27,10 +27,7 @@ interface CloseStepsParams<T extends object> {
   refillWarmPaths: () => void;
 }
 
-/**
- * What happens when a worker ends, as named steps that run in this order: the requests that waited come first, also those of the other pools of the budget,
- * the paths that are kept warm take what room is left, which can be the room of another path.
- */
+/** The steps when a worker ends, in order: waiting requests (of every pool of the budget) first, then the warm paths take the room left. */
 const createWorkerCloseSteps = <T extends object>({
   registry,
   restartBackoff,
