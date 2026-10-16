@@ -81,20 +81,26 @@ describe('startServer', () => {
     expect(process.listenerCount('exit')).toBe(exitListeners);
   });
 
-  it('leaves the exit listeners at their start with two servers in one process', async () => {
+  it('leaves the listeners of the process at their start with two servers in one process', async () => {
     const listen = jest.spyOn(net.Server.prototype, 'listen');
-    const exitListeners = process.listenerCount('exit');
-    jest.mocked(setupShutdown).mockReturnValue(jest.fn());
+    const events = ['exit', 'SIGINT', 'SIGTERM', 'SIGHUP', 'uncaughtException'];
+    const counts = () => events.map((event) => process.listenerCount(event));
+    const start = counts();
+    // the real shutdown, as the listeners it adds are what must not be left behind
+    jest.mocked(setupShutdown).mockImplementation(jest.requireActual('./setup-shutdown').default);
 
     const first = await startServer(configuration, createMockLogger());
     const second = await startServer(configuration, createMockLogger());
-    const during = process.listenerCount('exit');
+    const during = counts();
     first.removeProcessHooks();
     second.removeProcessHooks();
+    const afterRemove = counts();
     await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
     listen.mockRestore();
+    jest.mocked(setupShutdown).mockReset();
 
-    expect(during).toBe(exitListeners + 2);
-    expect(process.listenerCount('exit')).toBe(exitListeners);
+    expect(during.every((count, index) => count > start[index])).toBe(true);
+    expect(afterRemove).toEqual(start);
+    expect(counts()).toEqual(start);
   });
 });
