@@ -5,9 +5,28 @@ import type { RequestEvent, WorkerOutputEvent } from '../types';
 import serveRequest from './serve-request';
 import type { WorkerLease } from './workerPool';
 
-const event = { protocol: Protocols.http, path: '/a' } as unknown as RequestEvent;
+const mockWebSocket = { receive: jest.fn(), dispose: jest.fn() };
+jest.mock('./create-ws-connection', () => ({ __esModule: true, default: jest.fn(() => mockWebSocket) }));
 
-const setup = ({ streamsBody = false, inlineBody }: { streamsBody?: boolean; inlineBody?: Buffer } = {}) => {
+/** the hand-offs of the request under test, to make them active */
+const mockHandOffs: Array<{ isActive: () => boolean }> = [];
+jest.mock('./create-response-hand-off', () => {
+  const actual = jest.requireActual('./create-response-hand-off').default;
+  return {
+    __esModule: true,
+    default: (...args: unknown[]) => {
+      const handOff = actual(...args);
+      mockHandOffs.push(handOff);
+      return handOff;
+    },
+  };
+});
+
+const httpEvent = { protocol: Protocols.http, path: '/a' } as unknown as RequestEvent;
+const socketEvent = { protocol: Protocols.websocket, path: '/a' } as unknown as RequestEvent;
+
+const setup = ({ streamsBody = false, inlineBody, event = httpEvent }: { streamsBody?: boolean; inlineBody?: Buffer; event?: RequestEvent } = {}) => {
+  mockHandOffs.length = 0;
   const request = Object.assign(new EventEmitter(), {
     headers: {},
     httpVersionMajor: 1,
@@ -53,13 +72,13 @@ describe('serveRequest', () => {
   it('hands the request to the worker', () => {
     const { lease } = setup();
 
-    expect(lease.send).toHaveBeenCalledWith({ type: WORKER_EVENT.REQUEST, requestId: 'r1', event });
+    expect(lease.send).toHaveBeenCalledWith({ type: WORKER_EVENT.REQUEST, requestId: 'r1', event: httpEvent });
   });
 
   it('sends a body that arrived with the request along with it', () => {
     const { lease } = setup({ inlineBody: Buffer.from('abc') });
 
-    expect(lease.send).toHaveBeenCalledWith({ type: WORKER_EVENT.REQUEST, requestId: 'r1', event: { ...event, body: Buffer.from('abc') } });
+    expect(lease.send).toHaveBeenCalledWith({ type: WORKER_EVENT.REQUEST, requestId: 'r1', event: { ...httpEvent, body: Buffer.from('abc') } });
   });
 
   it('forwards the parts of a streamed body and the end of it', () => {
@@ -119,5 +138,57 @@ describe('serveRequest', () => {
 
     expect(request.resume).toHaveBeenCalledTimes(1);
     expect(request.listenerCount('data')).toBe(0);
+  });
+
+  it('leaves no listener on the request and the response once it is over', () => {
+    const { request, response } = setup({ streamsBody: true });
+
+    response.emit('close');
+
+    expect(request.listenerCount('aborted')).toBe(0);
+    expect(request.listenerCount('end')).toBe(0);
+    expect(response.listenerCount('close')).toBe(0);
+  });
+
+  it('keeps the listeners and the worker while the connection is handed over, and gives them back when it is over', () => {
+    const { request, response, lease, releaseSlot } = setup();
+    const isActive = jest.spyOn(mockHandOffs[0], 'isActive').mockReturnValue(true);
+
+    response.emit('close');
+
+    expect(lease.release).not.toHaveBeenCalled();
+    expect(releaseSlot).not.toHaveBeenCalled();
+    expect(request.listenerCount('aborted')).toBe(1);
+    expect(response.listenerCount('close')).toBe(1);
+
+    isActive.mockReturnValue(false);
+    response.emit('close');
+
+    expect(lease.release).toHaveBeenCalledTimes(1);
+    expect(request.listenerCount('aborted')).toBe(0);
+    expect(response.listenerCount('close')).toBe(0);
+  });
+
+  describe('of a websocket', () => {
+    it('tells the worker and gives it back when the client closes, and leaves no listener on the socket', () => {
+      const { request, lease, releaseSlot } = setup({ event: socketEvent });
+
+      request.socket.emit('close');
+
+      expect(lease.send).toHaveBeenCalledWith({ type: WORKER_EVENT.WS_CONNECTION_CLOSE, requestId: 'r1', event: socketEvent });
+      expect(lease.release).toHaveBeenCalledTimes(1);
+      expect(releaseSlot).toHaveBeenCalledTimes(1);
+      expect(mockWebSocket.dispose).toHaveBeenCalledTimes(1);
+      expect(request.socket.listenerCount('data')).toBe(0);
+      expect(request.socket.listenerCount('close')).toBe(0);
+    });
+
+    it('destroys the socket when the worker exits', () => {
+      const { request, subscription } = setup({ event: socketEvent });
+
+      subscription.onExit?.(1);
+
+      expect(request.socket.destroy).toHaveBeenCalledTimes(1);
+    });
   });
 });
