@@ -416,7 +416,8 @@ describe('httpMiddleware', () => {
 
       expect(body).toMatchObject({ name: 'lambda', id: body.requestId });
       expect(body.remaining).toBeGreaterThan(50000);
-      expect(body.remaining).toBeLessThanOrEqual(60000);
+      // the parent sets the deadline and the lambda process reads its own clock, which can run a few ms behind on Windows
+      expect(body.remaining).toBeLessThanOrEqual(60000 + 50);
     });
 
     it('calls a nested handler on what holds it', async () => {
