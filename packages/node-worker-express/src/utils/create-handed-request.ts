@@ -13,16 +13,25 @@ interface HandedRequestParams {
 
 /**
  * A request whose connection the server handed over: the body is read from the connection, and the response written to it.
- * The connection is closed after the response, or when the client stops taking or sending for `timeout` milliseconds.
+ * The connection is closed after the response, or when nothing moves on it for `timeout` milliseconds (answered with a 504 when nothing was written yet).
  */
 const createHandedRequest = ({ message: { prefix, length, timeout }, socket, onClosed }: HandedRequestParams) => {
   // an error of the connection is a close as well, which is where it is handled
   socket.on('error', () => {});
-  // the server does not watch the connection any more, a client that stops taking the response would hold the worker forever
-  if (timeout > 0) socket.setTimeout(timeout, () => socket.destroy());
-
   const responder = createSocketResponder(socket);
   const bodyStream: Readable = createSocketBody(socket, Buffer.from(prefix, 'base64'), length);
+  // the server does not watch the connection any more, so this is the only limit: it counts the time nothing moves on the connection, which a client that is sending does not reach.
+  // a client that got no response yet is answered like the server answers a silent worker, the status line of one under way cannot be taken back
+  if (timeout > 0) {
+    let timedOut = false;
+    socket.setTimeout(timeout, async () => {
+      if (responder.hasResponded() || timedOut) return socket.destroy();
+
+      timedOut = true;
+      await responder.callback({ statusCode: 504, headers: { 'Content-Type': 'text/plain' }, body: 'Worker did not respond in time.' });
+      socket.destroy();
+    });
+  }
   socket.once('close', () => {
     const { statusCode, bytes } = responder.summary();
     bodyStream.destroy();

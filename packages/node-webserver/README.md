@@ -115,7 +115,7 @@ Things to know:
 - Read the body before you answer. Once the response is complete the rest of the body is dropped and the stream is destroyed.
 - The stream is destroyed with an error when the client goes away during the upload, `for await` throws it.
 - Requests that have no body (GET, HEAD, DELETE, OPTIONS), websockets and the static worker never get one.
-- The worker holds a request for as long as the upload takes. `limitResponseTimeout` counts from the last part that moved, a stalled upload is answered with 504 after it.
+- The worker holds a request for as long as the upload takes. `limitResponseTimeout` counts from the last part that moved, a stalled upload is answered with 504 after it. A request whose connection was handed to the worker (`handOffRequests`) gets the 504 from the worker when nothing moved on the connection for that long and nothing was written yet; a client that keeps sending does not time out.
 - The `lambda` server type reads the whole body into memory first and passes it to the lambda as `body` (see Lambdas below).
 
 ### Websockets

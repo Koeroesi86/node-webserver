@@ -934,11 +934,11 @@ describe('workerInvoke', () => {
       await until(() => fsSync.existsSync(path.join(folder, 'upload-error')));
     });
 
-    it('closes the connection when the client sends nothing for the timeout', async () => {
+    it('answers 504 and closes the connection when the client sends nothing for the timeout', async () => {
       const response = read(client);
       handOver('a', '/upload', { length: 1000, timeout: 100 });
 
-      expect(await response).toBe('');
+      expect(await response).toMatch(/^HTTP\/1\.1 504 Gateway Timeout\r\n/);
       await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
     });
   });

@@ -65,6 +65,22 @@ describe('the server', () => {
     });
   });
 
+  describe('of the type worker, for big uploads', () => {
+    it('answers 504 when the worker never answers a request it was handed, once the client stopped sending', async () => {
+      const client = net.connect(server.port, '127.0.0.1');
+      client.write(`POST / HTTP/1.1\r\nHost: silent.localhost\r\nContent-Length: 5000\r\nContent-Type: text/plain\r\n\r\n${'a'.repeat(2000)}`);
+
+      const chunks: Buffer[] = [];
+      client.on('data', (chunk: Buffer) => chunks.push(chunk));
+      await once(client, 'close');
+      const reply = Buffer.concat(chunks).toString();
+
+      expect(reply).toMatch(/^HTTP\/1\.1 504 Gateway Timeout\r\n/);
+      expect(reply).toMatch(/Content-Length: 31\r\n/);
+      expect(reply.endsWith('\r\n\r\nWorker did not respond in time.')).toBe(true);
+    });
+  });
+
   describe('of the type worker, for websockets', () => {
     const connect = () => connectWebSocket({ port: server.port, host: 'websocket.localhost' });
 
