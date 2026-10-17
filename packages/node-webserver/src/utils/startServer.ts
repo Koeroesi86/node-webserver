@@ -14,9 +14,11 @@ import createHttpsServer from './create-https-server';
 import createServerReloader from './create-server-reloader';
 import hydrateConfiguration from './hydrate-configuration';
 import loadInstances from './load-instances';
+import reportProblems from './report-problems';
 import registerServerMetrics from './register-server-metrics';
 import setupProcessHooks from './setup-process-hooks';
 import setupStatsHandler from './setupStatsHandler';
+import validateConfiguration from './validate-configuration';
 import type { Configuration, Logger } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
@@ -42,6 +44,8 @@ const startServer = async (
   const hydratedConfiguration = hydrateConfiguration(configuration);
   // the lines that wait are written when the process exits, by the exit listeners that setupShutdown adds
   const log = logger ?? createLogger(hydratedConfiguration);
+  // before anything is created that has to be stopped again
+  reportProblems(validateConfiguration(configuration), log);
   const { servers, watchServers, reloadOnSighup, trustedProxies, shutdownTimeout } = hydratedConfiguration;
   // before the hosts are set up, as the client address and the protocol of every request depend on it
   applyTrustedProxies(trustedProxies, [httpApp], [httpsApp, http2App]);
@@ -57,7 +61,7 @@ const startServer = async (
     servers,
     configuration,
     watchServers,
-    (previous) => loadInstances(servers, previous, log, { workerBudget, lambdaStats, compressionBudget }),
+    (previous) => loadInstances(servers, previous, log, { workerBudget, lambdaStats, compressionBudget, configuration }),
     log
   );
   const { reload, watch } = reloader;

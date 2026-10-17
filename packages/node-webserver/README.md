@@ -375,7 +375,7 @@ The servers given as paths in `servers` are loaded again when their files change
 (not the packages under `node_modules`) and its `key`, `cert` and `ca`. A file in `servers` that does not exist yet is watched too, and started once it is created.
 
 - The writes that come within 100 milliseconds of each other are one change, as an editor can write a file several times when it saves it.
-- Everything is loaded and checked before anything changes. A file that cannot be loaded (a syntax error, a server without a `hostname` or `protocol`, a certificate that cannot be read, a server that fails to start) is logged,
+- Everything is loaded and checked before anything changes. A file that cannot be loaded, or a server with a problem the [check](#checking-the-configuration) reports (a syntax error, a server without a `hostname` or `protocol`, a certificate that cannot be read, a server that fails to start) is logged,
   and the servers keep running as they were.
 - A server whose files did not change keeps running as it is, with its workers, lambdas and child process. Its certificates are read again, so a renewed certificate is used for the new connections.
 - A server that was changed or removed takes no new requests. The requests it has already taken are answered by it, and its workers and child process are stopped once they are, or after 30 seconds,
@@ -389,6 +389,23 @@ The servers given as paths in `servers` are loaded again when their files change
 `watchServers: false` in the configuration turns watching off, `reloadOnSighup: true` loads the servers again on `SIGHUP` instead of stopping, for deployments that prefer to say when.
 What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the servers defined in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
 the stats and the logging), as it is given to the server once when it starts.
+
+### Checking the configuration
+
+The configuration is checked against `configuration.schema.json` of the package, and against what a schema cannot say, when the server starts and again on every reload, and the check can be run alone, without
+listening or starting a worker, a lambda or a process: `nws-cli --config <path> --check` (or `checkConfiguration(configuration)` and `formatProblems(problems)` of this package, which return and write the problems).
+It prints every problem with its server (the host name, and the file when the server comes from one) and its setting, and exits with 1 when there is an error, 0 otherwise (warnings are printed). It loads the server files, which runs them.
+
+- the settings: a key that is not a setting (a typo such as `proxyOption`), a value of the wrong type or range, a missing required one (`options` of a `worker` server, `proxyOptions` of a `proxy` server, `childOptions`, `proxyOptions` and `serverOptions` of a `child` server)
+- the files: `key`, `cert` and `ca`, `options.root`, `cwd`, `staticWorker` and the `worker` of the routes, the `lambda` of a lambda server and its routes, and `proxyOptions.ca` have to exist
+- the certificates: an https server needs a key and a certificate, which have to belong together; a certificate that expired is an error, one that expires within 14 days a warning
+- the routes: `pattern` has to be a regular expression with its `flags`
+- the servers together: a host name served twice over the same protocol is an error, a host that is the `statsDomain` is a warning, and `portHttp` and `portHttps` cannot be the same
+- a `proxy` server has either a `target` that is a URL or a `dynamic` one with a token, a `child` server with arguments needs `%PORT%` in them unless `proxyOptions.port` is set, and a lambda server needs a `lambda` or `routes`
+
+An error stops the start, with all the problems in the message, and on a reload it is what is logged while the running servers are kept. A server file that does not exist is a warning, as a reload leaves it out.
+The schema is also for editors: `"$schema": "./node_modules/@koeroesi86/node-webserver/configuration.schema.json"` in a JSON configuration or server file gives completion and the same checks. Settings that take a function
+(`onStdout`, `limitPerPath`, `args` as a function) have no JSON form, and are checked to be a function only.
 
 ### Stopping the server
 

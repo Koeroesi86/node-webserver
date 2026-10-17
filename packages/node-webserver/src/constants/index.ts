@@ -65,3 +65,6 @@ export const COMPRESSIBLE_TYPES =
 
 /** the statuses that have no body to compress */
 export const BODYLESS_STATUSES = [204, 205, 304];
+
+/** a certificate that expires within this many days is reported, so that it is renewed before the clients notice */
+export const CERTIFICATE_EXPIRY_WARNING_DAYS = 14;

@@ -1,0 +1,56 @@
+import findSchemaProblems from './find-schema-problems';
+import getSchemaValidator from './get-schema-validator';
+
+const server = (extra: object = {}) => ({ hostname: 'a.localhost', protocol: 'http', ...extra });
+const find = (data: unknown) =>
+  findSchemaProblems(getSchemaValidator('/definitions/server'), data, 'http://a.localhost').map(({ setting, message }) => `${setting} ${message}`);
+
+describe('findSchemaProblems', () => {
+  it('finds nothing in a valid server, functions included', () => {
+    expect(find(server({ type: 'worker', options: { root: '/', limitPerPath: () => 1, onStdout: () => {} } }))).toEqual([]);
+  });
+
+  it('names a setting that does not exist', () => {
+    expect(find(server({ proxyOption: {} }))).toEqual(['proxyOption is not a setting']);
+  });
+
+  it('names a setting of the wrong type, and the place of a nested one', () => {
+    expect(find(server({ type: 'worker', options: { root: '/', limit: 'many' } }))).toEqual(['options.limit must be integer']);
+  });
+
+  it('names the required settings of the type of the server', () => {
+    expect(find(server({ type: 'worker' }))).toEqual(['options is required']);
+    expect(find(server({ type: 'child' }))).toEqual(['childOptions is required', 'proxyOptions is required', 'serverOptions is required']);
+  });
+
+  it('lists the values a setting may have', () => {
+    expect(find(server({ type: 'ftp' }))).toEqual(['type must be one of: child, lambda, proxy, worker']);
+  });
+
+  it('reports all of the problems together', () => {
+    expect(find({ protocol: 'ftp', typo: true, compression: { level: 12 } })).toEqual(
+      expect.arrayContaining(['hostname is required', 'protocol must be one of: http, https', 'typo is not a setting', 'compression.level must be <= 9'])
+    );
+  });
+
+  it('says once what a value that can be one of several things is not', () => {
+    expect(find(server({ type: 'worker', options: { root: '/', limitPerPath: 'x' } }))).toEqual([
+      'options.limitPerPath must be a function, or must be integer',
+    ]);
+  });
+
+  it('puts the position of a route in its place', () => {
+    expect(find(server({ type: 'worker', options: { root: '/', routes: [{ worker: 'a.js' }] } }))).toEqual([
+      'options.routes[0] path is required, or pattern is required',
+    ]);
+  });
+
+  it('marks the problems with the server they are in', () => {
+    expect(findSchemaProblems(getSchemaValidator('/definitions/server'), {}, 'x')[0]).toEqual({
+      severity: 'error',
+      server: 'x',
+      setting: 'hostname',
+      message: 'is required',
+    });
+  });
+});

@@ -10,6 +10,16 @@ jest.mock('./setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
 describe('startServer', () => {
   const configuration = { servers: [], portHttp: 0, portHttps: 0, statsDomain: false as const, watchServers: false };
 
+  it('rejects with all of the problems of the configuration, before anything listens', async () => {
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+
+    await expect(startServer({ ...configuration, portHtp: 80, portHttp: 8080, portHttps: 8080 } as object, createMockLogger())).rejects.toThrow(
+      /portHtp is not a setting\nerror: portHttps listens on the port of portHttp too/
+    );
+    expect(listen).not.toHaveBeenCalled();
+    listen.mockRestore();
+  });
+
   it('gives every call apps of its own', async () => {
     // the call does not hand its servers back, so the ones that listen are closed through the spy
     const listen = jest.spyOn(net.Server.prototype, 'listen');

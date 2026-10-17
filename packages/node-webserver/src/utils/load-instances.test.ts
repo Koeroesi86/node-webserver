@@ -8,6 +8,8 @@ import createMockLogger from './mock-logger.test-helper';
 import type { ServerConfig } from '../types';
 
 // a server starts processes, a handler that remembers whether it was stopped is enough here
+// the files of the certificates are no real ones here, an empty context stands in for theirs
+jest.mock('./find-certificate-problems', () => ({ __esModule: true, default: () => [] }));
 jest.mock('./create-instance-handler', () => ({ __esModule: true, default: jest.fn(() => ({ handler: jest.fn(), close: jest.fn() })) }));
 
 describe('loadInstances', () => {
@@ -31,7 +33,7 @@ describe('loadInstances', () => {
     fs.writeFileSync(file, content);
     return file;
   };
-  const server = (name: string, hostname: string) => write(name, `module.exports = { hostname: '${hostname}', protocol: 'http', type: 'worker' };`);
+  const server = (name: string, hostname: string) => write(name, `module.exports = { hostname: '${hostname}', protocol: 'http' };`);
 
   it('loads the servers of the files and the ones of the configuration', () => {
     const inline: ServerConfig = { hostname: 'inline.localhost', protocol: 'http' };
@@ -112,7 +114,6 @@ describe('loadInstances', () => {
     const key = write('key.pem', 'key');
     const cert = write('cert.pem', 'one');
     const file = write('a.js', `module.exports = { hostname: 'a.localhost', protocol: 'https', key: ${JSON.stringify(key)}, cert: ${JSON.stringify(cert)} };`);
-    // the files are no real key and certificate, an empty context stands in for theirs
     const emptyContext = tls.createSecureContext();
     const createSecureContext = jest.spyOn(tls, 'createSecureContext').mockReturnValue(emptyContext);
     const previous = loadInstances([file], [], createMockLogger());
@@ -123,7 +124,20 @@ describe('loadInstances', () => {
 
     expect(loaded[0]).toBe(previous[0]);
     expect(createSecureContext).toHaveBeenLastCalledWith(expect.objectContaining({ cert: 'two' }));
-    expect(() => loadInstances([file], loaded, createMockLogger())).toThrow('ENOENT');
+    expect(() => loadInstances([file], loaded, createMockLogger())).toThrow('cert is not a file');
     expect(createInstanceHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws with the problems of all the servers before it starts any, and logs the warnings of the ones that start', () => {
+    const logger = createMockLogger();
+    const valid: ServerConfig = { hostname: 'a.localhost', protocol: 'http' };
+
+    expect(() =>
+      loadInstances([valid, { ...valid, hostname: 'b.localhost', typo: 1 }, { ...valid, hostname: 'c.localhost', typo: 1 }] as ServerConfig[], [], logger)
+    ).toThrow(/typo is not a setting\nerror: http:\/\/c.localhost typo is not a setting/);
+    expect(createInstanceHandler).not.toHaveBeenCalled();
+
+    loadInstances([valid], [], logger, { configuration: { statsDomain: 'a.localhost' } });
+    expect(logger.warning).toHaveBeenCalledWith(expect.stringContaining('statsDomain'));
   });
 });

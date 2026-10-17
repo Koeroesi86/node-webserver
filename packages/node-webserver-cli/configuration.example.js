@@ -11,7 +11,6 @@ module.exports = {
   },
   portHttp: 80,
   portHttps: 443,
-  portLookup: false,
   statsDomain: 'stats.localhost', // set to false to disable
   statsRefreshInterval: 10000,
   servers: [

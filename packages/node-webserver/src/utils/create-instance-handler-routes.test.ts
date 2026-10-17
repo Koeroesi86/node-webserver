@@ -26,7 +26,7 @@ describe('the routes of a worker server', () => {
 
   it.each([
     ['a worker that is not a file', { path: '/items', worker: 'missing.js' }, /is not a file/],
-    ['a pattern that is not valid', { pattern: '/items/(', worker: 'worker.js' }, /is not valid/],
+    ['a pattern that is not valid', { pattern: '/items/(', worker: 'worker.js' }, /Invalid regular expression/],
   ])('stop the servers from loading with %s', (_, route, message) => {
     expect(() => loadInstances([server([route])], [], createMockLogger())).toThrow(message);
   });
