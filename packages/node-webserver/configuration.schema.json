@@ -1,0 +1,856 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/configuration.schema.json",
+  "title": "node-webserver configuration",
+  "description": "The configuration of @koeroesi86/node-webserver and the definition of a server in a server file. Settings that take a function in a JS or TS configuration (`onStdout`, `args`, `limitPerPath`...) have no JSON form, and are not checked beyond being a function.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "fileLogPath": {
+      "description": "the folder of the log files, false to disable file logging",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "const": false
+        }
+      ]
+    },
+    "fileLogFlushInterval": {
+      "description": "how long log lines are collected before they are written, in milliseconds, 0 writes every line right away",
+      "type": "integer",
+      "minimum": 0
+    },
+    "logLevels": {
+      "$ref": "#/definitions/logLevels"
+    },
+    "portHttp": {
+      "$ref": "#/definitions/port"
+    },
+    "portHttps": {
+      "$ref": "#/definitions/port"
+    },
+    "http2": {
+      "description": "serve HTTP/2 on the https port to the clients that offer it",
+      "type": "boolean"
+    },
+    "keepAliveTimeout": {
+      "description": "how long an idle connection is kept open, in milliseconds",
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxConnections": {
+      "description": "the open connections per server after which new ones are dropped, 0 for no limit",
+      "type": "integer",
+      "minimum": 0
+    },
+    "workerLimit": {
+      "description": "how many worker processes the worker servers may run together, 0 for no limit",
+      "type": "integer",
+      "minimum": 0
+    },
+    "portLookup": {
+      "$ref": "#/definitions/portLookup"
+    },
+    "trustedProxies": {
+      "description": "the load balancers whose X-Forwarded-* headers are believed, as a list for both servers or per server",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/trustedProxies"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "http": {
+              "$ref": "#/definitions/trustedProxies"
+            },
+            "https": {
+              "$ref": "#/definitions/trustedProxies"
+            }
+          }
+        }
+      ]
+    },
+    "statsDomain": {
+      "description": "the host that answers with the stats, false to disable",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "const": false
+        }
+      ]
+    },
+    "statsRefreshInterval": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "servers": {
+      "description": "server definitions, or paths to modules exporting one",
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "$ref": "#/definitions/server"
+          }
+        ]
+      }
+    },
+    "watchServers": {
+      "description": "load the servers given as paths again when their files change",
+      "type": "boolean"
+    },
+    "shutdownTimeout": {
+      "description": "how long the requests in flight are waited for when the process is stopped, in milliseconds",
+      "type": "integer",
+      "minimum": 0
+    },
+    "reloadOnSighup": {
+      "description": "load the servers again on SIGHUP, instead of stopping",
+      "type": "boolean"
+    },
+    "serviceName": {
+      "description": "@koeroesi86/node-webserver-service: the name of the service, which the server itself ignores",
+      "type": "string",
+      "minLength": 1
+    },
+    "serviceDisplayName": {
+      "description": "@koeroesi86/node-webserver-service: the description of the service",
+      "type": "string"
+    },
+    "serviceUser": {
+      "description": "@koeroesi86/node-webserver-service: the user the service runs as, root when missing",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "definitions": {
+    "port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "function": {
+      "description": "a function, which a JSON file cannot hold",
+      "function": true
+    },
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trustedProxies": {
+      "description": "CIDRs, or loopback, linklocal, uniquelocal",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "logLevels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "system": {
+          "type": "boolean"
+        },
+        "info": {
+          "type": "boolean"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "boolean"
+        },
+        "warning": {
+          "type": "boolean"
+        }
+      }
+    },
+    "portLookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "address"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/definitions/port"
+        },
+        "to": {
+          "$ref": "#/definitions/port"
+        },
+        "address": {
+          "type": "string"
+        }
+      }
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostname",
+        "protocol"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "hostname": {
+          "description": "a host name, where * stands for one label of it, as in *.example.com",
+          "type": "string",
+          "minLength": 1
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "http",
+            "https"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "child",
+            "lambda",
+            "proxy",
+            "worker"
+          ]
+        },
+        "key": {
+          "description": "the file of the private key, for https",
+          "type": "string",
+          "minLength": 1
+        },
+        "cert": {
+          "description": "the file of the certificate, for https",
+          "type": "string",
+          "minLength": 1
+        },
+        "ca": {
+          "description": "the file of the certificates of the authorities",
+          "type": "string",
+          "minLength": 1
+        },
+        "compression": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/compression"
+            }
+          ]
+        },
+        "options": {
+          "$ref": "#/definitions/workerOptions"
+        },
+        "childOptions": {
+          "$ref": "#/definitions/childOptions"
+        },
+        "proxyOptions": {
+          "$ref": "#/definitions/proxyOptions"
+        },
+        "serverOptions": {
+          "$ref": "#/definitions/serverOptions"
+        },
+        "lambdaOptions": {
+          "$ref": "#/definitions/lambdaOptions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "worker"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "options"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "proxy"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "proxyOptions"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "lambda"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "lambdaOptions"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "child"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "childOptions",
+              "proxyOptions",
+              "serverOptions"
+            ]
+          }
+        }
+      ]
+    },
+    "compression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9
+        },
+        "brotliQuality": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "encodings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "br",
+              "gzip",
+              "deflate"
+            ]
+          }
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "childOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "description": "the arguments, where %PORT% is replaced by the port of the process, or a function of the port",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/stringList"
+            },
+            {
+              "$ref": "#/definitions/function"
+            }
+          ]
+        }
+      }
+    },
+    "serverOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol"
+      ],
+      "properties": {
+        "protocol": {
+          "type": "string"
+        },
+        "proxyTarget": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "proxyOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "description": "where the requests go, a URL",
+          "type": "string",
+          "minLength": 1
+        },
+        "changeOrigin": {
+          "type": "boolean"
+        },
+        "secure": {
+          "type": "boolean"
+        },
+        "proxyTimeout": {
+          "description": "in milliseconds",
+          "type": "integer",
+          "minimum": 0
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/port"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/port"
+              }
+            }
+          ]
+        },
+        "hideHeaders": {
+          "$ref": "#/definitions/stringList"
+        },
+        "forwardedHeaders": {
+          "type": "string",
+          "enum": [
+            "sanitize",
+            "pass",
+            "none"
+          ]
+        },
+        "ca": {
+          "description": "the file with the certificates of the authorities an https target is checked against",
+          "type": "string",
+          "minLength": 1
+        },
+        "dynamic": {
+          "$ref": "#/definitions/dynamicTarget"
+        }
+      }
+    },
+    "dynamicTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tokenEnv": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ttl": {
+          "description": "in seconds",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "controlPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "http",
+            "https"
+          ]
+        },
+        "port": {
+          "$ref": "#/definitions/port"
+        },
+        "allowPrivate": {
+          "type": "boolean"
+        },
+        "persistPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workerRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worker"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "pattern": {
+          "description": "a regular expression the whole path has to match, named groups become pathParameters",
+          "type": "string",
+          "minLength": 1
+        },
+        "flags": {
+          "description": "of the regular expression: i, s, u or v",
+          "type": "string",
+          "pattern": "^[isuv]*$"
+        },
+        "worker": {
+          "description": "the worker file, relative to the root or absolute",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "required": [
+            "pattern"
+          ]
+        }
+      ]
+    },
+    "lambdaRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lambda"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "pattern": {
+          "description": "a regular expression the whole path has to match, named groups become pathParameters",
+          "type": "string",
+          "minLength": 1
+        },
+        "flags": {
+          "description": "of the regular expression: i, s, u or v",
+          "type": "string",
+          "pattern": "^[isuv]*$"
+        },
+        "lambda": {
+          "description": "the file of the lambda",
+          "type": "string",
+          "minLength": 1
+        },
+        "handler": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "required": [
+            "pattern"
+          ]
+        }
+      ]
+    },
+    "lambdaOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lambda": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handler": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/lambdaRoute"
+          }
+        },
+        "communication": {
+          "type": "string",
+          "enum": [
+            "ipc",
+            "file"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "acquireTimeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "startTimeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitRequestBody": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "restrictFileSystem": {
+          "type": "boolean"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "staticOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cacheControl": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "folder": {
+                "type": "string"
+              },
+              "extension": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "folder"
+                ]
+              },
+              {
+                "required": [
+                  "extension"
+                ]
+              }
+            ]
+          }
+        },
+        "listDirectories": {
+          "type": "boolean"
+        },
+        "precompressed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "br",
+              "gzip"
+            ]
+          }
+        }
+      }
+    },
+    "workerOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root"
+      ],
+      "properties": {
+        "root": {
+          "description": "the folder the workers and files are served from",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitPerPath": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "$ref": "#/definitions/function"
+            }
+          ]
+        },
+        "limitWorkerIdleTimeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workerBudget": {
+          "type": "object"
+        },
+        "warmStaticWorker": {
+          "type": "boolean"
+        },
+        "warmPaths": {
+          "$ref": "#/definitions/stringList"
+        },
+        "warmWorkersPerPath": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inlineRequestBody": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitRequestBody": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitRequestTimeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitResponseTimeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "handOffResponses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "handOffRequests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "idleCheckTimeout": {
+          "description": "deprecated, has no effect",
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitQueue": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitWebSocketMessage": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitWebSocketConnections": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "webSocketPingInterval": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitWebSocketIdleTimeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "onStdout": {
+          "$ref": "#/definitions/function"
+        },
+        "onStderr": {
+          "$ref": "#/definitions/function"
+        },
+        "onExit": {
+          "$ref": "#/definitions/function"
+        },
+        "onForbiddenPath": {
+          "$ref": "#/definitions/function"
+        },
+        "index": {
+          "$ref": "#/definitions/stringList"
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/workerRoute"
+          }
+        },
+        "fallthrough": {
+          "type": "boolean"
+        },
+        "env": {
+          "type": "object"
+        },
+        "staticWorker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "static": {
+          "$ref": "#/definitions/staticOptions"
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Configuration
 
-A `configuration.js` (or `configuration.json`) exports the top level options and the list of servers. The command line takes `--config <path>` (`nws-cli`). A working example per server type is in [`packages/node-webserver/examples/`](https://github.com/Koeroesi86/node-webserver/tree/master/packages/node-webserver/examples).
+A `configuration.js` (or `configuration.json`) exports the top level options and the list of servers. The command line takes `--config <path>` (`nws-cli`), and `--check` checks the configuration without starting the server (see [Checking the configuration](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#checking-the-configuration)). A working example per server type is in [`packages/node-webserver/examples/`](https://github.com/Koeroesi86/node-webserver/tree/master/packages/node-webserver/examples).
 
 ```javascript
 module.exports = {
@@ -43,3 +43,8 @@ Every server has `hostname` (a wildcard like `*.example.com` is allowed), `proto
 | any | `compression` |
 
 The reference for each option is in the [README of the server](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md), and the types are in `packages/node-webserver/src/types/`.
+
+## Checking
+
+The configuration is checked against [`configuration.schema.json`](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/configuration.schema.json) and a few rules a schema cannot hold (files, certificates, patterns, duplicate hosts), when the server starts and on every reload.
+`nws-cli --config <path> --check` does it alone and exits with 1 on an error, with every problem listed with its server and setting. A reload with a problem keeps the running servers and logs the same report.
