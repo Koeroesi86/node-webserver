@@ -116,7 +116,8 @@ Things to know:
   A body that is announced bigger than `limitRequestBody` is not handed over, it is answered with 413 by the server as before.
 - The worker writes the response to the client itself, after reading the body or before (an early 413 for example). A middleware in front does not see it: no compression, no headers it would add. The access log has the status and the length of the body the worker wrote.
   The connection is closed after the response (`Connection: close`), a client opens a new one for its next request. Bytes that follow the body on the connection are dropped.
-- The worker closes the connection of a client that sends or takes nothing for `limitResponseTimeout`. There is no 504 for a worker that stays silent: the connection stays open as long as the client keeps it active. A worker that dies leaves the client with a closed connection instead of a 502.
+- The worker answers 504 (`Worker did not respond in time.`) when nothing moves on the connection for `limitResponseTimeout` and it has written nothing yet, then closes the connection. A client that keeps sending the body does not time out, whether the worker reads it or not. A response that is under way is closed without a status, as the status line cannot be taken back.
+  A worker whose event loop is blocked cannot fire its timer, so its client waits, and a worker that dies leaves the client with a closed connection instead of a 502.
 - A client that goes away during the upload destroys `bodyStream` with an error, as before.
 
 ## Routes

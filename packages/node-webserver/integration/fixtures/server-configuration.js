@@ -49,6 +49,8 @@ module.exports = {
   servers: [
     worker('worker.localhost'),
     worker('compressed.localhost', { compression: { threshold: 100 } }),
+    // the worker never answers, the client of a handed over request gets a 504 after a second
+    worker('silent.localhost', { options: { root: resolve(__dirname, 'silent'), index: ['worker.js'], handOffRequests: 1024, limitResponseTimeout: 1000 } }),
     worker('websocket.localhost', { options: { root: resolve(__dirname, 'websocket'), index: ['worker.js'], limitWebSocketMessage: 200000 } }),
     // the https port serves HTTP/2 too, with the same kind of servers as the http one
     worker('secure.localhost', { protocol: 'https', key: process.env.TLS_KEY, cert: process.env.TLS_CERT }),
