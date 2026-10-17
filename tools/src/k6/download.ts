@@ -106,7 +106,8 @@ function download(headers: Record<string, string>) {
   if (__ITER > 0) newConnection.add(opensConnection(response));
 
   // seconds of the whole request, and only for downloads that arrived whole, as a failed one would look fast
-  if (body?.byteLength === size) speed.add(size / 1e6 / (response.timings.duration / 1000));
+  // a duration of 0 (the coarse clock of windows) would make the speed infinite, which the summary file cannot carry
+  if (body?.byteLength === size && response.timings.duration > 0) speed.add(size / 1e6 / (response.timings.duration / 1000));
 }
 
 export function keepAlive() {
