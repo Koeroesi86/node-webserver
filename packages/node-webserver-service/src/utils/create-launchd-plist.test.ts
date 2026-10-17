@@ -33,6 +33,14 @@ describe('createLaunchdPlist', () => {
     expect(plist).toContain('<key>StandardErrorPath</key><string>/var/log/nws/nws.log</string>');
   });
 
+  it('starts an agent of the current user at load, without a user name', () => {
+    const plist = createLaunchdPlist('com.koeroesi86.nws', { ...definition, userService: true });
+
+    expect(plist).toContain('<key>RunAtLoad</key><true/>');
+    expect(plist).toContain('<key>KeepAlive</key><true/>');
+    expect(plist).not.toContain('UserName');
+  });
+
   it('escapes xml', () => {
     expect(createLaunchdPlist('l', { ...definition, configPath: '/a&b/<c>.js' })).toContain('/a&amp;b/&lt;c&gt;.js');
   });

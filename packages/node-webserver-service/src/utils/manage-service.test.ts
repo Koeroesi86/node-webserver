@@ -37,6 +37,7 @@ describe('manageService', () => {
       configPath,
       workingDirectory: folder,
       user: undefined,
+      userService: false,
       logFolder: undefined,
     });
   });
@@ -46,6 +47,21 @@ describe('manageService', () => {
     await manageService(['--add'], configPath);
 
     expect(installService).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'nws', user: 'www', logFolder: '/var/log/nws' }));
+  });
+
+  it('installs and removes the service for the current user', async () => {
+    await manageService(['--add', '--user'], configPath);
+    await manageService(['--remove', '--user'], configPath);
+
+    expect(installService).toHaveBeenCalledWith(expect.objectContaining({ userService: true }));
+    expect(removeService).toHaveBeenCalledWith(expect.objectContaining({ userService: true }));
+  });
+
+  it('does not combine --user with serviceUser, or use it without an action', async () => {
+    writeConfiguration({ serviceName: 'nws', serviceUser: 'www' });
+    await expect(manageService(['--add', '--user'], configPath)).rejects.toThrow('serviceUser');
+    await expect(manageService(['--run', '--user'], configPath)).rejects.toThrow('--add or --remove');
+    expect(installService).not.toHaveBeenCalled();
   });
 
   it('removes the service', async () => {
