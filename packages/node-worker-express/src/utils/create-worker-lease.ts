@@ -2,15 +2,23 @@ import type { Socket } from 'node:net';
 import type Worker from '@koeroesi86/node-worker';
 import type { Channel } from './createChannel';
 import type { LeaseState, WorkerRegistry } from './create-worker-registry';
-import type { HandOffMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';
+import type { HandOffMessage, HandBackMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 /** A worker handed out for one request, it counts as load for the worker until it is released. */
 export interface WorkerLease {
   readonly worker: Worker;
   /** sends a message to the worker */
   send: (message: WorkerInputEvent) => void;
-  /** `onMessage` receives the messages of the worker for the request, `onExit` is called when the worker dies before the lease is released */
-  subscribe: (requestId: string, onMessage: (message: WorkerOutputEvent) => void, onExit: (code: number | null) => void) => void;
+  /**
+   * `onMessage` receives the messages of the worker for the request, `onExit` is called when the worker dies before the lease is released,
+   * `onHandBack` takes the connection if the worker gives it back after a handed over request
+   */
+  subscribe: (
+    requestId: string,
+    onMessage: (message: WorkerOutputEvent) => void,
+    onExit: (code: number | null) => void,
+    onHandBack?: (message: HandBackMessage, socket: Socket) => void
+  ) => void;
   /**
    * gives the connection of the client to the worker, along with the message, over the IPC channel. The socket is closed in this process once it was sent,
    * the promise rejects when it could not be sent
@@ -43,8 +51,8 @@ const createWorkerLease = ({ worker, registry, onReleased }: LeaseParams): Worke
         }
         worker.instance.send(message, socket, (error) => (error ? reject(error) : resolve()));
       }),
-    subscribe: (requestId, onMessage, onExit) => {
-      Object.assign(state, { onMessage, onExit });
+    subscribe: (requestId, onMessage, onExit, onHandBack) => {
+      Object.assign(state, { onMessage, onExit, onHandBack });
       registry.subscribe(state, requestId);
     },
     release: () => {

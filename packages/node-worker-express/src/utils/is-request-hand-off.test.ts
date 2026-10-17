@@ -2,7 +2,7 @@ import { WORKER_EVENT } from '../constants';
 import isRequestHandOff from './is-request-hand-off';
 
 describe('isRequestHandOff', () => {
-  const message = { type: WORKER_EVENT.REQUEST_HANDOFF, requestId: 'a', event: {}, prefix: '', length: 1, timeout: 0 };
+  const message = { type: WORKER_EVENT.REQUEST_HANDOFF, requestId: 'a', event: {}, prefix: '', length: 1, timeout: 0, keepAlive: true };
 
   it('accepts the message that hands a request over', () => {
     expect(isRequestHandOff(message)).toBe(true);
@@ -18,6 +18,7 @@ describe('isRequestHandOff', () => {
     ['no prefix', { ...message, prefix: 1 }],
     ['no length', { ...message, length: '1' }],
     ['no timeout', { ...message, timeout: undefined }],
+    ['no word on keeping the connection', { ...message, keepAlive: undefined }],
   ])('refuses %s', (_name, value) => {
     expect(isRequestHandOff(value)).toBe(false);
   });

@@ -69,4 +69,17 @@ describe('createHandOffRequests', () => {
     expect(setTimeout).toHaveBeenCalledTimes(1);
     expect(setTimeout).toHaveBeenCalledWith(100, expect.any(Function));
   });
+
+  it('tells once whether the head promised the client that the connection goes on', () => {
+    const { handOffs } = create();
+    const kept = new net.Socket();
+    const closed = new net.Socket();
+    handOffs.request('a', false, head);
+    handOffs.request('b', false, head);
+
+    handOffs.receive({ requestId: 'a', keepAlive: true }, kept);
+    handOffs.receive({ requestId: 'b', keepAlive: false }, closed);
+
+    expect([handOffs.takeKeepAlive(kept), handOffs.takeKeepAlive(kept), handOffs.takeKeepAlive(closed)]).toEqual([true, false, false]);
+  });
 });

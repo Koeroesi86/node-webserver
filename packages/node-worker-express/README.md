@@ -57,7 +57,11 @@ the server hands the connection of the client to the worker, which writes the bo
 Things to know:
 - Only plain HTTP/1 connections qualify: not HTTPS (the TLS state lives in the server), HEAD, a response without a length or with `Transfer-Encoding`, or one that a middleware in front encodes (compression): those stream through the server as before.
   A middleware in front that changes the body in another way does not see it, set `handOffResponses: 0` then.
-- The connection is closed after the body (`Connection: close`), a client opens a new one for its next request.
+- The connection goes on after the body for a client that wants it kept (`Connection: keep-alive` in the head, as the server writes it): `streamResponse` gives it back to the server, which takes it again
+  as a new connection of its http server for the next request of the client, so that a client that downloads many big files does not reconnect for each. It is closed (`Connection: close`) for a client that asked for it,
+  while the server is stopping, and when the body failed. A worker that writes the body to the socket itself and ends it closes the connection as before. One that wants it kept calls
+  `callback({ statusCode, headers, handOff: true, handBack: socket })` once the whole body was written and the socket is not ended, which resolves with `true` when the server took it (nothing more is sent then),
+  or closes the socket and resolves with anything else, after which the end of the response is sent as usual. A request that a client pipelined behind a handed over one is not answered.
 - The worker closes the connection of a client that takes nothing for `limitResponseTimeout`. A worker that dies while it writes leaves the client with a truncated body.
 
 Producing very small chunks is wasteful, as every part takes a message to the main process: collect them into parts of some KiB.
@@ -115,7 +119,9 @@ Things to know:
 - Only plain HTTP/1 connections with a known length qualify: not HTTPS (the TLS state lives in the server), chunked bodies (`Transfer-Encoding`), websockets and bodies that arrived with the request (`inlineRequestBody`): those stream through the server as before.
   A body that is announced bigger than `limitRequestBody` is not handed over, it is answered with 413 by the server as before.
 - The worker writes the response to the client itself, after reading the body or before (an early 413 for example). A middleware in front does not see it: no compression, no headers it would add. The access log has the status and the length of the body the worker wrote.
-  The connection is closed after the response (`Connection: close`), a client opens a new one for its next request. Bytes that follow the body on the connection are dropped.
+  The connection goes on after the response when it can: the worker answers with `Connection: keep-alive` and gives the connection back to the server, with the bytes it read from it behind the body, which takes it again as a new
+  connection of its http server, so that a client that uploads many big files does not reconnect for each. It is closed (`Connection: close`) when the client asked for it, while the server is stopping, when the response
+  was written before the whole body was read (an early 413), when it has no `Content-Length` (a streamed response without one ends with the connection), and when a request was pipelined behind the body on the connection (it is not answered).
 - The worker closes the connection of a client that sends or takes nothing for `limitResponseTimeout`. There is no 504 for a worker that stays silent: the connection stays open as long as the client keeps it active. A worker that dies leaves the client with a closed connection instead of a 502.
 - A client that goes away during the upload destroys `bodyStream` with an error, as before.
 

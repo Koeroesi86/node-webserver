@@ -187,6 +187,12 @@ class WorkerPool implements WorkerBudgetMember {
       workerPath,
       options,
       onMessage: (message) => this.registry.getSubscription(message.requestId)?.onMessage?.(message),
+      onHandBack: (message, socket) => {
+        const take = this.registry.getSubscription(message.requestId)?.onHandBack;
+        // nobody waits for it any more, the request is over
+        if (take) take(message, socket);
+        else socket.destroy();
+      },
       onStdout: this.onStdout,
       onStderr: this.onStderr,
     });

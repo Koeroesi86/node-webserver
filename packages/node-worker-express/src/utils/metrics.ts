@@ -13,6 +13,11 @@ export type ServerMetrics = {
   eventLoopDelayMs: { mean: number; p99: number; max: number };
   /** the requests handled by the worker middleware, `active` are the ones without a complete response yet, `latencyMs` how long the ones with a closed response took */
   requests: { total: number; active: number; status: Record<StatusClass, number>; latencyMs: LatencySnapshot };
+  /**
+   * the connections that were handed to a worker, to read the body of a request (`requests`) or to write a big response (`responses`): how many, and how many of them the worker
+   * gave back for the next request of the client
+   */
+  handOffs: Record<'requests' | 'responses', { total: number; handedBack: number }>;
   /** what other parts of the server registered, by name: worker pools, connections, lambdas */
   sources: Record<string, unknown>;
 };
@@ -20,6 +25,8 @@ export type ServerMetrics = {
 const sources = new Map<string, () => unknown>();
 
 const requests: Omit<ServerMetrics['requests'], 'latencyMs'> = { total: 0, active: 0, status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 } };
+
+const handOffs: ServerMetrics['handOffs'] = { requests: { total: 0, handedBack: 0 }, responses: { total: 0, handedBack: 0 } };
 
 const latency = createLatencyHistogram();
 
@@ -64,6 +71,11 @@ export function trackRequest(response: ServerResponse): TrackedRequest {
   return tracked;
 }
 
+/** counts a connection that went to a worker (`total`), or that came back from it (`handedBack`) */
+export function countHandOff(side: keyof ServerMetrics['handOffs'], kind: keyof ServerMetrics['handOffs']['requests']) {
+  handOffs[side][kind] += 1;
+}
+
 const readSource = (read: () => unknown) => {
   try {
     return read();
@@ -97,6 +109,7 @@ export function getServerMetrics(): ServerMetrics {
     memory: { rss, heapTotal, heapUsed, external },
     eventLoopDelayMs: readEventLoop(),
     requests: { ...requests, status: { ...requests.status }, latencyMs: latency.read() },
+    handOffs: { requests: { ...handOffs.requests }, responses: { ...handOffs.responses } },
     sources: Object.fromEntries(Array.from(sources.entries()).map(([name, read]) => [name, readSource(read)])),
   };
 }

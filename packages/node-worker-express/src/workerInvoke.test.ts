@@ -112,6 +112,14 @@ module.exports = async (event, callback) => {
     else await new Promise((resolve) => socket.once('close', resolve));
     return callback(part(null));
   }
+  if (event.path === '/hands-back') {
+    const socket = await callback({ statusCode: 200, headers: { 'Content-Length': '5' }, handOff: true });
+    socket.write('hello');
+    const handedBack = await callback({ statusCode: 200, handOff: true, handBack: socket });
+    fs.writeFileSync(path.join(event.rootPath, 'handed-back'), String(handedBack));
+    if (handedBack !== true) await callback(part(null));
+    return;
+  }
   if (event.path === '/handed-echo') {
     const chunks = [];
     for await (const chunk of event.bodyStream) chunks.push(chunk);
@@ -158,7 +166,10 @@ describe('workerInvoke', () => {
         'utils/create-handed-request',
         'utils/create-socket-body',
         'utils/create-socket-responder',
+        'utils/detach-connection',
+        'utils/get-read-stop',
         'utils/is-request-hand-off',
+        'utils/send-hand-back',
         'utils/frames',
         'utils/close-ws-connection',
         'utils/create-body-stream',
@@ -577,6 +588,7 @@ describe('workerInvoke', () => {
         status: { '1xx': 0, '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 },
         latencyMs: { count: 0, sumMs: 0, maxMs: 0, p50: 0, p90: 0, p99: 0, buckets: {} },
       },
+      handOffs: { requests: { total: 0, handedBack: 0 }, responses: { total: 0, handedBack: 0 } },
       sources: {},
     });
 
@@ -751,7 +763,8 @@ describe('workerInvoke', () => {
     let connection: net.Socket;
 
     beforeEach(async () => {
-      server = net.createServer();
+      // not read here, as the server does not read a connection it hands over: bytes it read would be lost to the worker
+      server = net.createServer({ pauseOnConnect: true });
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
       const accepted = new Promise<net.Socket>((resolve) => server.once('connection', resolve));
       client = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');
@@ -760,6 +773,7 @@ describe('workerInvoke', () => {
 
     afterEach(() => {
       client.destroy();
+      connection.destroy();
       return new Promise((resolve) => server.close(resolve));
     });
 
@@ -769,7 +783,8 @@ describe('workerInvoke', () => {
         socket.on('data', (chunk: Buffer) => chunks.push(chunk));
         socket.once('close', () => resolve(Buffer.concat(chunks).toString()));
       });
-    const handOver = (requestId: string, timeout = 0) => child.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, timeout }, connection);
+    const handOver = (requestId: string, timeout = 0, keepAlive = false) =>
+      child.send({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, timeout, keepAlive }, connection);
 
     it('asks for the connection with the head of the response, and writes the body to it once it has it', async () => {
       const body = read(client);
@@ -783,6 +798,55 @@ describe('workerInvoke', () => {
       expect(await body).toBe('hello');
       await until(() => of('a', WORKER_EVENT.RESPONSE_EMIT).length === 1);
       expect(of('a', WORKER_EVENT.RESPONSE_EMIT)[0].event.body).toBeNull();
+    });
+
+    it('gives the connection back after the body when the head promised the client that it goes on', async () => {
+      fsSync.rmSync(path.join(folder, 'handed-back'), { force: true });
+      const body = new Promise<string>((resolve) => client.once('data', (chunk) => resolve(chunk.toString())));
+      const back = new Promise<[unknown, unknown]>((resolve) => child.once('message', (message, handle) => resolve([message, handle])));
+      send('a', '/hands-back');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_HANDOFF).length === 1);
+
+      handOver('a', 0, true);
+      client.write('GET /next');
+      const [message, socket] = await back;
+
+      expect(await body).toBe('hello');
+      expect(message).toMatchObject({ type: WORKER_EVENT.RESPONSE_HANDBACK, requestId: 'a' });
+      expect(socket).toBeInstanceOf(net.Socket);
+      if (!(socket instanceof net.Socket)) return;
+
+      // the bytes of the client are either what the worker had read already, or still in the kernel for whoever has the connection now: none of them is lost
+      const rest = new Promise<string>((resolve) => {
+        const leftover =
+          typeof message === 'object' && message !== null && 'leftover' in message && typeof message.leftover === 'string' ? message.leftover : '';
+        const chunks: Buffer[] = [Buffer.from(leftover, 'base64')];
+        const check = () => Buffer.concat(chunks).toString() === 'GET /next' && resolve('GET /next');
+        socket.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+          check();
+        });
+        check();
+      });
+      expect(await rest).toBe('GET /next');
+      await until(() => fsSync.existsSync(path.join(folder, 'handed-back')));
+      expect(fsSync.readFileSync(path.join(folder, 'handed-back'), 'utf8')).toBe('true');
+      expect(of('a', WORKER_EVENT.RESPONSE_EMIT)).toHaveLength(0);
+      connection.destroy();
+      socket.destroy();
+    });
+
+    it('closes the connection after the body and ends the response through the server when the head said that it is closed', async () => {
+      fsSync.rmSync(path.join(folder, 'handed-back'), { force: true });
+      const body = read(client);
+      send('a', '/hands-back');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_HANDOFF).length === 1);
+
+      handOver('a');
+
+      expect(await body).toBe('hello');
+      await until(() => of('a', WORKER_EVENT.RESPONSE_EMIT).length === 1);
+      expect(fsSync.readFileSync(path.join(folder, 'handed-back'), 'utf8')).toBe('false');
     });
 
     it('streams the body through the server when it refuses', async () => {
@@ -846,7 +910,7 @@ describe('workerInvoke', () => {
         socket.on('data', (chunk: Buffer) => chunks.push(chunk));
         socket.once('close', () => resolve(Buffer.concat(chunks).toString()));
       });
-    const handOver = (requestId: string, requestPath: string, { prefix = '', length = 0, timeout = 0 } = {}) =>
+    const handOver = (requestId: string, requestPath: string, { prefix = '', length = 0, timeout = 0, keepAlive = false } = {}) =>
       child.send(
         {
           type: WORKER_EVENT.REQUEST_HANDOFF,
@@ -864,9 +928,12 @@ describe('workerInvoke', () => {
           prefix: Buffer.from(prefix).toString('base64'),
           length,
           timeout,
+          keepAlive,
         },
         connection
       );
+    /** what the worker gives back over the IPC channel: the message, and the connection that came with it */
+    const handedBack = () => new Promise<[unknown, unknown]>((resolve) => child.once('message', (message, handle) => resolve([message, handle])));
 
     it('reads the rest of the body from the connection after the part that came with the request, and answers on it', async () => {
       const response = read(client);
@@ -882,6 +949,50 @@ describe('workerInvoke', () => {
       expect(text.endsWith('\r\n\r\n9:abc:true')).toBe(true);
       await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
       expect(of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE)[0].event).toEqual({ statusCode: 201, headers: { 'Content-Length': '10' } });
+    });
+
+    it('gives the connection back after a response it wrote whole, with what it read behind the body, and reads nothing more from it', async () => {
+      const response = new Promise<string>((resolve) => client.once('data', (chunk) => resolve(chunk.toString())));
+      const back = handedBack();
+      handOver('a', '/handed-echo', { prefix: 'abc', length: 9, keepAlive: true });
+      client.write('defghiGET /next');
+
+      const [message, socket] = await back;
+
+      expect(await response).toMatch(/^HTTP\/1\.1 201 Created\r\n.*Connection: keep-alive\r\n.*9:abc:true$/s);
+      expect(message).toEqual({
+        type: WORKER_EVENT.REQUEST_HANDBACK,
+        requestId: 'a',
+        event: { statusCode: 201, headers: { 'Content-Length': '10' } },
+        leftover: Buffer.from('GET /next').toString('base64'),
+      });
+      expect(socket).toBeInstanceOf(net.Socket);
+      if (!(socket instanceof net.Socket)) return;
+
+      // what the client sends after the response is for whoever has the connection now
+      const next = new Promise<string>((resolve) => socket.once('data', (chunk) => resolve(chunk.toString())));
+      client.write('GET /later');
+      expect(await next).toBe('GET /later');
+      expect(of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE)).toHaveLength(0);
+      // the server lets go of its copy of the connection once it was sent, and of the one it got back when it is done
+      connection.destroy();
+      socket.destroy();
+    });
+
+    it('closes the connection after a response that was written before the body was read, even if the server allowed to keep it', async () => {
+      const response = read(client);
+      handOver('a', '/handed-early', { length: 100, keepAlive: true });
+
+      expect(await response).toContain('Connection: close\r\n');
+      await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
+    });
+
+    it('closes the connection after a streamed response without a length, even if the server allowed to keep it', async () => {
+      const response = read(client);
+      handOver('a', '/handed-streams', { keepAlive: true });
+
+      expect(await response).toContain('Connection: close\r\n');
+      await until(() => of('a', WORKER_EVENT.REQUEST_HANDOFF_DONE).length === 1);
     });
 
     it('streams a response in parts, which ends the connection with the last one', async () => {

@@ -1,3 +1,4 @@
+import type { Socket } from 'net';
 import type { Readable } from 'stream';
 import type { WorkerRequestEvent } from './request';
 
@@ -41,6 +42,12 @@ export type HandOffEvent = {
   statusCode: number;
   headers?: { [key: string]: string };
   handOff: true;
+  /**
+   * The connection that `handOff` returned, once the whole body was written to it, to give it back to the server so that the client can use it for its next request. Not a request for
+   * a connection then, and `statusCode` is not looked at. It resolves with `true` when the server took the connection, and nothing else is to be sent for the request. With anything
+   * else the connection was closed, as the head of the response told the client it would be, and the end of the response is sent as usual. `streamResponse` does this by itself.
+   */
+  handBack?: Socket;
 };
 
 /**

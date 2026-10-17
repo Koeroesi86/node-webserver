@@ -197,29 +197,35 @@ k6 run tools/src/k6/lambda-routes.ts
 
 `download.ts` downloads `web.localhost/download/?mib=32` (`examples/download/exampleWorker.js`: 32 MiB with a `Content-Length`, generated while it is sent) with 8 users at once. A body that big is what the server hands to the worker (`handOffResponses`, 8 MiB by default in `node-worker-express`),
 which writes it to the client itself, so the front process does not carry the bytes. Every download is checked whole (size and one byte of the first, the middle and the last MiB), and its speed is the metric `download_mb_per_s`, with a floor on the slowest tenth (`MIN_MB_PER_S`, 50, which the workflow divides by `P95_FACTOR`).
-`REQUIRE_HANDOFF=1` (the workflow and `pnpm load-test` set it) also requires that more than half of the requests after the first of a user opened a new connection (`download_new_connection`, from `timings.connecting` above 0; k6 does not show the `Connection: close` of a handed over response in its headers), which only a handed over response causes, so that the scenario fails when the handoff stops happening. Not all of them: on Windows 23% of the requests read a connecting time of 0 with the handoff working.
-The floor is far below what a build measures (a 4 core box: about 1,100 MB/s for one download and 3,400 MB/s for 8 at once with the handoff, against 760 MB/s for 8 without it), as it has to hold on any runner: it catches a collapse, the new connection check catches the handoff going away.
-It runs on its own after the routes one, and is left out of the comparison with the base, which has no such route.
+The downloads run twice on the same server, one mode after the other (`DURATION` each, 10 seconds, with 15 seconds between): `keep-alive` leaves the connection to the server, which the worker gives back after the body so that the client sends its next request on it,
+and `reconnect` sends `Connection: close`, which closes it after every download as every handed over download did before. The metrics have the tag `mode`, and the job summary puts the two side by side (speed median, average, the slowest, how many downloads opened a new connection):
+that is the measure of what a reconnect costs next to a body of this size. `MODES` (`keep-alive,reconnect`) picks the modes.
+`REQUIRE_HANDOFF=1` (the workflow and `pnpm load-test` set it) also requires that the handoff and the hand back happened, which the client cannot tell by the connection alone: `handOffs.responses` of the metrics of the server (`health.localhost/metrics`)
+must have grown by the end of the run (`download_handed_over`, `download_handed_back`), the downloads of `keep-alive` must have reused their connections (`download_new_connection{mode:keep-alive}` below 10%), and those of `reconnect` must not have (above half, from `timings.connecting`
+above 0; not all of them: on Windows 23% of the requests read a connecting time of 0 with the handoff working). It runs on its own after the routes one.
+The floor is far below what a build measures (a 4 core box: about 1,100 MB/s for one download and 3,400 MB/s for 8 at once with the handoff, against 760 MB/s for 8 without it), as it has to hold on any runner: it catches a collapse, the new connection checks catch the handoff or the hand back going away.
+The comparison with the base runs it too, see below.
 
 ```sh
 k6 run -e REQUIRE_HANDOFF=1 tools/src/k6/download.ts
 ```
 
-Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
+Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`, `MODES`.
 
 ### Big uploads
 
 `big-upload.ts` posts 16 MiB (`MIB`) with a `Content-Length` to `web.localhost/upload/` (`examples/upload/exampleWorker.js`: answers with the size and sha256 of what it received) with 8 users at once, the request side of the downloads one. The load test server switches
 `handOffRequests` on for its worker servers (8 MiB, `HAND_OFF_REQUESTS` overrides it, 0 turns it off), which makes the worker read the body from the client itself, so the front process does not carry the bytes. Every upload is checked by the size and the sha256 in the answer,
-and its speed is the metric `big_upload_mb_per_s`, with a floor on the slowest tenth (`MIN_MB_PER_S`, 50, which the workflow divides by `P95_FACTOR`). `REQUIRE_HANDOFF=1` (the workflow and `pnpm load-test` set it) also requires that more than half of the requests
-after the first of a user opened a new connection (`big_upload_new_connection`, from `timings.connecting` above 0), which only a handed over request causes as the worker closes the connection after its response. It runs on its own after the downloads one and is left out of the comparison with the base.
+and its speed is the metric `big_upload_mb_per_s`, with a floor on the slowest tenth (`MIN_MB_PER_S`, 50, which the workflow divides by `P95_FACTOR`). Like the downloads one it runs in the two modes `keep-alive` and `reconnect` (tag `mode`, `MODES`), the job summary puts them
+side by side, and `REQUIRE_HANDOFF=1` (the workflow and `pnpm load-test` set it) requires that `handOffs.requests` of the metrics of the server grew (`big_upload_handed_over`, `big_upload_handed_back`), that the uploads of `keep-alive` reused their connections
+(`big_upload_new_connection{mode:keep-alive}` below 10%) and that those of `reconnect` did not (above half). It runs on its own after the downloads one. The comparison with the base runs it too, see below.
 The speed floor is a guess until the first runs of the pipeline show what the runners reach.
 
 ```sh
 k6 run -e REQUIRE_HANDOFF=1 tools/src/k6/big-upload.ts
 ```
 
-Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
+Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`, `MODES`.
 
 ### CPU bound worker
 
@@ -273,6 +279,8 @@ Both sides run the load test of the pull request against their own server, so th
   Its p95 is the lowest of the runs of each side, not their median: at a fixed arrival rate the machine can only slow a run down, so a slower build is slower in every run, while the median of the same server on both sides once came out 43 against 73 ms on Linux.
   The duration is the fifth argument of `compare-with-base.js`.
 - **the binary run** (`binary.ts`, with 10 users, after the CPU bound run of every round; its duration, 10 seconds, is the sixth argument of `compare-with-base.js`) is compared as well: its p95 is judged like a route (50% and 5 milliseconds higher fails), a gain only shows in the row. A base without the route answers with errors, which fail the checks of the scenario, and is listed with n/a and not judged,
+- **the big uploads and downloads** (`big-upload.ts` and `download.ts` with `MODES=keep-alive`, each on its own after the binary run of every round, 16 and 32 MiB with 8 users; their duration, 8 seconds, is the seventh argument of `compare-with-base.js`) are judged on the median speed of their runs: the base closes the connection after every one of them,
+  the pull request gives it back to the server, and the speed may not be more than 15% lower than the base's (`MAX_THROUGHPUT_DROP`), a gain only shows in the row. A base without the scenario answers with errors, which fail the checks, and is listed with n/a and not judged,
 - **routes served by one side only**: the warm-up also records the status each side answers per endpoint. When they differ (for example a 404 on the base for a route the pull request added), the summary lists them under "Not served alike". It does not fail: a pull request may add a route, but a scenario that works a route for one side only skews the numbers, so it belongs in a script of its own (like `binary.ts`) and not in `example.ts`,
 - **runs**: the third argument of `compare-with-base.js`. The workflow uses 3 on Ubuntu and 5 on macOS and Windows (`comparison-rounds`), where the same side varied by a factor of 3 between runs and the median needs more of them.
 
@@ -280,10 +288,10 @@ Same code on both sides measured within 2% of each other with runs that varied b
 for the pull request that adds the load test, and while the base cannot be built, the summary says there is nothing to compare with. Locally, with checkouts of both (`git worktree add ../base master`, install and build each), and the cores split as in the workflow:
 
 ```sh
-SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s
+SERVER_PREFIX='taskset -c 0-2' K6_PREFIX='taskset -c 3' node tools/dist/scripts/compare-with-base.js ../base . 3 15s 10s 10s 8s
 ```
 
-`SERVER_ENV` (`NAME=value NAME=value`) is added to the environment of both servers, `MAIN_ONLY=1` leaves out the CPU bound and the binary runs, and `RESULTS_DIRECTORY` (default `compare-results`) is where the results go.
+`SERVER_ENV` (`NAME=value NAME=value`) is added to the environment of both servers, `MAIN_ONLY=1` leaves out the CPU bound, the binary and the big upload and download runs, and `RESULTS_DIRECTORY` (default `compare-results`) is where the results go.
 On Ubuntu the workflow runs the comparison a second time with `SERVER_ENV=ACCESS_LOGS=1 MAIN_ONLY=1` (`compare-results-access-logs/`), so that the logger shows in the numbers. It is informational, does not fail the job, and only runs when the base knows `ACCESS_LOGS`,
 as a base that does not would run without access logs and the difference would not be about the logger.
 

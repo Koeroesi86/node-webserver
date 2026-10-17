@@ -3,8 +3,11 @@ import { TLSSocket } from 'tls';
 import type { Request, Response } from 'express';
 import { WORKER_EVENT } from '../constants';
 import type { ResponseMessage } from '../types';
+import canKeepConnection from './can-keep-connection';
 import getHeader from './get-header';
 import { handedOffResponses } from './is-handed-off';
+import { countHandOff } from './metrics';
+import takeBackConnection from './take-back-connection';
 import type { WorkerLease } from './workerPool';
 
 /** the statuses whose response has no body, which leaves nothing to hand over */
@@ -33,6 +36,8 @@ interface ResponseHandOffParams {
  */
 const createResponseHandOff = ({ request, response, lease, requestId, streamsBody, minimumLength, timeout, onHandedOver, onFailed }: ResponseHandOffParams) => {
   let active = false;
+  /** the http server that accepted the connection, which takes it again when the worker gives it back */
+  const server: unknown = Reflect.get(request.socket, 'server');
 
   /** whether the body may go to the client from the worker: big enough to be worth a connection, on a plain HTTP/1 one that has nothing else to read or write */
   const isAllowed = ({ statusCode, headers }: ResponseMessage) =>
@@ -57,8 +62,9 @@ const createResponseHandOff = ({ request, response, lease, requestId, streamsBod
     const encoding = getHeader(head.headers, 'content-encoding');
     // set one by one, so that what a middleware in front changes in them can be read back
     Object.entries(head.headers ?? {}).forEach(([name, value]) => response.setHeader(name, value));
-    // the connection does not come back from the worker, the client is told that it ends with this response
-    response.setHeader('Connection', 'close');
+    // the worker gives the connection back after the body, unless the client wants it closed: it is told which of the two
+    const keepAlive = canKeepConnection(response, server);
+    response.setHeader('Connection', keepAlive ? 'keep-alive' : 'close');
     response.writeHead(head.statusCode);
     // a middleware that encodes the body, as the compression does, has to see it: it is streamed through this process then, the head is out already
     if (response.getHeader('content-encoding') !== encoding || !response.hasHeader('content-length')) return refuse();
@@ -73,12 +79,13 @@ const createResponseHandOff = ({ request, response, lease, requestId, streamsBod
     handedOffResponses.add(response);
     onHandedOver();
     try {
-      await lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, timeout: timeout ?? 0 }, socket);
+      await lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId, timeout: timeout ?? 0, keepAlive }, socket);
     } catch {
       reset();
       onFailed();
       return undefined;
     }
+    countHandOff('responses', 'total');
     // the handle is in the worker now, this lets the server and the response here let go of the connection, the worker frees itself when it is done
     return socket.destroy();
   };
@@ -93,11 +100,18 @@ const createResponseHandOff = ({ request, response, lease, requestId, streamsBod
     active = false;
   };
 
+  /** the worker gave the connection back after it wrote the body: it goes to the http server it came from, for the next request of the client */
+  const takeBack = (socket: net.Socket, leftover: Buffer) => {
+    active = false;
+    if (takeBackConnection(server, socket, leftover)) countHandOff('responses', 'handedBack');
+  };
+
   return {
     /** the worker writes the body to the client, the connection is not this process' to watch until the worker says it is done */
     isActive: () => active,
     start,
     finish,
+    takeBack,
     reset,
   };
 };

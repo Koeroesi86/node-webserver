@@ -29,7 +29,7 @@ const args = process.argv.slice(2);
 const exportPath = args.find((argument) => argument.startsWith('--summary-export=')).split('=')[1];
 const env = Object.fromEntries(args.flatMap((argument, index) => (argument === '-e' ? [args[index + 1].split(/=(.*)/s).slice(0, 2)] : [])));
 const script = args[args.length - 1];
-const kind = script.endsWith('cpu.ts') ? 'cpu' : script.endsWith('binary.ts') ? 'binary' : 'main';
+const kind = script.endsWith('cpu.ts') ? 'cpu' : script.endsWith('binary.ts') ? 'binary' : script.endsWith('big-upload.ts') ? 'uploads' : script.endsWith('download.ts') ? 'downloads' : 'main';
 if (!existsSync(script) || process.env.FAKE_K6_FAIL) process.exit(3);
 if (process.env.FAKE_K6_SLEEP) {
   writeFileSync(process.env.FAKE_K6_PID, String(process.pid));
@@ -42,7 +42,16 @@ if (process.env.FAKE_K6_SLEEP) {
     response.on('end', () => {
       const [side, rate] = body.trim().split(' ');
       appendFileSync(process.env.FAKE_K6_LOG, [side, kind, env.DURATION, process.env.PREFIXED].join(' ') + '\\n');
-      const metrics = kind === 'main' ? { http_reqs: { rate: Number(rate) } } : { ['http_req_duration{route:' + kind + '}']: { 'p(95)': 12 } };
+      // the speed of a transfer follows the rate of the side
+      const transfer = (name) => ({ [name + '{mode:keep-alive}']: { med: Number(rate) / 8 } });
+      const metrics =
+        kind === 'main'
+          ? { http_reqs: { rate: Number(rate) } }
+          : kind === 'uploads'
+            ? transfer('big_upload_mb_per_s')
+            : kind === 'downloads'
+              ? transfer('download_mb_per_s')
+              : { ['http_req_duration{route:' + kind + '}']: { 'p(95)': 12 } };
       writeFileSync(exportPath, JSON.stringify({ metrics }));
     });
   });
@@ -72,7 +81,7 @@ export const createCheckout = (folder: string, side: string, rate: number) => {
   writeFileSync(join(directory, 'packages/node-webserver/dist/scripts/load-test-server.js'), fakeServer);
   writeFileSync(join(directory, 'side.txt'), `${side} ${rate}`);
   mkdirSync(join(directory, 'tools/src/k6'), { recursive: true });
-  ['example.ts', 'cpu.ts', 'binary.ts'].forEach((name) => writeFileSync(join(directory, 'tools/src/k6', name), ''));
+  ['example.ts', 'cpu.ts', 'binary.ts', 'big-upload.ts', 'download.ts'].forEach((name) => writeFileSync(join(directory, 'tools/src/k6', name), ''));
 
   return directory;
 };

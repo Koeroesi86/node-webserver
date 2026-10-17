@@ -141,12 +141,30 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     undo.push(() => response.off('close', cleanupConnection));
   }
 
-  lease.subscribe(requestId, messageListener, () => {
-    // a worker that dies while it writes leaves the client with a truncated body, as when the body passes through here
-    handOff.reset();
-    requestHandOff.reset();
-    failRequest(502, 'Worker exited.');
-  });
+  lease.subscribe(
+    requestId,
+    messageListener,
+    () => {
+      // a worker that dies while it writes leaves the client with a truncated body, as when the body passes through here
+      handOff.reset();
+      requestHandOff.reset();
+      failRequest(502, 'Worker exited.');
+    },
+    (message, socket) => {
+      const leftover = Buffer.from(message.leftover, 'base64');
+      // the same as when the worker closes the connection, then the connection is taken again for the next request of the client
+      if (message.type === WORKER_EVENT.REQUEST_HANDBACK) {
+        requestHandOff.finish(message.event);
+        cleanupConnection();
+        requestHandOff.takeBack(socket, leftover);
+        return;
+      }
+
+      handOff.finish();
+      cleanupConnection();
+      handOff.takeBack(socket, leftover);
+    }
+  );
   responseTimeout.arm();
   if (requestHandOff.isAllowed()) {
     void requestHandOff.start();

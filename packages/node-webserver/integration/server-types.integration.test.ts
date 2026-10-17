@@ -65,6 +65,68 @@ describe('the server', () => {
     });
   });
 
+  describe('of the type worker, for big uploads and downloads', () => {
+    type Counters = Record<'requests' | 'responses', { total: number; handedBack: number }>;
+    const upload = 'ő'.repeat(100000);
+    const counters = async () => ((await server.get('health.localhost', '/metrics')).json() as { handOffs: Counters }).handOffs;
+    const changeOf = async (before: Counters, side: keyof Counters) => {
+      const after = (await counters())[side];
+
+      return [after.total - before[side].total, after.handedBack - before[side].handedBack];
+    };
+
+    it('keeps the connection of a client that wants it for its next requests, after the worker read the body and answered', async () => {
+      const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+      const before = await counters();
+
+      const first = await server.get('upload.localhost', '/', { method: 'POST', body: upload, agent, headers: { 'Content-Type': 'text/plain' } });
+      const second = await server.get('upload.localhost', '/', { method: 'POST', body: `${upload}!`, agent, headers: { 'Content-Type': 'text/plain' } });
+      const third = await server.get('upload.localhost', '/?a=1', { agent });
+      agent.destroy();
+
+      expect([first.reusedSocket, second.reusedSocket, third.reusedSocket]).toEqual([false, true, true]);
+      expect(first.headers.connection).toBe('keep-alive');
+      expect([first.json(), second.json(), third.json()]).toMatchObject([{ body: upload }, { body: `${upload}!` }, { query: { a: '1' }, body: '' }]);
+      expect(await changeOf(before, 'requests')).toEqual([2, 2]);
+    });
+
+    it('closes the connection after an upload of a client that wants it closed', async () => {
+      const before = await counters();
+
+      const reply = await server.get('upload.localhost', '/', { method: 'POST', body: upload, headers: { 'Content-Type': 'text/plain' } });
+
+      expect(reply.headers.connection).toBe('close');
+      expect(reply.json()).toMatchObject({ body: upload });
+      expect(await changeOf(before, 'requests')).toEqual([1, 0]);
+    });
+
+    it('keeps the connection of a client that wants it for its next requests, after the worker wrote a big response to it', async () => {
+      const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+      const before = await counters();
+
+      const first = await server.get('download.localhost', '/?kib=300', { agent });
+      const second = await server.get('download.localhost', '/?kib=200', { agent });
+      const third = await server.get('worker.localhost', '/?a=1', { agent });
+      agent.destroy();
+
+      expect([first.reusedSocket, second.reusedSocket, third.reusedSocket]).toEqual([false, true, true]);
+      expect(first.headers.connection).toBe('keep-alive');
+      expect([first.body, second.body]).toEqual([Buffer.alloc(300 * 1024, 'd'), Buffer.alloc(200 * 1024, 'd')]);
+      expect(third.json()).toMatchObject({ query: { a: '1' } });
+      expect(await changeOf(before, 'responses')).toEqual([2, 2]);
+    });
+
+    it('closes the connection after a big response for a client that wants it closed', async () => {
+      const before = await counters();
+
+      const reply = await server.get('download.localhost', '/?kib=300');
+
+      expect(reply.headers.connection).toBe('close');
+      expect(reply.body).toEqual(Buffer.alloc(300 * 1024, 'd'));
+      expect(await changeOf(before, 'responses')).toEqual([1, 0]);
+    });
+  });
+
   describe('of the type worker, for websockets', () => {
     const connect = () => connectWebSocket({ port: server.port, host: 'websocket.localhost' });
 

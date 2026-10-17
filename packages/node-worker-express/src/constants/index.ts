@@ -24,12 +24,19 @@ export enum WORKER_EVENT {
    */
   RESPONSE_HANDOFF = 'WORKER_RESPONSE_HANDOFF',
   RESPONSE_HANDOFF_REFUSE = 'WORKER_RESPONSE_HANDOFF_REFUSE',
+  /** the worker wrote the body it was handed the connection for, and gives the connection back over the IPC channel, with this message and what it read from it */
+  RESPONSE_HANDBACK = 'WORKER_RESPONSE_HANDBACK',
   /**
    * the server hands the connection of a client with a big request body to the worker, over the IPC channel, with the request and what had arrived of the body. The worker reads the rest of
    * the body and writes the response to the connection itself, and tells the server with `REQUEST_HANDOFF_DONE` when the connection is closed.
    */
   REQUEST_HANDOFF = 'WORKER_REQUEST_HANDOFF',
   REQUEST_HANDOFF_DONE = 'WORKER_REQUEST_HANDOFF_DONE',
+  /**
+   * instead of `REQUEST_HANDOFF_DONE`, when the response was written whole and the client may send its next request on the same connection: the worker sends the connection back over
+   * the IPC channel with this message, and what it read from it behind the body. The server gives it to the http server it came from again.
+   */
+  REQUEST_HANDBACK = 'WORKER_REQUEST_HANDBACK',
   WS_MESSAGE_RECEIVE = 'WS_MESSAGE_RECEIVE',
   /** the worker is done with a received message, the server may pass on another one */
   WS_MESSAGE_ACKNOWLEDGE = 'WS_MESSAGE_ACK',

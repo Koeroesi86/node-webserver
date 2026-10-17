@@ -15,7 +15,7 @@ import { warmUpServer } from './warm-up-server';
 
 /**
  * Runs the load test against the base of a pull request and against the pull request itself, one after the other on this machine, and compares them.
- * Both sides get the load test (the k6 scripts, example.ts, then cpu.ts and binary.ts each on its own, as they need the cores) of the pull request, and their own server, which is started for every run and stopped after it:
+ * Both sides get the load test (the k6 scripts, example.ts, then cpu.ts, binary.ts, big-upload.ts and download.ts each on its own, as they need the cores) of the pull request, and their own server, which is started for every run and stopped after it:
  * two servers at the same time would take the cores from each other. Which side goes first changes with every round, so that a slow stretch of the
  * machine does not always hit the same side. The server is warmed up before the measuring starts, see warm-up-server.ts. The prefixes (for example `taskset -c 0-2`) are put in front of the commands of the server and of k6.
  */
@@ -27,6 +27,7 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
     duration,
     cpuDuration,
     binaryDuration,
+    transferDuration,
     resultsDirectory,
     portHttp,
     portHttps,
@@ -35,7 +36,9 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
     serverEnvironment,
     mainOnly,
   } = options;
-  const [k6Script, cpuScript, binaryScript] = ['example.ts', 'cpu.ts', 'binary.ts'].map((name) => join(head, 'tools/src/k6', name));
+  const [k6Script, cpuScript, binaryScript, uploadScript, downloadScript] = ['example.ts', 'cpu.ts', 'binary.ts', 'big-upload.ts', 'download.ts'].map((name) =>
+    join(head, 'tools/src/k6', name)
+  );
   const certificates = 'packages/node-webserver/.certificates/localhost';
   // the processes that run, which are stopped when the comparison is interrupted
   const active = new Set<RunningProcess>();
@@ -114,6 +117,25 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
         ],
         join(resultsDirectory, `k6-binary-${name}.log`)
       );
+      // bodies that the worker reads from or writes to the client itself, in the mode that keeps the connection: the base closes it after every one of them
+      for (const [prefix, script] of [
+        ['uploads', uploadScript],
+        ['downloads', downloadScript],
+      ]) {
+        await k6(
+          [
+            `--summary-export=${join(resultsDirectory, `${prefix}-${name}.json`)}`,
+            '-e',
+            `BASE_URL=http://localhost:${portHttp}`,
+            '-e',
+            `DURATION=${transferDuration}`,
+            '-e',
+            'MODES=keep-alive',
+            script,
+          ],
+          join(resultsDirectory, `k6-${prefix}-${name}.log`)
+        );
+      }
     }
     console.error(
       `${side} ${round}: ${describeRun(
@@ -160,6 +182,10 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
           headCpu: files('cpu-', 'head'),
           baseBinary: files('binary-', 'base'),
           headBinary: files('binary-', 'head'),
+          baseUploads: files('uploads-', 'base'),
+          headUploads: files('uploads-', 'head'),
+          baseDownloads: files('downloads-', 'base'),
+          headDownloads: files('downloads-', 'head'),
         }),
   });
   const unevenlyServed = describeUnevenlyServed(warmedUp.get('base') ?? [], warmedUp.get('head') ?? []);

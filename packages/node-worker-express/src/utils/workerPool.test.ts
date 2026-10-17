@@ -364,6 +364,41 @@ describe('WorkerPool', () => {
     expect(onFirst).not.toHaveBeenCalled();
   });
 
+  describe('the connection of a handed over request that a worker gives back', () => {
+    const handBack = (requestId: string) => ({ type: WORKER_EVENT.REQUEST_HANDBACK, requestId, event: { statusCode: 200, headers: {} }, leftover: '' });
+
+    it('goes to the request it belongs to only', async () => {
+      const pool = createPool();
+      const first = await pool.acquire(pathA, {}, 1);
+      const second = await pool.acquire(pathA, {}, 1);
+      const onFirst = jest.fn();
+      const onSecond = jest.fn();
+      first.subscribe('one', jest.fn(), jest.fn(), onFirst);
+      second.subscribe('two', jest.fn(), jest.fn(), onSecond);
+      const socket = new net.Socket();
+
+      FakeWorker.instances[0].instance.emit('message', handBack('two'), socket);
+
+      expect(onSecond).toHaveBeenCalledWith(handBack('two'), socket);
+      expect(onFirst).not.toHaveBeenCalled();
+      expect(socket.destroyed).toBe(false);
+    });
+
+    it.each([
+      ['a request that is over', handBack('gone')],
+      ['a request that does not take it back', handBack('one')],
+    ])('is closed when it is for %s', async (_name, message) => {
+      const pool = createPool();
+      const lease = await pool.acquire(pathA, {}, 1);
+      lease.subscribe('one', jest.fn(), jest.fn());
+      const socket = new net.Socket();
+
+      FakeWorker.instances[0].instance.emit('message', message, socket);
+
+      expect(socket.destroyed).toBe(true);
+    });
+  });
+
   it('stops delivering messages once the lease is released', async () => {
     const pool = createPool();
     const lease = await pool.acquire(pathA, {}, 1);
@@ -451,7 +486,7 @@ describe('WorkerPool', () => {
       const pool = createPool();
       const lease = await pool.acquire(pathA, {}, 1);
       const socket = new net.Socket();
-      const message = { type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 100 } as const;
+      const message = { type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 100, keepAlive: false } as const;
 
       await lease.handOff(message, socket);
 
@@ -463,7 +498,9 @@ describe('WorkerPool', () => {
       const lease = await pool.acquire(pathA, {}, 1);
       FakeWorker.instances[0].instance.send.mockImplementationOnce((message, handle, callback) => callback(new Error('closed')));
 
-      await expect(lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 0 }, new net.Socket())).rejects.toThrow('closed');
+      await expect(lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 0, keepAlive: false }, new net.Socket())).rejects.toThrow(
+        'closed'
+      );
     });
 
     it('rejects a hand over to a worker without an IPC channel', async () => {
@@ -471,7 +508,9 @@ describe('WorkerPool', () => {
       const lease = await pool.acquire(pathA, {}, 1);
       FakeWorker.instances[0].instance.connected = false;
 
-      await expect(lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 0 }, new net.Socket())).rejects.toThrow('no IPC channel');
+      await expect(lease.handOff({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'one', timeout: 0, keepAlive: false }, new net.Socket())).rejects.toThrow(
+        'no IPC channel'
+      );
       expect(FakeWorker.instances[0].instance.send).not.toHaveBeenCalled();
     });
 

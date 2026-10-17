@@ -1,12 +1,13 @@
 import net from 'net';
 import { InvokableWorker } from './types';
 import createWorkerSession from './utils/create-worker-session';
+import sendHandBack from './utils/send-hand-back';
 
 const worker = require(process.argv.pop()) as InvokableWorker;
 
 /** the socket pair to the server, which the pool opens as the fourth stdio of the worker */
 const channelSocket = new net.Socket({ fd: 3, readable: true, writable: true });
-const session = createWorkerSession(worker, channelSocket);
+const session = createWorkerSession(worker, channelSocket, sendHandBack);
 
 process.on('message', session.receiveHandOff);
 

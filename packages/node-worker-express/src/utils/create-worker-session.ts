@@ -2,6 +2,7 @@ import net from 'net';
 import type { Duplex } from 'stream';
 import { InternalServerError, Protocols, WORKER_EVENT } from '../constants';
 import type {
+  HandBackMessage,
   HandOffEvent,
   InvokableWorker,
   RequestEvent,
@@ -22,6 +23,7 @@ import type { Stream } from './create-request-contexts';
 import createResponseSender from './create-response-sender';
 import createWorkerEvent from './create-worker-event';
 import createChannel from './createChannel';
+import detachConnection from './detach-connection';
 import invokeWorker from './invoke-worker';
 import isRequestHandOff from './is-request-hand-off';
 import receiveWsMessage from './receive-ws-message';
@@ -34,8 +36,13 @@ type MessageOf<Type extends WORKER_EVENT> = Extract<WorkerInputEvent, { type: Ty
 /**
  * The side of a worker process of the protocol with the server: requests come in over the socket pair, and the worker is called for each,
  * with the state of every request in its own context. `socket` is the stream under the channel, `receiveHandOff` takes what the IPC channel of node carries.
+ * `sendHandBack` gives a connection back over that channel; without it the connection of a handed over request is always closed after its response.
  */
-export default function createWorkerSession(worker: InvokableWorker, socket: Duplex) {
+export default function createWorkerSession(
+  worker: InvokableWorker,
+  socket: Duplex,
+  sendHandBack?: (message: HandBackMessage, socket: net.Socket) => Promise<void>
+) {
   const contexts = createRequestContexts();
   // the messages only arrive after the session is built
   const channel = createChannel<WorkerInputEvent, WorkerOutputEvent>(socket, (message) => messageListener(message));
@@ -51,12 +58,37 @@ export default function createWorkerSession(worker: InvokableWorker, socket: Dup
     (requestId: string, stream: Stream, onResponded: () => void) => (responseEvent: ResponseEvent | HandOffEvent | WSFrameEvent) => {
       onResponded();
 
-      if ('handOff' in responseEvent) return handOffs.request(requestId, stream.aborted, responseEvent);
+      if ('handOff' in responseEvent)
+        return responseEvent.handBack ? handBackResponse(requestId, responseEvent.handBack) : handOffs.request(requestId, stream.aborted, responseEvent);
 
       if ('sendWsMessage' in responseEvent) return sendWsMessage(env, requestId, stream, responseEvent);
 
       return 'emit' in responseEvent ? sendResponsePart(requestId, stream, responseEvent) : sendResponse(requestId, responseEvent);
     };
+
+  /**
+   * the worker wrote the whole body to a connection it was handed: it goes back to the server when the head said it would, with what the worker read from it. Resolves with `true`
+   * then, the server frees the worker by itself. The connection is ended otherwise, which is what the head told the client.
+   */
+  const handBackResponse = async (requestId: string, handedSocket: net.Socket) => {
+    const keep = handOffs.takeKeepAlive(handedSocket) && sendHandBack !== undefined && handedSocket.writable && !handedSocket.destroyed;
+    if (!keep) {
+      handedSocket.destroySoon();
+      return false;
+    }
+
+    metrics.clear(requestId);
+    try {
+      await sendHandBack({ type: WORKER_EVENT.RESPONSE_HANDBACK, requestId, leftover: detachConnection(handedSocket).toString('base64') }, handedSocket);
+    } catch {
+      handedSocket.destroy();
+      return false;
+    }
+    // the handle is with the server now, this lets the worker let go of the connection, which the server waits for when it closes
+    handedSocket.destroy();
+
+    return true;
+  };
 
   /** the request is over for the worker: what it waits for will not come, and the rest of the request body is dropped */
   const abortRequest = (requestId: string) => {
@@ -113,6 +145,12 @@ export default function createWorkerSession(worker: InvokableWorker, socket: Dup
         metrics.clear(requestId);
         channel.send({ type: WORKER_EVENT.REQUEST_HANDOFF_DONE, requestId, event: summary });
       },
+      onHandBack:
+        sendHandBack &&
+        ((summary, handBackSocket, leftover) => {
+          metrics.clear(requestId);
+          return sendHandBack({ type: WORKER_EVENT.REQUEST_HANDBACK, requestId, event: summary, leftover: leftover.toString('base64') }, handBackSocket);
+        }),
     });
 
     invokeWorker(

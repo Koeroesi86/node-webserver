@@ -36,6 +36,7 @@ describe('compareWithBase', () => {
     duration: '2s',
     cpuDuration: '1s',
     binaryDuration: '1s',
+    transferDuration: '1s',
     resultsDirectory: join(folder, 'results'),
     portHttp: '18481',
     portHttps: '18444',
@@ -54,19 +55,29 @@ describe('compareWithBase', () => {
     expect(result.markdown).toContain('| Throughput (req/s) | 4000 (4000-4000) | 4000 (4000-4000) | +0.0% | ✅ |');
     expect(result.markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
     expect(result.markdown).toContain('| p95 binary responses (ms) | 12.0 | 12.0 | +0.0% | ✅ |');
+    expect(result.markdown).toContain('| big uploads, median speed (MB/s) | 500 | 500 | +0.0% | ✅ |');
+    expect(result.markdown).toContain('| big downloads, median speed (MB/s) | 500 | 500 | +0.0% | ✅ |');
     expect(k6Calls()).toEqual([
       'base main 2s yes',
       'base cpu 1s yes',
       'base binary 1s yes',
+      'base uploads 1s yes',
+      'base downloads 1s yes',
       'head main 2s yes',
       'head cpu 1s yes',
       'head binary 1s yes',
+      'head uploads 1s yes',
+      'head downloads 1s yes',
       'head main 2s yes',
       'head cpu 1s yes',
       'head binary 1s yes',
+      'head uploads 1s yes',
+      'head downloads 1s yes',
       'base main 2s yes',
       'base cpu 1s yes',
       'base binary 1s yes',
+      'base uploads 1s yes',
+      'base downloads 1s yes',
     ]);
   }, 30000);
 

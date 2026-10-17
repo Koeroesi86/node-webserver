@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { binarySummary, cpuSummary, summary } from '../test-helpers/summaries';
+import { binarySummary, cpuSummary, summary, transferSummary } from '../test-helpers/summaries';
 import type { K6Summary } from '../types/k6-summary';
 
 describe('compare script', () => {
@@ -72,6 +72,22 @@ describe('compare script', () => {
     const result = run([...args, '--base-binary', fast, '--head-binary', slow]);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('binary responses');
+  });
+
+  it('judges the big uploads and downloads after --base-uploads, --head-uploads, --base-downloads and --head-downloads', () => {
+    const args = ['--base', write('e-b.json', summary()), '--head', write('e-h.json', summary())];
+    const [fast, slow] = [write('up-b.json', transferSummary({ speed: 500 })), write('up-h.json', transferSummary({ speed: 100 }))];
+    const downloads = { metric: 'download_mb_per_s', checks: 'download' };
+    const [fastDownload, slowDownload] = [
+      write('down-b.json', transferSummary({ ...downloads, speed: 2000 })),
+      write('down-h.json', transferSummary({ ...downloads, speed: 500 })),
+    ];
+
+    expect(run([...args, '--base-uploads', fast, '--head-uploads', fast, '--base-downloads', fastDownload, '--head-downloads', fastDownload]).status).toBe(0);
+    expect(run([...args, '--base-uploads', fast, '--head-uploads', slow]).stdout).toContain('The speed of the big uploads is 80.0% lower');
+    const result = run([...args, '--base-downloads', fastDownload, '--head-downloads', slowDownload]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('The speed of the big downloads');
   });
 
   it('fails and says so when a side has no summary', () => {

@@ -1,8 +1,8 @@
 import net from 'net';
 
-/** a connection over localhost: the end a client uses, and the end a server holds, not read until the test does. `close` ends both. */
-export const createSocketPair = async () => {
-  const server = net.createServer({ pauseOnConnect: true });
+/** a connection over localhost: the end a client uses, and the end a server holds, not read until the test does unless `paused` says otherwise. `close` ends both. */
+export const createSocketPair = async ({ paused = true } = {}) => {
+  const server = net.createServer({ pauseOnConnect: paused });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const accepted = new Promise<net.Socket>((resolve) => server.once('connection', resolve));
   const client = net.connect((server.address() as net.AddressInfo).port, '127.0.0.1');

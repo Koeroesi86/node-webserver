@@ -1,5 +1,5 @@
 import { defaultLimits } from '../constants/comparison-limits';
-import type { BinarySummaries, ComparisonDetails, CpuSummaries, Limits } from '../types/comparison';
+import type { BinarySummaries, ComparisonDetails, CpuSummaries, Limits, TransferSummaries } from '../types/comparison';
 import type { K6Summary } from '../types/k6-summary';
 import { buildInfoRows } from './build-info-rows';
 import { describeJudgedMetrics } from './describe-judged-metrics';
@@ -8,6 +8,7 @@ import { judgeBinary } from './judge-binary';
 import { judgeCpu } from './judge-cpu';
 import { findExcludedRoutes, judgeRoutes } from './judge-routes';
 import { judgeThroughput } from './judge-throughput';
+import { judgeTransfers } from './judge-transfers';
 
 /**
  * Compares the repetitions of both sides by their medians, the CPU bound run by the lowest p95 of each side.
@@ -17,19 +18,21 @@ export const compareSummaries = (
   baseSummaries: K6Summary[],
   headSummaries: K6Summary[],
   limits: Partial<Limits> = {},
-  { baseCpu = [], headCpu = [], baseBinary = [], headBinary = [] }: CpuSummaries & BinarySummaries = {}
+  { baseCpu = [], headCpu = [], baseBinary = [], headBinary = [], ...transfers }: CpuSummaries & BinarySummaries & TransferSummaries = {}
 ): ComparisonDetails => {
   const allLimits = { ...defaultLimits, ...limits };
   const routes = getRoutes(headSummaries);
   const excluded = findExcludedRoutes(routes, baseSummaries, allLimits.minCheckRate);
   const hasCpu = baseCpu.length > 0 && headCpu.length > 0;
   const hasBinary = baseBinary.length > 0 && headBinary.length > 0;
+  const transferJudgements = judgeTransfers(transfers, allLimits);
 
   const judgements = [
     judgeThroughput(baseSummaries, headSummaries, excluded, allLimits.maxThroughputDrop),
     ...judgeRoutes(routes, baseSummaries, headSummaries, allLimits),
     ...(hasCpu ? [judgeCpu(baseCpu, headCpu, allLimits)] : []),
     ...(hasBinary ? [judgeBinary(baseBinary, headBinary, allLimits)] : []),
+    ...transferJudgements.judgements,
   ];
   const rows = judgements.flatMap((judgement) => judgement.rows);
   const regressions = judgements.flatMap((judgement) => judgement.regressions);
@@ -42,6 +45,7 @@ export const compareSummaries = (
       limits: allLimits,
       cpuRuns: hasCpu ? { base: baseCpu.length, head: headCpu.length } : undefined,
       binaryRuns: hasBinary ? { base: baseBinary.length, head: headBinary.length } : undefined,
+      transferRuns: transferJudgements.runs,
     }),
     '',
     '| Metric | Base | Pull request | Change | |',

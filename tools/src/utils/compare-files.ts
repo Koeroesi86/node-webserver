@@ -24,6 +24,10 @@ export const compareFiles = (paths: SummaryPaths): ComparisonResult => {
     headCpu: load(paths.headCpu),
     baseBinary: load(paths.baseBinary),
     headBinary: load(paths.headBinary),
+    baseUploads: load(paths.baseUploads),
+    headUploads: load(paths.headUploads),
+    baseDownloads: load(paths.baseDownloads),
+    headDownloads: load(paths.headDownloads),
   });
 
   return { markdown, passed };

@@ -250,10 +250,13 @@ describe('streamResponse', () => {
         socket.once('close', () => resolve(Buffer.concat(chunks).toString()));
       });
     /** the server hands the connection over when asked, the parts are collected */
+    let handBack: boolean | undefined = false;
     const handingOver = () => {
       const parts: Array<Parameters<ResponseCallback>[0]> = [];
       const callback: ResponseCallback = (part) => {
         parts.push(part);
+        if ('handBack' in part) return Promise.resolve(handBack);
+
         return Promise.resolve('handOff' in part ? connection : true);
       };
 
@@ -270,8 +273,23 @@ describe('streamResponse', () => {
       expect(await received).toBe('one two three');
       expect(parts).toEqual([
         { statusCode: 200, headers: { 'content-length': '13' }, handOff: true },
+        { statusCode: 200, headers: { 'content-length': '13' }, handOff: true, handBack: connection },
         { statusCode: 200, headers: { 'content-length': '13' }, emit: true, body: null },
       ]);
+    });
+
+    it('gives the connection back after the body and sends no end when the server took it, leaving it open for the next request', async () => {
+      handBack = true;
+      const { parts, callback } = handingOver();
+      const received = new Promise<string>((resolve) => client.once('data', (chunk) => resolve(chunk.toString())));
+
+      const completed = await streamResponse(callback, { headers: { 'content-length': '13' } }, generate('one ', Buffer.from('two '), 'three'));
+
+      expect(completed).toBe(true);
+      expect(await received).toBe('one two three');
+      expect(parts.map((part) => ('emit' in part ? 'end' : 'handBack' in part ? 'handBack' : 'handOff'))).toEqual(['handOff', 'handBack']);
+      expect(connection.destroyed).toBe(false);
+      handBack = false;
     });
 
     it('does not ask for the connection without a length', async () => {

@@ -49,6 +49,12 @@ module.exports = {
   servers: [
     worker('worker.localhost'),
     worker('compressed.localhost', { compression: { threshold: 100 } }),
+    // the worker reads the bodies from 1 KiB on from the client itself
+    worker('upload.localhost', { options: { root: resolve(__dirname, 'worker'), index: ['worker.js'], handOffRequests: 1024 } }),
+    // the worker writes the bodies from 1 KiB on to the client itself
+    worker('download.localhost', { options: { root: resolve(__dirname, 'download'), index: ['worker.js'], handOffResponses: 1024 } }),
+    // the metrics of the server, which count the connections that went to the workers
+    worker('health.localhost', { options: { root: resolve(__dirname, '../../examples/health'), index: ['exampleWorker.js'] } }),
     worker('websocket.localhost', { options: { root: resolve(__dirname, 'websocket'), index: ['worker.js'], limitWebSocketMessage: 200000 } }),
     // the https port serves HTTP/2 too, with the same kind of servers as the http one
     worker('secure.localhost', { protocol: 'https', key: process.env.TLS_KEY, cert: process.env.TLS_CERT }),

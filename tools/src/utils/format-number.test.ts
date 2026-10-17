@@ -8,5 +8,7 @@ describe('formatNumber', () => {
 
   it('says n/a when it is not known', () => {
     expect(formatNumber(undefined)).toBe('n/a');
+    expect(formatNumber(JSON.parse('null'))).toBe('n/a');
+    expect(formatNumber(Infinity)).toBe('n/a');
   });
 });

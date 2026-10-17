@@ -1,9 +1,10 @@
+import net from 'net';
 import { duplexPair } from 'stream';
 import { Protocols, WORKER_EVENT } from '../constants';
 import createChannel from './createChannel';
 import createWorkerSession from './create-worker-session';
 import { createSocketPair, readUntilClosed } from './socket-pair.test-helper';
-import type { InvokableWorker, RequestMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';
+import type { HandBackMessage, InvokableWorker, RequestHandBackMessage, RequestMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 const request: RequestMessage = {
   httpMethod: 'GET',
@@ -21,11 +22,11 @@ const until = async (condition: () => boolean) => {
 };
 
 /** the session over two in-memory duplex streams, the other end of which stands for the server */
-const setup = (worker: InvokableWorker) => {
+const setup = (worker: InvokableWorker, sendHandBack?: Parameters<typeof createWorkerSession>[2]) => {
   const [workerSide, serverSide] = duplexPair();
   const received: WorkerOutputEvent[] = [];
   const server = createChannel<WorkerOutputEvent, WorkerInputEvent>(serverSide, (message) => received.push(message));
-  const session = createWorkerSession(worker, workerSide);
+  const session = createWorkerSession(worker, workerSide, sendHandBack);
   const types = () => received.map(({ type }) => type);
 
   return { server, session, received, types, close: () => [workerSide, serverSide].forEach((side) => side.destroy()) };
@@ -150,8 +151,97 @@ describe('createWorkerSession', () => {
     close();
   });
 
+  describe('a response whose connection was handed over', () => {
+    /** a worker that asks for the connection, writes the body to it and gives it back, and the result of giving it back */
+    const handingBack = () => {
+      const outcome: { handedBack?: unknown } = {};
+      const worker: InvokableWorker = async (_event, callback) => {
+        const socket = await callback({ statusCode: 200, headers: { 'Content-Length': '5' }, handOff: true });
+        if (!(socket instanceof net.Socket)) return;
+
+        socket.write('hello');
+        outcome.handedBack = await callback({ statusCode: 200, headers: { 'Content-Length': '5' }, handOff: true, handBack: socket });
+      };
+
+      return { worker, outcome };
+    };
+    const handOff = (keepAlive: boolean) => ({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'r', timeout: 0, keepAlive });
+
+    it('gives the connection back after the body, with what was read from it, when the head promised that it goes on', async () => {
+      let bodyArrived: Promise<string> = Promise.resolve('');
+      // the mock does not pass the connection on, so the worker closes the only copy afterwards: with the next request unread, windows answers that with a reset that drops what the client did not read yet
+      const sendHandBack = jest.fn((_message: HandBackMessage, _socket: net.Socket) => bodyArrived.then(() => undefined));
+      const { worker, outcome } = handingBack();
+      const { server, session, received, close } = setup(worker, sendHandBack);
+      const pair = await createSocketPair();
+      pair.client.on('error', () => {});
+      const body = new Promise<string>((resolve) => pair.client.once('data', (chunk) => resolve(chunk.toString())));
+      bodyArrived = body;
+
+      server.send({ type: WORKER_EVENT.REQUEST, requestId: 'r', event: request });
+      await until(() => received.some(({ type }) => type === WORKER_EVENT.RESPONSE_HANDOFF));
+      session.receiveHandOff(handOff(true), pair.connection);
+      pair.client.write('GET /next');
+      await until(() => sendHandBack.mock.calls.length > 0);
+
+      expect(await body).toBe('hello');
+      expect(sendHandBack.mock.calls[0][0]).toEqual({ type: WORKER_EVENT.RESPONSE_HANDBACK, requestId: 'r', leftover: expect.any(String) });
+      expect(sendHandBack.mock.calls[0][1]).toBe(pair.connection);
+      await until(() => outcome.handedBack !== undefined);
+      expect(outcome.handedBack).toBe(true);
+      expect(received.map(({ type }) => type)).toEqual([WORKER_EVENT.RESPONSE_HANDOFF]);
+      await pair.close();
+      close();
+    });
+
+    it('closes the connection and gives nothing back when the head said that it is closed', async () => {
+      const sendHandBack = jest.fn((_message: HandBackMessage, _socket: net.Socket) => Promise.resolve());
+      const { worker, outcome } = handingBack();
+      const { server, session, received, close } = setup(worker, sendHandBack);
+      const pair = await createSocketPair();
+      const everything = readUntilClosed(pair.client);
+
+      server.send({ type: WORKER_EVENT.REQUEST, requestId: 'r', event: request });
+      await until(() => received.some(({ type }) => type === WORKER_EVENT.RESPONSE_HANDOFF));
+      session.receiveHandOff(handOff(false), pair.connection);
+
+      expect(await everything).toBe('hello');
+      await until(() => outcome.handedBack !== undefined);
+      expect(outcome.handedBack).toBe(false);
+      expect(sendHandBack).not.toHaveBeenCalled();
+      await pair.close();
+      close();
+    });
+
+    it('closes the connection when it could not be sent back', async () => {
+      const sendHandBack = jest.fn(() => Promise.reject(new Error('closed')));
+      const { worker, outcome } = handingBack();
+      const { server, session, received, close } = setup(worker, sendHandBack);
+      const pair = await createSocketPair();
+      const everything = readUntilClosed(pair.client);
+
+      server.send({ type: WORKER_EVENT.REQUEST, requestId: 'r', event: request });
+      await until(() => received.some(({ type }) => type === WORKER_EVENT.RESPONSE_HANDOFF));
+      session.receiveHandOff(handOff(true), pair.connection);
+
+      expect(await everything).toBe('hello');
+      await until(() => outcome.handedBack !== undefined);
+      expect(outcome.handedBack).toBe(false);
+      await pair.close();
+      close();
+    });
+  });
+
   describe('a request whose connection was handed over', () => {
-    const handOff = { type: WORKER_EVENT.REQUEST_HANDOFF, requestId: 'h', event: request, prefix: Buffer.from('a').toString('base64'), length: 2, timeout: 0 };
+    const handOff = {
+      type: WORKER_EVENT.REQUEST_HANDOFF,
+      requestId: 'h',
+      event: request,
+      prefix: Buffer.from('a').toString('base64'),
+      length: 2,
+      timeout: 0,
+      keepAlive: false,
+    };
 
     it('reads the body from the connection, answers on it and tells the server when it is closed', async () => {
       let body = '';
@@ -169,6 +259,51 @@ describe('createWorkerSession', () => {
       expect(body).toBe('ab');
       expect(await response).toContain('200');
       expect(received).toMatchObject([{ type: WORKER_EVENT.REQUEST_HANDOFF_DONE, requestId: 'h', event: { statusCode: 200 } }]);
+      await pair.close();
+      close();
+    });
+
+    it('gives the connection back instead of telling that it is closed when the server allowed to keep it', async () => {
+      const sendHandBack = jest.fn((_message: RequestHandBackMessage, _socket: net.Socket) => Promise.resolve());
+      const { session, received, close } = setup(async ({ bodyStream }, callback) => {
+        for await (const chunk of bodyStream) void chunk;
+        callback(reply);
+      }, sendHandBack);
+      const pair = await createSocketPair();
+      const head = new Promise<string>((resolve) => pair.client.once('data', (chunk) => resolve(chunk.toString())));
+
+      session.receiveHandOff({ ...handOff, keepAlive: true }, pair.connection);
+      pair.client.write('bGET /next');
+      await until(() => sendHandBack.mock.calls.length > 0);
+
+      expect(await head).toContain('Connection: keep-alive');
+      const [[message, socket]] = sendHandBack.mock.calls;
+      expect(message).toEqual({
+        type: WORKER_EVENT.REQUEST_HANDBACK,
+        requestId: 'h',
+        event: { statusCode: 200, headers: { 'Content-Length': '2' } },
+        leftover: Buffer.from('GET /next').toString('base64'),
+      });
+      expect(socket).toBe(pair.connection);
+      expect(received).toEqual([]);
+      await pair.close();
+      close();
+    });
+
+    it('closes the connection and tells the server when the worker has no way to give it back', async () => {
+      const { session, received, close } = setup(async ({ bodyStream }, callback) => {
+        for await (const chunk of bodyStream) void chunk;
+        callback(reply);
+      });
+      const pair = await createSocketPair();
+      const response = readUntilClosed(pair.client);
+
+      session.receiveHandOff({ ...handOff, keepAlive: true }, pair.connection);
+      pair.client.write('b');
+      await until(() => received.length > 0);
+
+      expect(await response).toContain('Connection: close');
+      expect(received).toMatchObject([{ type: WORKER_EVENT.REQUEST_HANDOFF_DONE, requestId: 'h' }]);
       await pair.close();
       close();
     });
