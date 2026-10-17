@@ -1,13 +1,26 @@
 import { compareFiles } from '../utils/compare-files';
 
 // Compares the k6 summaries of the base of a pull request with the ones of the pull request itself, both measured in the same job.
-//   node compare.js --base base-1.json base-2.json ... --head head-1.json head-2.json ... [--base-cpu ...] [--head-cpu ...] [--base-binary ...] [--head-binary ...]
+//   node compare.js --base base-1.json base-2.json ... --head head-1.json head-2.json ... [--base-cpu ...] [--head-cpu ...] [--base-binary ...] [--head-binary ...] [--base-uploads ...] [--head-uploads ...] [--base-downloads ...] [--head-downloads ...]
 // Prints markdown for the job summary and exits with 1 when the pull request is clearly slower. The limits are in constants/comparison-limits.ts, and
 // can be set with MAX_THROUGHPUT_DROP, MAX_P95_INCREASE, MAX_CPU_P95_INCREASE and MIN_P95_DIFFERENCE_MS.
-// The summaries of the CPU bound run (cpu.ts) come after --base-cpu and --head-cpu, the ones of the binary run (binary.ts) after --base-binary and --head-binary, and both are optional.
+// The summaries of the CPU bound run (cpu.ts) come after --base-cpu and --head-cpu, the ones of the binary run (binary.ts) after --base-binary and --head-binary, the ones of the big uploads (big-upload.ts) and downloads (download.ts) after --base-uploads, --head-uploads, --base-downloads and --head-downloads, and all of them are optional.
 
 // the files after --base are the runs of the base, the ones after --head the runs of the pull request
-const groups = new Map<string, string[]>(['--base', '--head', '--base-cpu', '--head-cpu', '--base-binary', '--head-binary'].map((name) => [name, []]));
+const groups = new Map<string, string[]>(
+  [
+    '--base',
+    '--head',
+    '--base-cpu',
+    '--head-cpu',
+    '--base-binary',
+    '--head-binary',
+    '--base-uploads',
+    '--head-uploads',
+    '--base-downloads',
+    '--head-downloads',
+  ].map((name) => [name, []])
+);
 process.argv.slice(2).reduce<string[] | undefined>((current, argument) => {
   const next = groups.get(argument);
   if (next === undefined) current?.push(argument);
@@ -22,6 +35,10 @@ const { markdown, passed } = compareFiles({
   headCpu: groups.get('--head-cpu'),
   baseBinary: groups.get('--base-binary'),
   headBinary: groups.get('--head-binary'),
+  baseUploads: groups.get('--base-uploads'),
+  headUploads: groups.get('--head-uploads'),
+  baseDownloads: groups.get('--base-downloads'),
+  headDownloads: groups.get('--head-downloads'),
 });
 console.log(markdown);
 process.exit(passed ? 0 : 1);

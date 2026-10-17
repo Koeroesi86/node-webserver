@@ -3,6 +3,7 @@ import type { K6Summary } from '../types/k6-summary';
 import { buildRouteLatencyRows } from './build-route-latency-rows';
 import { buildServerLogSection } from './build-server-log-section';
 import { buildThresholdRows } from './build-threshold-rows';
+import { buildTransferSection } from './build-transfer-section';
 import { buildWebsocketSection } from './build-websocket-section';
 import { formatMs } from './format-ms';
 
@@ -34,6 +35,7 @@ export const buildSummaryReport = (summaryPath: string, serverLogPath: string | 
     '',
     ...(routes.length === 0 ? [] : ['### Latency per route', '', '| Route | Median | p95 | Max |', '| --- | --- | --- | --- |', ...routes, '']),
     ...buildWebsocketSection(metrics),
+    ...buildTransferSection(metrics),
     '### Thresholds',
     '',
     '| Metric | Expression | Result |',

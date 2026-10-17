@@ -16,6 +16,8 @@ const isRequestHandOff = (message: unknown): message is RequestHandOffMessage =>
   'length' in message &&
   typeof message.length === 'number' &&
   'timeout' in message &&
-  typeof message.timeout === 'number';
+  typeof message.timeout === 'number' &&
+  'keepAlive' in message &&
+  typeof message.keepAlive === 'boolean';
 
 export default isRequestHandOff;

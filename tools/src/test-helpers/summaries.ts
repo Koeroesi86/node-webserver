@@ -55,3 +55,17 @@ export const cpuRuns = (count: number, options?: CpuSummaryOptions) => Array.fro
 
 export const runs = (...options: SummaryOptions[]) => options.map((option) => summary(option));
 export const same = (count = 3, options: SummaryOptions = {}) => Array.from({ length: count }, () => summary(options));
+
+/** a summary of big-upload.ts or download.ts in the mode that keeps the connection: the median speed, and whether the checks passed */
+export const transferSummary = ({
+  metric = 'big_upload_mb_per_s',
+  checks = 'big-upload',
+  speed = 500,
+  checkRate = 1,
+}: { metric?: string; checks?: string; speed?: number; checkRate?: number } = {}): K6Summary => ({
+  metrics: {
+    [`${metric}{mode:keep-alive}`]: { med: speed },
+    [`checks{route:${checks}}`]: { value: checkRate },
+  },
+});
+export const transferRuns = (count: number, options?: Parameters<typeof transferSummary>[0]) => Array.from({ length: count }, () => transferSummary(options));

@@ -11,10 +11,12 @@ import { getServerMetrics } from '../utils/metrics';
 import WorkerAbandonedError from '../utils/workerAbandonedError';
 import WorkerBusyError from '../utils/workerBusyError';
 import WorkerUnavailableError from '../utils/workerUnavailableError';
+import { createSocketPair } from '../utils/socket-pair.test-helper';
 import { clientFrame } from '../utils/ws-client-frame.test-helper';
 import workerMiddleware from './index';
 
 type Handlers = { onMessage: (message: unknown) => void; onExit: (code: number | null) => void };
+type HandBack = (message: unknown, socket: net.Socket) => void;
 
 jest.mock('../utils/workerPool', () => {
   class FakePool {
@@ -78,7 +80,7 @@ describe('workerMiddleware', () => {
         (message: { type: string; requestId: string; event?: { headers: Record<string, string> } }) =>
           message.type === WORKER_EVENT.REQUEST && setImmediate(() => react(handlers, message.requestId))
       ),
-      subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
+      subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit'], _onHandBack?: HandBack) => {
         handlers = { onMessage, onExit };
       }),
       release: jest.fn(),
@@ -466,19 +468,88 @@ describe('workerMiddleware', () => {
       return Object.assign(lease, { handOff });
     };
 
-    it('hands the connection over for a big response, which closes after the body, and frees the worker when it is done', async () => {
+    it('hands the connection over for a big response, which the head keeps for the client that wants it, and frees the worker when it is done', async () => {
       await start({ handOffResponses: body.length, limitResponseTimeout: 300 });
       const lease = handingOver();
 
       const response = await fetch(`${baseUrl}/`);
 
       expect(response.status).toBe(200);
-      expect(response.headers.get('connection')).toBe('close');
+      expect(response.headers.get('connection')).toBe('keep-alive');
       expect(response.headers.get('content-length')).toBe(String(body.length));
       expect(Buffer.from(await response.arrayBuffer())).toEqual(body);
-      expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: expect.any(String), timeout: 300 }, expect.any(net.Socket));
+      expect(lease.handOff).toHaveBeenCalledWith(
+        { type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: expect.any(String), timeout: 300, keepAlive: true },
+        expect.any(net.Socket)
+      );
       await until(() => lease.release.mock.calls.length > 0);
       expect(sentTypes(lease)).toEqual([WORKER_EVENT.REQUEST, WORKER_EVENT.RESPONSE_ACKNOWLEDGE]);
+    });
+
+    it('closes the connection after the body for a client that wants it closed', async () => {
+      await start({ handOffResponses: body.length, limitResponseTimeout: 300 });
+      const lease = handingOver();
+
+      const reply = await new Promise<{ connection: string | undefined; text: string }>((resolve, reject) => {
+        http
+          .get(`${baseUrl}/`, { agent: false }, (response) => {
+            const parts: Buffer[] = [];
+            response.on('data', (part) => parts.push(part));
+            response.on('end', () => resolve({ connection: response.headers.connection, text: Buffer.concat(parts).toString() }));
+          })
+          .on('error', reject);
+      });
+
+      expect(reply).toEqual({ connection: 'close', text: body.toString() });
+      expect(lease.handOff.mock.calls[0][0]).toMatchObject({ keepAlive: false });
+    });
+
+    it('serves the next request of the client on the connection the worker gave back after the body', async () => {
+      await start({ handOffResponses: body.length, limitResponseTimeout: 300 });
+      const pair = await createSocketPair({ paused: false });
+      let handlers: Handlers;
+      const first = mockLease((current, requestId) => {
+        handlers = current;
+        handlers.onMessage(head(requestId));
+      });
+      const handOff = jest.fn(
+        (message: { requestId: string }, socket: net.Socket) =>
+          new Promise<void>((resolve) =>
+            socket.write(body, () => {
+              resolve();
+              setImmediate(() =>
+                first.subscribe.mock.calls[0][3](
+                  {
+                    type: WORKER_EVENT.RESPONSE_HANDBACK,
+                    requestId: message.requestId,
+                    leftover: Buffer.from('GET /again HTTP/1.1\r\nHost: localhost\r\n').toString('base64'),
+                  },
+                  pair.connection
+                )
+              );
+            })
+          )
+      );
+      const second = createLease((current, requestId) =>
+        current.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('again') } })
+      );
+      FakePool.last.acquire.mockReset();
+      FakePool.last.acquire.mockResolvedValueOnce(Object.assign(first, { handOff })).mockResolvedValueOnce(second);
+      const reply = new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        pair.client.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+          if (Buffer.concat(chunks).toString().endsWith('again')) resolve(Buffer.concat(chunks).toString());
+        });
+      });
+
+      await (await fetch(`${baseUrl}/`)).arrayBuffer();
+      await until(() => first.release.mock.calls.length > 0);
+      pair.client.write('\r\n');
+
+      expect(await reply).toMatch(/^HTTP\/1\.1 200 OK\r\n.*again$/s);
+      expect(sentTypes(first)).toEqual([WORKER_EVENT.REQUEST]);
+      await pair.close();
     });
 
     it('keeps a response below the size and lets the worker stream it', async () => {
@@ -594,8 +665,12 @@ describe('workerMiddleware', () => {
     const post = (body: BodyInit, headers: Record<string, string> = {}) =>
       fetch(`${baseUrl}/`, { method: 'POST', body, headers, ...(body instanceof ReadableStream && { duplex: 'half' }) });
 
-    /** a worker that is given the connection, answers on it and says that it is done */
-    const takingOver = () => {
+    /** a worker that is given the connection, answers on it and says that it is done, or what `finish` does instead */
+    const takingOver = (
+      finish: (lease: ReturnType<typeof mockLease>, message: { requestId: string }) => void = (lease, message) => {
+        lease.subscribe.mock.calls[0][1](done(message.requestId));
+      }
+    ) => {
       const lease = mockLease(() => {});
       const handOff = jest.fn(
         (message: { requestId: string; prefix?: string }, socket: net.Socket) =>
@@ -604,7 +679,7 @@ describe('workerMiddleware', () => {
             const answer = () =>
               socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok', () => {
                 resolve();
-                setImmediate(() => lease.subscribe.mock.calls[0][1](done(message.requestId)));
+                setImmediate(() => finish(lease, message));
               });
             // like the real worker, read the rest of the body before answering: the server destroys the socket once this resolves, and closing it with unread bytes resets the
             // connection on windows, so the client loses the answer. The parser of the server listens no more, it is not the one reading the body now.
@@ -646,6 +721,7 @@ describe('workerMiddleware', () => {
         prefix: expect.any(String),
         length: upload.length,
         timeout: 300,
+        keepAlive: true,
       });
       expect(socket).toBeInstanceOf(net.Socket);
       const prefix = Buffer.from(message.prefix, 'base64');
@@ -653,6 +729,90 @@ describe('workerMiddleware', () => {
       expect(prefix.equals(upload.subarray(0, prefix.length))).toBe(true);
       await until(() => lease.release.mock.calls.length > 0);
       expect(sentTypes(lease)).toEqual([]);
+    });
+
+    it('tells the worker not to keep the connection when the client wants it closed', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const lease = takingOver();
+
+      await new Promise<void>((resolve, reject) => {
+        const request = http.request(`${baseUrl}/`, { method: 'POST', agent: false, headers: { 'Content-Length': upload.length } }, (response) => {
+          response.resume();
+          response.on('end', resolve);
+        });
+        request.on('error', reject);
+        request.end(upload);
+      });
+
+      expect(lease.handOff.mock.calls[0][0]).toMatchObject({ keepAlive: false });
+    });
+
+    it('tells the worker not to keep the connection when a middleware in front asked the client to move on', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      server.prependListener('request', (request, response) => response.setHeader('Connection', 'close'));
+      const lease = takingOver();
+
+      await post(upload);
+
+      expect(lease.handOff.mock.calls[0][0]).toMatchObject({ keepAlive: false });
+    });
+
+    it('serves the next request of the client on the connection the worker gave back, from what the worker read behind the body on', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const pair = await createSocketPair({ paused: false });
+      const first = takingOver((lease, message) =>
+        lease.subscribe.mock.calls[0][3](
+          {
+            type: WORKER_EVENT.REQUEST_HANDBACK,
+            requestId: message.requestId,
+            event: { statusCode: 201, headers: { 'Content-Length': '2' } },
+            leftover: Buffer.from('GET /again HTTP/1.1\r\nHost: localhost\r\n').toString('base64'),
+          },
+          pair.connection
+        )
+      );
+      const second = createLease((handlers, requestId) =>
+        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('again') } })
+      );
+      FakePool.last.acquire.mockReset();
+      FakePool.last.acquire.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+      const finished = jest.fn();
+      server.on('request', (request, response) => response.once(requestHandOffDoneEvent, () => finished(response.statusCode)));
+      const reply = new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        pair.client.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+          if (Buffer.concat(chunks).toString().endsWith('again')) resolve(Buffer.concat(chunks).toString());
+        });
+      });
+
+      await post(upload);
+      await until(() => second.subscribe.mock.calls.length === 0 && finished.mock.calls.length > 0);
+      pair.client.write('\r\n');
+
+      expect(await reply).toMatch(/^HTTP\/1\.1 200 OK\r\n.*again$/s);
+      expect(finished).toHaveBeenCalledWith(201);
+      expect(first.release).toHaveBeenCalled();
+      await until(() => second.release.mock.calls.length > 0);
+      await pair.close();
+    });
+
+    it('closes a connection that comes back after the server stopped accepting connections', async () => {
+      await start({ handOffRequests: 1, inlineRequestBody: 0 });
+      const pair = await createSocketPair({ paused: false });
+      const lease = takingOver((current, message) => {
+        server.close();
+        current.subscribe.mock.calls[0][3](
+          { type: WORKER_EVENT.REQUEST_HANDBACK, requestId: message.requestId, event: { statusCode: 201, headers: {} }, leftover: '' },
+          pair.connection
+        );
+      });
+
+      await post(upload);
+
+      await until(() => pair.connection.destroyed);
+      expect(lease.release).toHaveBeenCalled();
+      await pair.close();
     });
 
     it('streams a body below the size through the server', async () => {

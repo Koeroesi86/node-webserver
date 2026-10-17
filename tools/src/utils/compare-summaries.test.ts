@@ -1,4 +1,4 @@
-import { binaryRuns, binarySummary, cpuRuns, cpuSummary, runs, same } from '../test-helpers/summaries';
+import { binaryRuns, binarySummary, cpuRuns, cpuSummary, runs, same, transferRuns } from '../test-helpers/summaries';
 import type { K6Summary } from '../types/k6-summary';
 import { compareSummaries } from './compare-summaries';
 
@@ -196,6 +196,33 @@ describe('compareSummaries', () => {
 
       expect(regressions).toEqual([expect.stringContaining('12.0 ms to 20.0 ms')]);
       expect(markdown).toContain('| p95 CPU bound, lowest of the runs (ms) | 12.0 | 20.0 | +66.7% | ❌ |');
+    });
+  });
+
+  describe('big uploads and downloads', () => {
+    const downloads = { metric: 'download_mb_per_s', checks: 'download' };
+
+    it('are not shown when there are no summaries of them', () => {
+      expect(compareSummaries(same(), same()).markdown).not.toContain('median speed');
+    });
+
+    it('are judged by their median speed, each on its own', () => {
+      const { regressions, markdown } = compareSummaries(
+        same(),
+        same(),
+        {},
+        {
+          baseUploads: transferRuns(3, { speed: 500 }),
+          headUploads: transferRuns(3, { speed: 520 }),
+          baseDownloads: transferRuns(3, { ...downloads, speed: 2000 }),
+          headDownloads: transferRuns(3, { ...downloads, speed: 1000 }),
+        }
+      );
+
+      expect(regressions).toEqual([expect.stringContaining('The speed of the big downloads is 50.0% lower than the base')]);
+      expect(markdown).toContain('| big uploads, median speed (MB/s) | 500 | 520 | +4.0% | ✅ |');
+      expect(markdown).toContain('| big downloads, median speed (MB/s) | 2000 | 1000 | −50.0% | ❌ |');
+      expect(markdown).toContain('The big uploads and downloads (3 runs of the base, 3 of the pull request');
     });
   });
 

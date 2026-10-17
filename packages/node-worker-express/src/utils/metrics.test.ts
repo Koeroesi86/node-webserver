@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { getServerMetrics, registerMetricsSource, trackRequest } from './metrics';
+import { countHandOff, getServerMetrics, registerMetricsSource, trackRequest } from './metrics';
 import type { ServerResponse } from 'http';
 
 const response = (statusCode = 200) => Object.assign(new EventEmitter(), { statusCode }) as unknown as ServerResponse;
@@ -61,6 +61,27 @@ describe('metrics', () => {
 
       expect(next.total).toBeGreaterThanOrEqual(0);
       expect(next.status['2xx']).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('hand offs', () => {
+    it('counts the connections that went to a worker, and those that came back, for requests and for responses apart', () => {
+      const before = getServerMetrics().handOffs;
+
+      countHandOff('requests', 'total');
+      countHandOff('requests', 'total');
+      countHandOff('requests', 'handedBack');
+      countHandOff('responses', 'total');
+      const after = getServerMetrics().handOffs;
+
+      expect([after.requests.total - before.requests.total, after.requests.handedBack - before.requests.handedBack]).toEqual([2, 1]);
+      expect([after.responses.total - before.responses.total, after.responses.handedBack - before.responses.handedBack]).toEqual([1, 0]);
+    });
+
+    it('does not let a caller change the counters through a snapshot', () => {
+      getServerMetrics().handOffs.requests.total = -1;
+
+      expect(getServerMetrics().handOffs.requests.total).toBeGreaterThanOrEqual(0);
     });
   });
 

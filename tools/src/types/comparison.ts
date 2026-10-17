@@ -19,6 +19,27 @@ export interface BinarySummaries {
   headBinary?: K6Summary[];
 }
 
+/** the runs of big-upload.ts and download.ts in the mode that keeps the connection: the bodies a worker reads from or writes to the client itself */
+export interface TransferSummaries {
+  baseUploads?: K6Summary[];
+  headUploads?: K6Summary[];
+  baseDownloads?: K6Summary[];
+  headDownloads?: K6Summary[];
+}
+
+export interface TransferJudgement {
+  /** starts the sentence of the regression */
+  subject: string;
+  label: string;
+  /** the trend of the speed in MB/s, of which the `keep-alive` mode is judged */
+  metric: string;
+  /** the prefix of the checks of the scenario, which tell whether the answers of the base are real ones */
+  checks: string;
+  baseRuns: K6Summary[];
+  headRuns: K6Summary[];
+  limits: Limits;
+}
+
 export interface SummaryPaths {
   base: string[];
   head: string[];
@@ -26,6 +47,10 @@ export interface SummaryPaths {
   headCpu?: string[];
   baseBinary?: string[];
   headBinary?: string[];
+  baseUploads?: string[];
+  headUploads?: string[];
+  baseDownloads?: string[];
+  headDownloads?: string[];
 }
 
 export interface ComparisonResult {
@@ -42,6 +67,8 @@ export interface ComparisonOptions {
   duration: string;
   cpuDuration: string;
   binaryDuration: string;
+  /** the duration of the big uploads and the big downloads, each on its own */
+  transferDuration: string;
   resultsDirectory: string;
   portHttp: string;
   portHttps: string;
@@ -88,4 +115,5 @@ export interface JudgedMetrics {
   limits: Limits;
   cpuRuns?: { base: number; head: number };
   binaryRuns?: { base: number; head: number };
+  transferRuns?: { base: number; head: number };
 }

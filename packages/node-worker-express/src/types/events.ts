@@ -49,7 +49,19 @@ export type ResponseHandOffMessage = {
   requestId: string;
   /** how long the client may take nothing before the worker closes the connection, in milliseconds, 0 for no limit */
   timeout: number;
+  /** the head says that the connection goes on, so the worker gives it back after the body: the client wants it kept, and the server still accepts connections */
+  keepAlive: boolean;
 };
+
+/** what the worker sends along with the connection of a client that it wrote a big response to, when it goes back to the server, over the IPC channel */
+export type ResponseHandBackMessage = {
+  type: WORKER_EVENT.RESPONSE_HANDBACK;
+  requestId: string;
+  /** what the worker read from the connection, as base64 as the IPC channel carries JSON */
+  leftover: string;
+};
+
+export type HandBackMessage = RequestHandBackMessage | ResponseHandBackMessage;
 
 /** what goes along with the connection of a client that is handed to a worker to read a big request body and answer it, over the IPC channel */
 export type RequestHandOffMessage = {
@@ -63,6 +75,18 @@ export type RequestHandOffMessage = {
   length: number;
   /** how long the client may take nothing before the worker closes the connection, in milliseconds, 0 for no limit */
   timeout: number;
+  /** the connection may be handed back after the response: the client wants it kept, nothing follows the body on it, and the server still accepts connections */
+  keepAlive: boolean;
+};
+
+/** what the worker sends along with the connection of a handed over request that goes back to the server, over the IPC channel */
+export type RequestHandBackMessage = {
+  type: WORKER_EVENT.REQUEST_HANDBACK;
+  requestId: string;
+  /** how the response went, as the message of a closed connection says it */
+  event: ResponseMessage;
+  /** what the worker read from the connection after the body, as base64 as the IPC channel carries JSON */
+  leftover: string;
 };
 
 export type HandOffMessage = ResponseHandOffMessage | RequestHandOffMessage;

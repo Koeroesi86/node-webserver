@@ -7,13 +7,13 @@ const proceeds = (result: unknown) => result !== false;
 /** what a client that goes away or a closed connection fails a write with, which is not an error of the source */
 const connectionErrors = ['ERR_STREAM_PREMATURE_CLOSE', 'ECONNRESET', 'EPIPE'];
 
-/** the body goes straight to the connection of the client, with the backpressure of the socket, which is closed after it */
+/**
+ * the body goes straight to the connection of the client, with the backpressure of the socket, which is left open for the end of the response.
+ * A pipeline that does not end its destination also finishes without an error when the connection closed, so the state of the connection tells whether the body arrived.
+ */
 const writeToSocket = (socket: Socket, body: StreamBody) =>
-  pipeline(body, socket).then(
-    () => {
-      socket.destroySoon();
-      return true;
-    },
+  pipeline(body, socket, { end: false }).then(
+    () => socket.writable && !socket.destroyed,
     (error: unknown) => {
       if (!(error instanceof Error && 'code' in error && connectionErrors.includes(`${error.code}`))) console.error(error);
       socket.destroy();
@@ -35,7 +35,8 @@ const destroyBody = (body: StreamBody) => {
  * which the client sees as a truncated one, as the headers are out by then.
  *
  * A response with a `Content-Length` header asks the server for the connection of the client first. When the server hands it over, the worker writes the body to the client
- * itself, and the bytes do not pass through the server, which then is not the limit of how fast big files are sent. Otherwise the body is streamed through the server as described.
+ * itself, and the bytes do not pass through the server, which then is not the limit of how fast big files are sent. The connection then goes back to the server for the next request
+ * of the client, or is closed when the client did not want it kept. Otherwise the body is streamed through the server as described.
  *
  * Use it from a worker: `await streamResponse(callback, { headers: { 'Content-Type': 'text/plain' } }, someReadableOrAsyncGenerator)`
  */
@@ -54,7 +55,11 @@ async function streamResponse(
   const socket = hasLength ? await callback({ statusCode, headers, handOff: true }) : undefined;
   if (socket instanceof Socket) {
     const sent = await writeToSocket(socket, body);
-    // the server waits for the end to free the worker
+    // the server takes the connection back when the head told the client that it goes on, and frees the worker by itself then
+    if (sent && (await callback({ statusCode, headers, handOff: true, handBack: socket })) === true) return true;
+    // otherwise the connection is closed, and the server waits for the end to free the worker
+    socket.destroySoon();
+
     return proceeds(await send({ body: null })) && sent;
   }
   // the oldest part is awaited until both the number of parts and the bytes in flight are within the window, false when the client went away

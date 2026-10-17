@@ -6,6 +6,7 @@ export interface Metric {
   passes?: number;
   fails?: number;
   avg?: number;
+  min?: number;
   med?: number;
   max?: number;
   'p(90)'?: number;

@@ -13,8 +13,18 @@ const internalServerError = Buffer.from('Internal Server Error');
 const toBuffer = ({ body, isBase64Encoded }: ResponseEvent) =>
   typeof body === 'string' ? Buffer.from(body, isBase64Encoded ? 'base64' : 'utf8') : (body ?? Buffer.alloc(0));
 
+/** how many bytes the body has by the head of the response: none for a status without a body, what `Content-Length` says, or the size the response is known to have. Nothing when the body ends with the connection. */
+const getDeclaredLength = (statusCode: number, headers: ResponseEvent['headers'], contentLength: number | undefined) => {
+  if (bodylessStatuses.includes(statusCode) || statusCode < 200) return 0;
+
+  const header = Object.entries(headers ?? {}).find(([name]) => name.toLowerCase() === 'content-length')?.[1];
+  const declared = header === undefined ? contentLength : Number([header].flat()[0]);
+
+  return Number.isInteger(declared) && declared !== undefined && declared >= 0 ? declared : undefined;
+};
+
 /** the head of a response, the values are checked like node checks the headers of a response, so that a worker cannot inject a line */
-const buildHead = (statusCode: number, headers: ResponseEvent['headers'], contentLength: number | undefined) => {
+const buildHead = (statusCode: number, headers: ResponseEvent['headers'], contentLength: number | undefined, keepAlive: boolean) => {
   const lines = Object.entries(headers ?? {})
     .filter(([name]) => !ownedHeaders.includes(name.toLowerCase()))
     .flatMap(([name, value]) =>
@@ -28,25 +38,46 @@ const buildHead = (statusCode: number, headers: ResponseEvent['headers'], conten
   const length =
     hasLength || contentLength === undefined || bodylessStatuses.includes(statusCode) || statusCode < 200 ? [] : [`Content-Length: ${contentLength}`];
 
-  return Buffer.from([`HTTP/1.1 ${statusCode} ${STATUS_CODES[statusCode] ?? ''}`, ...lines, ...length, 'Connection: close', '', ''].join('\r\n'));
+  return Buffer.from(
+    [`HTTP/1.1 ${statusCode} ${STATUS_CODES[statusCode] ?? ''}`, ...lines, ...length, keepAlive ? 'Connection: keep-alive' : 'Connection: close', '', ''].join(
+      '\r\n'
+    )
+  );
 };
+
+interface KeepAlive {
+  /** whether the connection can serve another request once this response is done, asked when the head is written */
+  isPossible: () => boolean;
+  /** the response was written whole: the connection goes on instead of being closed */
+  onDone: () => Promise<void>;
+}
 
 /**
  * Writes the response of a request whose connection the server handed over: a response in one piece, or in parts as `emit` says, ending with a part without a body.
- * The connection is closed after the response, so a body without a `Content-Length` ends with it. The promise a part returns resolves with `true` once the part was written,
+ * The connection is closed after the response, so a body without a `Content-Length` ends with it, unless `keepAlive` says that the connection goes on: then a response whose size
+ * is known up front says so, and `onDone` takes the connection once exactly that many bytes were written. The promise a part returns resolves with `true` once the part was written,
  * and with `false` when the client is gone, like the one of the server does.
  */
-const createSocketResponder = (socket: net.Socket) => {
+const createSocketResponder = (socket: net.Socket, keepAlive?: KeepAlive) => {
   let headWritten = false;
   let ended = false;
+  let broken = false;
   let statusCode: number | undefined;
   let bytes = 0;
+  let declared: number | undefined;
+  let keeping = false;
+
+  const broke = () => {
+    broken = true;
+
+    return false;
+  };
 
   const write = (chunk: Buffer) =>
     new Promise<boolean>((resolve) => {
-      if (socket.destroyed || !socket.writable) return resolve(false);
+      if (socket.destroyed || !socket.writable) return resolve(broke());
 
-      socket.write(chunk, (error) => resolve(!error));
+      socket.write(chunk, (error) => resolve(error ? broke() : true));
     });
 
   const end = () => {
@@ -56,13 +87,24 @@ const createSocketResponder = (socket: net.Socket) => {
     socket.resume();
   };
 
+  /** the end of a response: the connection goes on when the response was written whole as its head said, otherwise it is closed */
+  const finish = async () => {
+    if (!keeping || broken || bytes !== declared || socket.destroyed || !socket.writable) return end();
+
+    ended = true;
+    return keepAlive?.onDone();
+  };
+
   /** the head of the response, or of a 500 when the worker gave headers that are not valid */
   const prepareHead = (code: number, headers: ResponseEvent['headers'], contentLength?: number) => {
     try {
-      return { code, head: buildHead(code, headers, contentLength), failed: false };
+      declared = getDeclaredLength(code, headers, contentLength);
+      keeping = declared !== undefined && keepAlive?.isPossible() === true;
+      return { code, head: buildHead(code, headers, contentLength, keeping), failed: false };
     } catch (error) {
       console.error(error);
-      return { code: 500, head: buildHead(500, { 'Content-Type': 'text/plain' }, internalServerError.length), failed: true };
+      keeping = false;
+      return { code: 500, head: buildHead(500, { 'Content-Type': 'text/plain' }, internalServerError.length, false), failed: true };
     }
   };
 
@@ -75,7 +117,7 @@ const createSocketResponder = (socket: net.Socket) => {
     const sent = bodylessStatuses.includes(code) || code < 200 ? Buffer.alloc(0) : body;
     bytes = sent.length;
     await write(Buffer.concat([head, sent]));
-    end();
+    await finish();
   };
 
   const emit = async (event: ResponseEvent) => {
@@ -92,7 +134,7 @@ const createSocketResponder = (socket: net.Socket) => {
     }
     if (ended) return false;
     if (event.body === null) {
-      end();
+      await finish();
       return true;
     }
 

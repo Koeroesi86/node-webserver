@@ -16,6 +16,10 @@ interface Overrides {
   headersSent?: boolean;
   minimumLength?: number;
   head?: Partial<ResponseMessage>;
+  /** the client wants the connection kept, and the http server that accepted it takes it back */
+  keepAlive?: boolean;
+  closing?: boolean;
+  connectionHeader?: string;
 }
 
 const sockets: net.Socket[] = [];
@@ -44,10 +48,19 @@ const setup = ({
   headersSent = false,
   minimumLength = 10,
   head = {},
+  keepAlive = false,
+  closing = false,
+  connectionHeader,
 }: Overrides = {}) => {
   const headers = new Map<string, string>();
+  const httpServer = new net.Server();
+  let accepting = !closing;
+  Object.defineProperty(httpServer, 'listening', { get: () => accepting });
+  Object.assign(socket, { server: httpServer });
+  if (connectionHeader) headers.set('connection', connectionHeader);
   const request = { socket, method, httpVersionMajor };
   const response = {
+    shouldKeepAlive: keepAlive,
     headersSent,
     setHeader: jest.fn((name: string, value: string) => headers.set(name.toLowerCase(), value)),
     getHeader: jest.fn((name: string) => headers.get(name)),
@@ -71,7 +84,7 @@ const setup = ({
   });
   const message: ResponseMessage = { statusCode: 200, headers: { 'Content-Length': '100' }, ...head };
 
-  return { handOff, message, response, lease, socket, onHandedOver, onFailed };
+  return { handOff, message, response, lease, socket, httpServer, stopAccepting: () => (accepting = false), onHandedOver, onFailed };
 };
 
 const refused = { type: WORKER_EVENT.RESPONSE_HANDOFF_REFUSE, requestId: 'r1' };
@@ -84,11 +97,62 @@ describe('createResponseHandOff', () => {
 
     await handOff.start(message);
 
-    expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'r1', timeout: 300 }, socket);
+    expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'r1', timeout: 300, keepAlive: false }, socket);
     expect(lease.send).not.toHaveBeenCalled();
     expect(onHandedOver).toHaveBeenCalledTimes(1);
     expect(response.setHeader).toHaveBeenCalledWith('Connection', 'close');
     expect(handOff.isActive()).toBe(true);
+  });
+
+  describe('the connection after the body', () => {
+    it('is kept for a client that wants it, which the head says', async () => {
+      const { handOff, message, lease, socket, response } = setup({ keepAlive: true });
+
+      await handOff.start(message);
+
+      expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'r1', timeout: 300, keepAlive: true }, socket);
+      expect(response.setHeader).toHaveBeenCalledWith('Connection', 'keep-alive');
+    });
+
+    it.each([
+      ['a client that wants it closed', { keepAlive: false }],
+      ['a server that is stopping', { keepAlive: true, closing: true }],
+      ['a middleware that asked the client to move on', { keepAlive: true, connectionHeader: 'close' }],
+    ])('is closed for %s', async (_name, overrides) => {
+      const { handOff, message, lease, socket, response } = setup(overrides);
+
+      await handOff.start(message);
+
+      expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'r1', timeout: 300, keepAlive: false }, socket);
+      expect(response.setHeader).toHaveBeenCalledWith('Connection', 'close');
+    });
+
+    it('goes to the http server again when the worker gives it back, and frees the response', async () => {
+      const { handOff, message, httpServer } = setup({ keepAlive: true });
+      const emit = jest.spyOn(httpServer, 'emit');
+      const back = new net.Socket();
+      sockets.push(back);
+      await handOff.start(message);
+
+      handOff.takeBack(back, Buffer.from('GET'));
+
+      expect(handOff.isActive()).toBe(false);
+      expect(emit).toHaveBeenCalledWith('connection', back);
+      expect(back.readableLength).toBe(3);
+    });
+
+    it('is closed when the worker gives it back after the server stopped accepting connections', async () => {
+      const { handOff, message, httpServer, stopAccepting } = setup({ keepAlive: true });
+      const emit = jest.spyOn(httpServer, 'emit');
+      const back = new net.Socket();
+      await handOff.start(message);
+      stopAccepting();
+
+      handOff.takeBack(back, Buffer.alloc(0));
+
+      expect(emit).not.toHaveBeenCalledWith('connection', back);
+      expect(back.destroyed).toBe(true);
+    });
   });
 
   const refusals: Array<[string, Overrides]> = [

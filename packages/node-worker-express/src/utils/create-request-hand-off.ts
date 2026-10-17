@@ -3,7 +3,10 @@ import { TLSSocket } from 'tls';
 import type { Request, Response } from 'express';
 import { WORKER_EVENT } from '../constants';
 import type { RequestEvent, ResponseMessage } from '../types';
+import canKeepConnection from './can-keep-connection';
 import getReadStop from './get-read-stop';
+import { countHandOff } from './metrics';
+import takeBackConnection from './take-back-connection';
 import { handedOffRequests, handedOffResponses, requestHandOffDoneEvent } from './is-handed-off';
 import type { WorkerLease } from './workerPool';
 
@@ -45,6 +48,8 @@ const createRequestHandOff = ({
   onFailed,
 }: RequestHandOffParams) => {
   let active = false;
+  /** the http server that accepted the connection, which takes it again when the worker gives it back */
+  const server: unknown = Reflect.get(request.socket, 'server');
   const length = Number(request.headers['content-length']);
 
   /** whether the request qualifies: a body of a known and big enough length on a plain HTTP/1 connection that nothing else reads */
@@ -69,6 +74,12 @@ const createRequestHandOff = ({
     handedOffResponses.delete(response);
   }
 
+  /**
+   * whether the worker may hand the connection back after the response: the client wants it kept, the server is still accepting connections, and nothing but the body arrived with it.
+   * A request behind the body on the connection was parsed here already, and would be lost in the move.
+   */
+  const isKeptAlive = (arrivedLength: number) => canKeepConnection(response, server) && arrivedLength <= length;
+
   const start = async () => {
     const { socket } = request;
     const stopReading = getReadStop(socket);
@@ -79,20 +90,33 @@ const createRequestHandOff = ({
     const buffered = socket.read();
     const resumeReading = stopReading?.();
     // what follows the body on the connection is not part of this request
-    const prefix = Buffer.concat([parsed ?? Buffer.alloc(0), buffered ?? Buffer.alloc(0)]).subarray(0, length);
+    const arrived = Buffer.concat([parsed ?? Buffer.alloc(0), buffered ?? Buffer.alloc(0)]);
+    const prefix = arrived.subarray(0, length);
 
     active = true;
     handedOffRequests.add(response);
     handedOffResponses.add(response);
     onHandedOver();
     try {
-      await lease.handOff({ type: WORKER_EVENT.REQUEST_HANDOFF, requestId, event, prefix: prefix.toString('base64'), length, timeout: timeout ?? 0 }, socket);
+      await lease.handOff(
+        {
+          type: WORKER_EVENT.REQUEST_HANDOFF,
+          requestId,
+          event,
+          prefix: prefix.toString('base64'),
+          length,
+          timeout: timeout ?? 0,
+          keepAlive: isKeptAlive(arrived.length),
+        },
+        socket
+      );
     } catch {
       resumeReading?.();
       reset();
       onFailed();
       return;
     }
+    countHandOff('requests', 'total');
     // the handle is in the worker now, this lets the server and the response here let go of the connection, the worker frees itself when it is done
     socket.destroy();
   };
@@ -105,12 +129,18 @@ const createRequestHandOff = ({
     response.emit(requestHandOffDoneEvent);
   };
 
+  /** the worker gave the connection back after its response: it goes to the http server it came from, as a new connection with what the worker read behind the body */
+  const takeBack = (socket: net.Socket, leftover: Buffer) => {
+    if (takeBackConnection(server, socket, leftover)) countHandOff('requests', 'handedBack');
+  };
+
   return {
     /** the worker reads the body and writes the response, the connection is not this process' to watch until the worker says it is done */
     isActive: () => active,
     isAllowed,
     start,
     finish,
+    takeBack,
     reset,
   };
 };

@@ -1,4 +1,5 @@
-import type { WorkerOutputEvent } from '../types';
+import type net from 'net';
+import type { HandBackMessage, WorkerOutputEvent } from '../types';
 
 /** what the pool knows about a worker besides its requests */
 export interface WorkerEntry {
@@ -13,6 +14,7 @@ export interface WorkerEntry {
 export interface LeaseState {
   requestId?: string;
   onMessage?: (message: WorkerOutputEvent) => void;
+  onHandBack?: (message: HandBackMessage, socket: net.Socket) => void;
   onExit?: (code: number | null) => void;
 }
 

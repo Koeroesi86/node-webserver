@@ -112,4 +112,115 @@ describe('createSocketResponder', () => {
 
     expect(await received).not.toContain('second');
   });
+  describe('on a connection that may go on', () => {
+    const keepAlive = (isPossible = true) => ({ isPossible: jest.fn(() => isPossible), onDone: jest.fn(() => Promise.resolve()) });
+    /** the text that arrived, for a connection that stays open */
+    const readHead = () =>
+      new Promise<string>((resolve) => {
+        const chunks: Buffer[] = [];
+        client.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+          if (Buffer.concat(chunks).includes('\r\n\r\n')) setImmediate(() => resolve(Buffer.concat(chunks).toString()));
+        });
+      });
+
+    it('says so in the head of a response in one piece and hands the connection on instead of closing it', async () => {
+      const keeping = keepAlive();
+      const text = readHead();
+
+      await createSocketResponder(connection, keeping).callback({ statusCode: 200, body: 'ok' });
+
+      expect(await text).toBe('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok');
+      expect(keeping.onDone).toHaveBeenCalledTimes(1);
+      expect(connection.writable).toBe(true);
+    });
+
+    it('keeps a streamed response that has a length, once exactly that many bytes were written', async () => {
+      const keeping = keepAlive();
+      const streaming = createSocketResponder(connection, keeping);
+      const emit = (body: Buffer | null) => streaming.callback({ statusCode: 200, headers: { 'Content-Length': '6' }, emit: true, body });
+
+      await emit(Buffer.from('one'));
+      expect(keeping.onDone).not.toHaveBeenCalled();
+      await emit(Buffer.from('two'));
+      await emit(null);
+
+      expect(keeping.onDone).toHaveBeenCalledTimes(1);
+      expect(streaming.summary()).toEqual({ statusCode: 200, bytes: 6 });
+    });
+
+    it('keeps a response without a body for its status', async () => {
+      const keeping = keepAlive();
+
+      await createSocketResponder(connection, keeping).callback({ statusCode: 204 });
+
+      expect(keeping.onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the connection after a response whose end is the end of the connection', async () => {
+      const keeping = keepAlive();
+
+      const streaming = createSocketResponder(connection, keeping);
+      await streaming.callback({ statusCode: 200, emit: true, body: Buffer.from('one') });
+      await streaming.callback({ statusCode: 200, emit: true, body: null });
+
+      expect(await received).toContain('Connection: close\r\n');
+      expect(keeping.onDone).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['fewer', '10'],
+      ['more', '1'],
+    ])('closes the connection when the worker gave a length with %s bytes than it wrote', async (_name, length) => {
+      const keeping = keepAlive();
+      const closed = readUntilClosed(client);
+
+      await createSocketResponder(connection, keeping).callback({ statusCode: 200, headers: { 'Content-Length': length }, body: 'ok' });
+
+      expect(await closed).toContain('Connection: keep-alive');
+      expect(keeping.onDone).not.toHaveBeenCalled();
+    });
+
+    it('closes the connection when the connection cannot go on', async () => {
+      const keeping = keepAlive(false);
+
+      await createSocketResponder(connection, keeping).callback({ statusCode: 200, body: 'ok' });
+
+      expect(await received).toContain('Connection: close\r\n');
+      expect(keeping.onDone).not.toHaveBeenCalled();
+    });
+
+    it('closes the connection after a 500 for a header that is not valid', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      const keeping = keepAlive();
+
+      await createSocketResponder(connection, keeping).callback({ statusCode: 200, headers: { 'X-Bad': 'a\nb' }, body: 'x' });
+
+      expect(await received).toContain('Connection: close\r\n');
+      expect(keeping.onDone).not.toHaveBeenCalled();
+    });
+
+    it('closes the connection when the client left while the response was written', async () => {
+      const keeping = keepAlive();
+      const streaming = createSocketResponder(connection, keeping);
+      await streaming.callback({ statusCode: 200, headers: { 'Content-Length': '2' }, emit: true, body: Buffer.from('o') });
+      client.destroy();
+      connection.resume();
+      await new Promise((resolve) => connection.once('close', resolve));
+
+      await streaming.callback({ statusCode: 200, emit: true, body: Buffer.from('k') });
+      await streaming.callback({ statusCode: 200, emit: true, body: null });
+
+      expect(keeping.onDone).not.toHaveBeenCalled();
+    });
+
+    it('does not answer again once the connection was handed on', async () => {
+      const keeping = keepAlive();
+      const responding = createSocketResponder(connection, keeping);
+      await responding.callback({ statusCode: 200, body: 'first' });
+
+      await expect(responding.callback({ statusCode: 500, body: 'second' })).resolves.toBeUndefined();
+      expect(keeping.onDone).toHaveBeenCalledTimes(1);
+    });
+  });
 });
