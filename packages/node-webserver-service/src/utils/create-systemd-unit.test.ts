@@ -26,6 +26,14 @@ describe('createSystemdUnit', () => {
     expect(createSystemdUnit({ ...definition, user: 'www' })).toContain('\nUser=www\n');
   });
 
+  it('is wanted by the user manager, without the network target and the user, for a user service', () => {
+    const unit = createSystemdUnit({ ...definition, userService: true });
+
+    expect(unit).toContain('WantedBy=default.target');
+    expect(unit).not.toContain('network.target');
+    expect(unit).not.toContain('multi-user');
+  });
+
   it('quotes what systemd would expand or split', () => {
     const unit = createSystemdUnit({ ...definition, configPath: '/etc/my "conf" $HOME 100%/c.js', displayName: 'a\nb', workingDirectory: '/etc/my dir' });
 

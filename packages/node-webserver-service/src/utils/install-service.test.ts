@@ -80,4 +80,53 @@ describe('installService and removeService', () => {
     await expect(removeService(definition, { platform: 'win32', runCommand, removeFile })).rejects.toThrow('not for win32');
     expect(writeFile).not.toHaveBeenCalled();
   });
+
+  describe('for the current user', () => {
+    const userDefinition: ServiceDefinition = { ...definition, userService: true };
+    const user = { home: '/home/dev', uid: 1000 };
+    const makeFolder = jest.fn();
+
+    beforeEach(() => makeFolder.mockReset().mockResolvedValue(undefined));
+
+    it('writes the unit into the user folder and enables it with the user manager of systemd', async () => {
+      await installService(userDefinition, { platform: 'linux', makeFolder, writeFile, runCommand }, user);
+
+      expect(makeFolder).toHaveBeenCalledWith('/home/dev/.config/systemd/user');
+      expect(writeFile).toHaveBeenCalledWith('/home/dev/.config/systemd/user/nws.service', expect.stringContaining('WantedBy=default.target'));
+      expect(runCommand.mock.calls).toEqual([
+        ['systemctl', ['--user', 'daemon-reload']],
+        ['systemctl', ['--user', 'enable', '--now', 'nws']],
+      ]);
+    });
+
+    it('bootstraps the agent into the gui domain of the user with launchd', async () => {
+      await installService(userDefinition, { platform: 'darwin', makeFolder, writeFile, runCommand }, user);
+
+      expect(makeFolder).toHaveBeenCalledWith('/home/dev/Library/LaunchAgents');
+      expect(runCommand).toHaveBeenCalledWith('launchctl', ['bootstrap', 'gui/1000', '/home/dev/Library/LaunchAgents/com.koeroesi86.nws.plist']);
+    });
+
+    it('removes the user unit and the agent', async () => {
+      await removeService(userDefinition, { platform: 'linux', runCommand, removeFile }, user);
+      expect(runCommand.mock.calls).toEqual([
+        ['systemctl', ['--user', 'disable', '--now', 'nws']],
+        ['systemctl', ['--user', 'daemon-reload']],
+      ]);
+      expect(removeFile).toHaveBeenCalledWith('/home/dev/.config/systemd/user/nws.service');
+
+      await removeService(userDefinition, { platform: 'darwin', runCommand, removeFile }, user);
+      expect(runCommand).toHaveBeenCalledWith('launchctl', ['bootout', 'gui/1000/com.koeroesi86.nws']);
+    });
+
+    it('needs the user id on macOS', async () => {
+      await expect(
+        installService(userDefinition, { platform: 'darwin', makeFolder, writeFile, runCommand }, { home: '/home/dev', uid: undefined })
+      ).rejects.toThrow('user id');
+    });
+
+    it('does not create a folder for the system service', async () => {
+      await installService(definition, { platform: 'linux', makeFolder, writeFile, runCommand });
+      expect(makeFolder).not.toHaveBeenCalled();
+    });
+  });
 });

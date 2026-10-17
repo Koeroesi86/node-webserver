@@ -2,15 +2,16 @@ import { rm } from 'node:fs/promises';
 import getServiceFiles from './get-service-files';
 import { defaultDependencies } from './install-service';
 import type { InstallDependencies } from './install-service';
+import type { UserContext } from './get-service-files';
 import type { ServiceDefinition } from '../types';
 
 interface RemoveDependencies extends Pick<InstallDependencies, 'platform' | 'runCommand'> {
   removeFile: (path: string) => Promise<void>;
 }
 
-const removeService = async (definition: ServiceDefinition, dependencies: Partial<RemoveDependencies> = {}): Promise<void> => {
+const removeService = async (definition: ServiceDefinition, dependencies: Partial<RemoveDependencies> = {}, user?: UserContext): Promise<void> => {
   const deps = { platform: defaultDependencies.platform, runCommand: defaultDependencies.runCommand, removeFile: (path: string) => rm(path), ...dependencies };
-  const { filePath, remove, afterRemove } = getServiceFiles(deps.platform, definition);
+  const { filePath, remove, afterRemove } = getServiceFiles(deps.platform, definition, user);
 
   for (const [command, ...args] of remove) {
     await deps.runCommand(command, args);

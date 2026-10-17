@@ -17,5 +17,7 @@ export interface ServiceDefinition {
   configPath: string;
   workingDirectory: string;
   user?: string;
+  /** installs for the current user (systemd user manager, LaunchAgents) instead of the system */
+  userService?: boolean;
   logFolder?: string;
 }
