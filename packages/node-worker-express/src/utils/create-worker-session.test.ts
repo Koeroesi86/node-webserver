@@ -168,13 +168,15 @@ describe('createWorkerSession', () => {
     const handOff = (keepAlive: boolean) => ({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: 'r', timeout: 0, keepAlive });
 
     it('gives the connection back after the body, with what was read from it, when the head promised that it goes on', async () => {
-      const sendHandBack = jest.fn((_message: HandBackMessage, _socket: net.Socket) => Promise.resolve());
+      let bodyArrived: Promise<string> = Promise.resolve('');
+      // the mock does not pass the connection on, so the worker closes the only copy afterwards: with the next request unread, windows answers that with a reset that drops what the client did not read yet
+      const sendHandBack = jest.fn((_message: HandBackMessage, _socket: net.Socket) => bodyArrived.then(() => undefined));
       const { worker, outcome } = handingBack();
       const { server, session, received, close } = setup(worker, sendHandBack);
       const pair = await createSocketPair();
-      // the mock does not pass the connection on, so the worker closes the only copy with the next request unread, which windows answers with a reset
       pair.client.on('error', () => {});
       const body = new Promise<string>((resolve) => pair.client.once('data', (chunk) => resolve(chunk.toString())));
+      bodyArrived = body;
 
       server.send({ type: WORKER_EVENT.REQUEST, requestId: 'r', event: request });
       await until(() => received.some(({ type }) => type === WORKER_EVENT.RESPONSE_HANDOFF));
