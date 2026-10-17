@@ -172,6 +172,8 @@ describe('createWorkerSession', () => {
       const { worker, outcome } = handingBack();
       const { server, session, received, close } = setup(worker, sendHandBack);
       const pair = await createSocketPair();
+      // the mock does not pass the connection on, so the worker closes the only copy with the next request unread, which windows answers with a reset
+      pair.client.on('error', () => {});
       const body = new Promise<string>((resolve) => pair.client.once('data', (chunk) => resolve(chunk.toString())));
 
       server.send({ type: WORKER_EVENT.REQUEST, requestId: 'r', event: request });
