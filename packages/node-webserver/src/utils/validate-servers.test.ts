@@ -20,7 +20,7 @@ describe('validateServers', () => {
         instance: instance as ServerConfig,
       })),
       {}
-    ).map(({ server, setting, message }) => `${server} ${setting} ${message.replace(folder, '<folder>')}`);
+    ).map(({ server, setting, message }) => `${server} ${setting} ${message.replace(folder, '<folder>').replaceAll('\\', '/')}`);
 
   it('finds nothing in servers that are valid', () => {
     expect(

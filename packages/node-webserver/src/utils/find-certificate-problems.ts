@@ -6,8 +6,6 @@ import type { ConfigurationProblem, ServerConfig } from '../types';
 
 const DAY = 24 * 60 * 60 * 1000;
 
-const readIfFile = (file?: string) => (file && fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? fs.readFileSync(file, 'utf8') : undefined);
-
 const attempt = <T>(build: () => T): T | undefined => {
   try {
     return build();
@@ -15,6 +13,9 @@ const attempt = <T>(build: () => T): T | undefined => {
     return undefined;
   }
 };
+
+/** read at once instead of looked at first, a file that is not there (or is a folder) is for `findMissingPaths` to name */
+const readIfFile = (file: string) => attempt(() => fs.readFileSync(file, 'utf8'));
 
 const findExpiryProblems = (server: string, { validToDate }: X509Certificate, now: number): ConfigurationProblem[] => {
   const left = validToDate.getTime() - now;

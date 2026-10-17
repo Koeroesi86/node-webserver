@@ -12,7 +12,8 @@ describe('checkConfiguration', () => {
   let folder: string;
 
   beforeEach(() => {
-    folder = fs.mkdtempSync(path.join(os.tmpdir(), 'check-configuration-'));
+    // the real path, which is the one a file reports when its folder is behind a link (the temporary folder of macOS)
+    folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'check-configuration-')));
     jest.resetModules();
   });
 

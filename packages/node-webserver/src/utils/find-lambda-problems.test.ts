@@ -18,7 +18,7 @@ describe('findLambdaProblems', () => {
 
   const find = (lambdaOptions?: LambdaOptions) =>
     findLambdaProblems({ hostname: 'a.localhost', protocol: 'http', type: 'lambda', lambdaOptions }, 's').map(
-      ({ setting, message }) => `${setting} ${message.replace(folder, '<folder>')}`
+      ({ setting, message }) => `${setting} ${message.replace(folder, '<folder>').replaceAll('\\', '/')}`
     );
 
   it('finds nothing for a lambda, or routes to lambdas, that are there', () => {
