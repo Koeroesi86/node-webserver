@@ -22,8 +22,6 @@ export interface LambdaOptions {
    * The matching runs on the front process for every request, so patterns are trusted configuration: avoid ones that backtrack, like nested repetitions.
    */
   routes?: LambdaRoute[];
-  /** how requests and responses reach the lambda process: `ipc` (default) or through files */
-  communication?: 'ipc' | 'file';
   /** how many lambdas this server may run. Defaults to the number of CPU cores, 0 means no limit. Every lambda server has a limit of its own. */
   limit?: number;
   /** how long a request waits for a lambda when the limit is reached before it is answered with 503, in milliseconds. Defaults to 10000. */

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname } from 'path';
-import { ALLOWED_ENV, ENV_COMMUNICATION, ENV_HANDLER, ENV_MAX_LIFETIME, ENV_PATH, ENV_STORAGE_FOLDER, LIFESPAN } from '../constants';
-import type { Communication } from '../types';
+import { ALLOWED_ENV, ENV_HANDLER, ENV_MAX_LIFETIME, ENV_PATH, LIFESPAN } from '../constants';
 
 /**
  * The environment of a lambda process: the allowed variables of the server, the ones AWS sets for a function, then the ones of the options.
@@ -10,9 +9,8 @@ import type { Communication } from '../types';
 const createLambdaEnvironment = (
   lambdaPath: string,
   handlerKey: string,
-  communication: Communication,
   env: Record<string, string> = {},
-  { tmpFolder, storageFolder, maxLifetime = LIFESPAN }: { tmpFolder?: string; storageFolder?: string; maxLifetime?: number } = {}
+  { tmpFolder, maxLifetime = LIFESPAN }: { tmpFolder?: string; maxLifetime?: number } = {}
 ): NodeJS.ProcessEnv => {
   const functionName = basename(lambdaPath, extname(lambdaPath));
 
@@ -31,9 +29,7 @@ const createLambdaEnvironment = (
     ...env,
     [ENV_PATH]: lambdaPath,
     [ENV_HANDLER]: handlerKey,
-    [ENV_COMMUNICATION]: JSON.stringify(communication),
     [ENV_MAX_LIFETIME]: `${maxLifetime}`,
-    ...(storageFolder !== undefined && { [ENV_STORAGE_FOLDER]: storageFolder }),
   };
 };
 

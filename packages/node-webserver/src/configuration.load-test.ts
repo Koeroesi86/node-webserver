@@ -33,12 +33,6 @@ const lambdaOverloadServer: ServerConfig = {
   type: 'lambda',
   lambdaOptions: { lambda: failuresLambda, handler: 'handler', limit: 2, acquireTimeout: 500 },
 };
-const lambdaFileServer: ServerConfig = {
-  hostname: 'lambda-file.localhost',
-  protocol: 'http',
-  type: 'lambda',
-  lambdaOptions: { lambda: failuresLambda, handler: 'handler', communication: 'file', limit: 2 },
-};
 const lambdaRoutesFile = resolve(PACKAGE_ROOT, 'examples/lambda-routes/exampleLambda.js');
 // the same lambda with a table of routes (`/items/<id>` is the last of 401, and `/orders` another handler of the file) and without one, which the lambda routes scenario compares
 const lambdaRoutesServer: ServerConfig = {
@@ -154,8 +148,8 @@ const withHandOffRequests = (server: ServerConfig): ServerConfig =>
  * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
  *
- * `lambda-crash.localhost`, `lambda-overload.localhost` and `lambda-file.localhost` serve `examples/lambda-failures/exampleLambda.js` for the lambda scenario (`lambda.ts`):
- * a lambda that crashes, more requests than lambdas, and the `file` communication.
+ * `lambda-crash.localhost` and `lambda-overload.localhost` serve `examples/lambda-failures/exampleLambda.js` for the lambda scenario (`lambda.ts`):
+ * a lambda that crashes, and more requests than lambdas.
  * `lambda-routes.localhost` and `lambda-single.localhost` serve `examples/lambda-routes/exampleLambda.js` for the lambda routes scenario (`lambda-routes.ts`): the first through a table of 402 routes,
  * where `/items/<id>` is the 401st and `/orders` is another handler of the file, and the second as a single lambda.
  * `compressed.localhost` serves the example worker with compression on.
@@ -183,7 +177,6 @@ const configuration = {
     lambdaServer,
     lambdaCrashServer,
     lambdaOverloadServer,
-    lambdaFileServer,
     lambdaRoutesServer,
     lambdaSingleServer,
     compressedServer,

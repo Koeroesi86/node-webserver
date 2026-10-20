@@ -1,11 +1,9 @@
+import { WORKER_EVENT, type ResponseMessage, type WorkerLease } from '@koeroesi86/node-worker-pool';
 import net from 'net';
 import { TLSSocket } from 'tls';
 import type { Request, Response } from 'express';
-import { WORKER_EVENT } from '../constants';
-import type { ResponseMessage } from '../types';
 import getHeader from './get-header';
 import { handedOffResponses } from './is-handed-off';
-import type { WorkerLease } from './workerPool';
 
 /** the statuses whose response has no body, which leaves nothing to hand over */
 const bodylessStatuses = [204, 205, 304];

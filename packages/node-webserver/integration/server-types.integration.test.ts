@@ -156,7 +156,7 @@ describe('the server', () => {
     });
   });
 
-  describe.each([['lambda-ipc.localhost'], ['lambda-file.localhost']])('of the type lambda (%s)', (host) => {
+  describe.each([['lambda.localhost']])('of the type lambda (%s)', (host) => {
     it('answers with what the lambda responds with', async () => {
       const reply = await server.get(host, '/hello?x=1', { method: 'PUT' });
 

@@ -1,8 +1,8 @@
+import type { ResponseCallback, ResponseEvent, WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
 import { createReadStream } from 'fs';
 import type { Stats } from 'fs';
 import { StaticStreamThreshold } from '../constants';
 import streamResponse from '../streamResponse';
-import type { ResponseCallback, ResponseEvent, WorkerRequestEvent } from '../types';
 import chooseStaticAnswer from './choose-static-answer';
 import findCacheControl from './find-cache-control';
 import findPrecompressed from './find-precompressed';

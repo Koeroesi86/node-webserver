@@ -1,11 +1,10 @@
+import { WORKER_EVENT, type ResponseMessage, type WSMessage, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
 import type { Request, Response } from 'express';
-import { WebSocketCloseCode, WORKER_EVENT } from '../constants';
-import type { ResponseMessage, WorkerOutputEvent, WSMessage } from '../types';
+import { WebSocketCloseCode } from '../constants';
 import type createRequestHandOff from './create-request-hand-off';
 import type createResponseHandOff from './create-response-hand-off';
 import type createWsConnection from './create-ws-connection';
 import { getServerMetrics } from './metrics';
-import type { WorkerLease } from './workerPool';
 
 interface WorkerMessageListenerParams {
   request: Request;

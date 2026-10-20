@@ -23,7 +23,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@koeroesi86/node-worker": "workspace:*"
+    "@koeroesi86/node-worker-pool": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

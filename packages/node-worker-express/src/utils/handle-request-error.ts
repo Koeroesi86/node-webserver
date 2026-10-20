@@ -1,6 +1,5 @@
+import { WorkerAbandonedError, WorkerUnavailableError } from '@koeroesi86/node-worker-pool';
 import type { Response } from 'express';
-import WorkerAbandonedError from './workerAbandonedError';
-import WorkerUnavailableError from './workerUnavailableError';
 import writeTextResponse from './write-text-response';
 
 /** Answers what failed before the request reached a worker: an abandoned request needs no answer, a busy pool is a 503, anything else is for express. */

@@ -26,8 +26,8 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 |---|---|
 | `packages/node-webserver` | front server: `src/utils/startServer.ts` builds two express apps (http, https with SNI) from the configuration, `src/middlewares/` has the `lambda` and `proxy` middlewares (the static worker is the one of `node-worker-express`), access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one per server type, `integration/` the integration test |
 | `packages/node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and systemd or launchd service generator |
-| `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each in its own process |
-| `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node and the express middleware on it, which the worker pools are built on |
+| `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each lambda a worker of the pool of `node-worker-pool` that answers one request at a time |
+| `packages/node-worker`, `node-worker-pool`, `node-worker-express` | WebWorker-like API for Node, the pool of worker processes on it (leases, framed channel, protocol, the side of the worker process) which the lambdas and the workers both run on, and the express middleware on the pool |
 | `tools/` | `@koeroesi86/tools`, never published: versioning for the pipeline and the k6 load tests (`tools/README.md`) |
 | `docs/` | short pages on goals, architecture and behaviour, published to GitHub Pages by `docs.yml` (VitePress, config in `docs/.vitepress/config.mts`); links to files outside `docs/` are GitHub URLs, as VitePress cannot resolve them |
 | `.github/` | workflows (`pr-checks.yml` gates master), PR template, dependabot and zizmor config |

@@ -39,7 +39,7 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 
 `node tools/dist/scripts/channel-bench.js [ipc|socket|both] [scale]` (needs `pnpm build`) measures the channel between the server and a worker without HTTP, which the load test cannot do: the number does not depend on Express, the runner or k6.
 A child process echoes every message, the parent keeps a number of them in flight (1 or 64, 16 and 4 for the bigger bodies) and measures messages per second, megabytes of body per second, its own CPU time per message and the latency, for requests without a body and with bodies of 4 KiB, 64 KiB and 1 MiB.
-`socket` is the `createChannel` of `node-worker-express`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
+`socket` is the `createChannel` of `node-worker-pool`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
 Pin it like the load test to compare runs, for example `taskset -c 0-2 node tools/dist/scripts/channel-bench.js`; on 3 cores the socket was 2-10 times faster with a body from 4 KiB and not faster without one.
 
 ## Coverage report
@@ -147,11 +147,10 @@ Options: `VUS`, `PLAIN_RATE`, `DURATION`, `MAX_PLAIN_P95_MS`, `MAX_HANDSHAKE_P95
 
 ### Lambdas that fail
 
-`lambda.ts` works the `lambda` server type where it can go wrong, against three servers of the load test configuration that run `examples/lambda-failures/exampleLambda.js` (`/ok`, `/slow?ms=`, `/crash`, `/throw`):
+`lambda.ts` works the `lambda` server type where it can go wrong, against two servers of the load test configuration that run `examples/lambda-failures/exampleLambda.js` (`/ok`, `/slow?ms=`, `/crash`, `/throw`):
 
 - **a crashing lambda** (`lambda-crash.localhost`, 1 user hits `/crash`): the request that was running on the lambda is answered with 502 and a generic body, while 2 users on the same server get 200 all the time,
 - **overload** (`lambda-overload.localhost`, 8 users, 2 lambdas that need 1.5 seconds, `acquireTimeout` of half a second): every request is answered with 200 or 503, a 503 after the acquire timeout and less than `MARGIN_MS` (1000) later, none hangs (the scenario also fails when there was no 503 at all, or no 200),
-- **the `file` communication** (`lambda-file.localhost`): answered like the default one.
 
 It runs on its own after the binary one, is left out of the comparison with the base (a base without the servers answers with errors) and takes `DURATION` (10s) and `MARGIN_MS`.
 

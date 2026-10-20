@@ -13,7 +13,7 @@ Please enter in a console/terminal:
     pnpm install
     pnpm start
 
-`pnpm start` compiles the TypeScript sources in `src/` to `dist/` and restarts on changes. `pnpm build` creates the published `dist/` output once, `pnpm test` runs the Jest suite, `pnpm test:integration` starts the built server (run `pnpm build` first) with a worker, a lambda (both communications) and a child server, and HTTP/2 and websockets on the https port, from [integration/fixtures](integration/fixtures) and sends requests to them, and `pnpm lint` checks formatting.
+`pnpm start` compiles the TypeScript sources in `src/` to `dist/` and restarts on changes. `pnpm build` creates the published `dist/` output once, `pnpm test` runs the Jest suite, `pnpm test:integration` starts the built server (run `pnpm build` first) with a worker, a lambda and a child server, and HTTP/2 and websockets on the https port, from [integration/fixtures](integration/fixtures) and sends requests to them, and `pnpm lint` checks formatting.
 
 
 ### Compression
@@ -263,9 +263,8 @@ exports.handler = async (event, context) => ({ statusCode: 200, headers: { 'Cont
 | `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default (the init timeout of AWS), then it is stopped and the request is answered with 502 |
 | `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504. `context.getRemainingTimeInMillis()` counts down to it. |
 | `limitRequestBody` | the largest body of a request in bytes, 6291456 (6 MiB, the payload limit of AWS) by default, 0 for no limit. Larger ones are answered with 413. |
-| `restrictFileSystem` | whether a lambda can only write to its own folders, true by default, see Storage below |
+| `restrictFileSystem` | whether a lambda can only write to its own folder, true by default, see Storage below |
 | `env` | variables for the lambdas. They do not get the environment of the server, only what node needs (`PATH`, `HOME`, `TZ`, `NODE_OPTIONS`, the proxies, ...) and what AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `AWS_LAMBDA_FUNCTION_VERSION`, `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`, `AWS_LAMBDA_LOG_GROUP_NAME`, `AWS_LAMBDA_LOG_STREAM_NAME`, `AWS_EXECUTION_ENV`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
-| `communication` | how the request and the response reach the lambda, `ipc` (default) or `file` |
 
 **Routes of lambdas.** One server can host several lambdas instead of one server (with a port or a virtual host) for each. `routes` is a list in the order of precedence, and the first one that matches the path wins, a path or a pattern alike:
 
@@ -291,12 +290,13 @@ The lambda and the handler are the ones in the configuration, they are never mad
 * The request is matched before a lambda is taken, so a path that no route matches is answered with 404 (`{"message":"Not Found"}`) by the front process, and no lambda is started for it. `lambda` and `handler` next to `routes` keep their meaning, as the route for every path that none of the others matches, and the server only answers 404 when they are not set.
 * The named groups of a pattern are the `pathParameters` of the event. A route without named groups leaves them as they are for a server without routes (`{ proxy }`).
 * The `limit` is per route, `limit` of the server when the route has none: a route has lambdas of its own, never waits for the lambdas of another and never has them stopped for it. Routes with the same lambda and handler are different pools, too. The processes of a server are at most the number of its routes times the limit, so with a limit of
-  the number of CPU cores and several routes that is more than a server without routes. Set the `limit` of a route to what it needs. `acquireTimeout`, `startTimeout`, `timeout`, `limitRequestBody`, `restrictFileSystem`, `env` and `communication` are the same for all routes.
+  the number of CPU cores and several routes that is more than a server without routes. Set the `limit` of a route to what it needs. `acquireTimeout`, `startTimeout`, `timeout`, `limitRequestBody`, `restrictFileSystem` and `env` are the same for all routes.
 * `lambdas` in the metrics lists the lambdas per file, with the routes of one file together.
 
 **Event and context.** The event is the one of the proxy integration (payload format 1.0): `resource`, `path`, `httpMethod`, `headers` (the names as the client wrote them, the last value of a repeated one), `multiValueHeaders`, `queryStringParameters`
 (the last value of a repeated parameter, `null` when there are none), `multiValueQueryStringParameters`, `pathParameters` (`{ proxy }`, or the named groups of the pattern of a route), `stageVariables` (`null`), `requestContext`, and `body` with `isBase64Encoded`. The body is `null` for a request without one,
-the text when it is valid UTF-8, otherwise base64. The context has `awsRequestId` (the `requestContext.requestId` of the event), `functionName`, `functionVersion`, `invokedFunctionArn`, `memoryLimitInMB`, `logGroupName`, `logStreamName`,
+the text when it is valid UTF-8, otherwise base64. The lambda is a worker of the worker pool (`@koeroesi86/node-worker-pool`): the body is streamed to it while it arrives, as to the workers of a worker server, and the handler runs once the whole body is there, so a lambda is held by a slow upload
+(a client that goes away halfway lets go of it) and the 413 for a body over the limit also comes while it is read, not only when `Content-Length` says it. The context has `awsRequestId` (the `requestContext.requestId` of the event), `functionName`, `functionVersion`, `invokedFunctionArn`, `memoryLimitInMB`, `logGroupName`, `logStreamName`,
 `getRemainingTimeInMillis()` and the old `done`, `succeed` and `fail`. A handler answers with the promise it returns (`async`) or with the callback, whichever comes first. A response has `statusCode`, `headers`, `multiValueHeaders`, `cookies`, `body` and `isBase64Encoded`.
 
 **Waiting.** Requests that find all lambdas busy wait in line, the one that came first is served first, and are woken as soon as a lambda is free or one exits, nothing polls. A request whose client goes away while it waits leaves the line without taking a lambda
@@ -309,7 +309,7 @@ and a body that is too large 413 `{"message":"Request Entity Too Large"}`.
 **Storage and lifespan.** Every lambda process has a folder of its own in the temporary folder of the system, and `TMPDIR`, `TMP` and `TEMP` point at its `tmp` folder, so `os.tmpdir()` is what `/tmp` is on AWS: it is kept for as long as the lambda runs (across
 invocations), is not shared with another lambda, and is removed when the lambda exits. By default a lambda can write nowhere else (the code is read-only like on AWS), which is the permission model of node (`--permission`), so it needs a node that has it, and
 child processes, workers and addons are allowed as they are on AWS. It does not restrict the network, and it is not a security boundary against native code. The path `/tmp` itself is not the folder, a handler that hardcodes it is refused. The 512 MB of AWS are not enforced.
-The `file` communication keeps its files in a second folder of the lambda, which the server removes with it. A lambda is not handed out any more 14 minutes and 30 seconds after it started and is stopped (`SIGTERM`, `SIGKILL` after 5 seconds) when it is idle,
+The request and the response travel over the channel to the worker, as bytes, without a store in between. A lambda is not handed out any more 14 minutes and 30 seconds after it started and is stopped (`SIGTERM`, `SIGKILL` after 5 seconds) when it is idle,
 a request that runs on it finishes first, up to `timeout`; a replacement starts when the next request needs one. The folders of a server that was killed are removed by the next server that starts.
 
 **Differences from AWS** that stay: one request per lambda process at a time, like AWS, but it queues instead of scaling out and answering 429; the callback ends the invocation without waiting for the event loop to empty

@@ -1,8 +1,7 @@
-import type { OutgoingHttpHeaders } from 'http';
 import type ResponseEvent from '../classes/ResponseEvent';
 
 /** the headers of a response: `headers`, the values of `multiValueHeaders` added to them, and the `cookies` as `Set-Cookie` headers */
-const createResponseHeaders = ({ headers, multiValueHeaders, cookies }: ResponseEvent): OutgoingHttpHeaders => {
+const createResponseHeaders = ({ headers, multiValueHeaders, cookies }: ResponseEvent): Record<string, string | string[]> => {
   const result = new Map<string, { name: string; values: string[] }>();
   const add = (name: string, values: string[]) => {
     const entry = result.get(name.toLowerCase()) ?? { name, values: [] };

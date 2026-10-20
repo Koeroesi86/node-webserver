@@ -1,15 +1,13 @@
+import { Protocols, WORKER_EVENT, createBodyForwarder, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker-pool';
 import type { Request, Response } from 'express';
-import { Protocols, WORKER_EVENT } from '../constants';
-import type { MiddlewareOptions, RequestEvent } from '../types';
+import type { MiddlewareOptions } from '../types';
 import attachWebSocket from './attach-web-socket';
-import createBodyForwarder from './create-body-forwarder';
 import createRequestHandOff from './create-request-hand-off';
 import createResponseHandOff from './create-response-hand-off';
 import isHandedOff from './is-handed-off';
 import createResponseTimeout from './create-response-timeout';
 import createWorkerMessageListener from './create-worker-message-listener';
 import writeTextResponse from './write-text-response';
-import type { WorkerLease } from './workerPool';
 
 interface ServeRequestParams {
   request: Request;

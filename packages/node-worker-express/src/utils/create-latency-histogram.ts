@@ -1,5 +1,5 @@
+import type { LatencyHistogram, LatencySnapshot } from '@koeroesi86/node-worker-pool';
 import { LatencyBucketsMs } from '../constants';
-import type { LatencyHistogram, LatencySnapshot } from '../types';
 
 /**
  * Counts durations into the fixed buckets of `LatencyBucketsMs` and one above them, since it was created.

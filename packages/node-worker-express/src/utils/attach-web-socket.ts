@@ -1,8 +1,7 @@
+import { WORKER_EVENT, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker-pool';
 import type { Request } from 'express';
-import { WORKER_EVENT } from '../constants';
-import type { MiddlewareOptions, RequestEvent } from '../types';
+import type { MiddlewareOptions } from '../types';
 import createWsConnection from './create-ws-connection';
-import type { WorkerLease } from './workerPool';
 
 interface AttachWebSocketParams {
   request: Request;

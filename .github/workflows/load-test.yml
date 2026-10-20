@@ -252,7 +252,7 @@ jobs:
             -e MAX_PLAIN_P95_MS="$(( 50 * P95_FACTOR ))" \
             -e MAX_HANDSHAKE_P95_MS="$(( 100 * P95_FACTOR ))" \
             tools/src/k6/tls.ts
-      # lambdas that crash, more requests than lambdas and the file communication; on its own, as the lambdas are processes that take the cores of the other routes
+      # lambdas that crash, more requests than lambdas; on its own, as the lambdas are processes that take the cores of the other routes
       - name: Run lambda load test
         timeout-minutes: 5
         if: always()

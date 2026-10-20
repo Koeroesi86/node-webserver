@@ -2,11 +2,10 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 
-// What goes wrong with lambdas, against the three lambda servers of the load test configuration (see configuration.load-test.ts):
+// What goes wrong with lambdas, against the two lambda servers of the load test configuration (see configuration.load-test.ts):
 //  - crash: a lambda that ends its process answers its own request with 502 and nobody else's, while other requests are answered (200) all the time,
 //  - overload: more requests than the 2 lambdas can run, each of which takes 1.5 seconds. The ones that find no lambda within half a second (acquireTimeout) are answered with 503,
 //    close to the half second and not later, the others with 200, and none hangs,
-//  - file: the `file` communication answers like the default one.
 // Run on its own, as the lambdas are processes that take the cores of the other routes. The comparison with the base does not run it: a base without the servers answers them with errors.
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';
 const acquireTimeout = 500;
@@ -22,14 +21,12 @@ export const options = {
     crash: { executor: 'constant-vus', vus: 1, duration, exec: 'crash' },
     healthy: { executor: 'constant-vus', vus: 2, duration, exec: 'healthy' },
     overload: { executor: 'constant-vus', vus: 8, duration, exec: 'overload' },
-    file: { executor: 'constant-vus', vus: 2, duration, exec: 'file' },
   },
   thresholds: {
     checks: ['rate>0.999'],
     'checks{route:lambda-crash}': ['rate>0.999'],
     'checks{route:lambda-healthy}': ['rate>0.999'],
     'checks{route:lambda-overload}': ['rate>0.999'],
-    'checks{route:lambda-file}': ['rate>0.999'],
     // the scenario only tests the overload when there was one, and when the lambdas still did their work
     lambda_overloaded: ['count>0'],
     lambda_served_under_overload: ['count>0'],
@@ -73,10 +70,4 @@ export function overload() {
     },
     { route: 'lambda-overload' }
   );
-}
-
-export function file() {
-  const response = get('lambda-file.localhost', '/ok', 'lambda-file');
-
-  check(response, { 'file communication is answered with 200': (r) => r.status === 200 && r.json('ok') === true }, { route: 'lambda-file' });
 }

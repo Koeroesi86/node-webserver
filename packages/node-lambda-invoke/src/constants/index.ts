@@ -3,12 +3,6 @@ import { resolve } from 'path';
 /** folder of the package, both from src/ and dist/ */
 export const PACKAGE_ROOT = resolve(__dirname, '../..');
 
-export const EVENT_STARTED = 'LAMBDA_EVENT_STARTED';
-
-export const EVENT_REQUEST = 'LAMBDA_EVENT_REQUEST';
-
-export const EVENT_RESPONSE = 'LAMBDA_EVENT_RESPONSE';
-
 /** how long a lambda may take to load its module and announce itself, in milliseconds, as the init phase of AWS */
 export const DEFAULT_START_TIMEOUT = 10 * 1000;
 
@@ -19,11 +13,6 @@ export const DEFAULT_TIMEOUT = 15 * 60 * 1000;
 export const ENV_PATH = 'NODE_LAMBDA_PATH';
 
 export const ENV_HANDLER = 'NODE_LAMBDA_HANDLER';
-
-export const ENV_COMMUNICATION = 'NODE_LAMBDA_COMMUNICATION';
-
-/** the folder the `file` communication keeps the requests and responses of a lambda in */
-export const ENV_STORAGE_FOLDER = 'NODE_LAMBDA_STORAGE_FOLDER';
 
 /** how long a lambda process lives at the longest, a safety net for when the server does not stop it */
 export const ENV_MAX_LIFETIME = 'NODE_LAMBDA_MAX_LIFETIME';

@@ -5,6 +5,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import ts from 'typescript';
+import type { HttpMiddleware } from './http';
 import type { HttpMiddlewareOptions } from '../types';
 
 /** the lambdas of the tests, selected by the path of the request */
@@ -79,7 +80,7 @@ for (;;) {}
 const parentSource = `
 const http = require('http');
 const { httpMiddleware } = require('./index');
-const server = http.createServer(httpMiddleware({ lambdaPath: process.argv[2], communication: { type: 'ipc' }, env: { PID_FILE: process.env.PID_FILE } }));
+const server = http.createServer(httpMiddleware({ lambdaPath: process.argv[2], env: { PID_FILE: process.env.PID_FILE } }));
 server.listen(0, () => {
   http.get('http://localhost:' + server.address().port + '/', (response) => {
     response.resume().on('end', () => process.send({ pid: response.headers['x-pid'] }));
@@ -112,6 +113,9 @@ describe('httpMiddleware', () => {
   let server: http.Server;
   let baseUrl: string;
   const spawned: ChildProcess[] = [];
+  const closers: Array<() => void> = [];
+  /** the module as the test loaded it last, `httpMiddleware` of it closes its lambdas when the test is over */
+  let current: { httpMiddleware: (options: Partial<HttpMiddlewareOptions>) => HttpMiddleware; getLambdaStats: () => unknown };
 
   beforeAll(async () => {
     // transpiled next to the sources, so that the modules find the dependencies of the package, and the lambda processes the compiled files
@@ -148,6 +152,7 @@ describe('httpMiddleware', () => {
 
   afterEach(async () => {
     spawned.splice(0).forEach((process) => process.kill('SIGKILL'));
+    closers.splice(0).forEach((close) => close());
     if (server) {
       // keep-alive connections of the test client would keep it open
       server.closeAllConnections();
@@ -156,15 +161,25 @@ describe('httpMiddleware', () => {
   });
 
   /** the pool keeps its lambdas in the module, so every test gets the module anew; loaded late, as the build only exists once the tests run */
-  const load = () => {
+  const load = (): typeof current => {
     jest.resetModules();
-    return require(path.join(build, 'index.js'));
+    const loaded = require(path.join(build, 'index.js'));
+    // the lambdas of a test stop with it, or they keep the process of the tests alive
+    current = {
+      ...loaded,
+      httpMiddleware: (options: Partial<HttpMiddlewareOptions>) => {
+        const middleware = loaded.httpMiddleware(options);
+        closers.push(middleware.close);
+        return middleware;
+      },
+    };
+    return current;
   };
 
   const start = async (options: Partial<HttpMiddlewareOptions> = {}) => {
     const { httpMiddleware } = load();
     // the lambdas get only the environment they are given
-    server = http.createServer(httpMiddleware({ lambdaPath, communication: { type: 'ipc' }, env: { PID_FILE: pidFile }, ...options }));
+    server = http.createServer(httpMiddleware({ lambdaPath, env: { PID_FILE: pidFile }, ...options }));
     await new Promise<void>((resolve) => server.listen(0, resolve));
     baseUrl = `http://localhost:${(server.address() as { port: number }).port}`;
   };
@@ -212,14 +227,14 @@ describe('httpMiddleware', () => {
     await start({ lambdaPath: ownLambdaPath });
 
     try {
-      // the storage of a request lets go of the lambda after the response was handed over
+      // a request lets go of the lambda after the response was handed over
       const requestAndSettle = async (request: number) => {
         await (await fetch(`${baseUrl}/${request}`)).text();
         await new Promise((resolve) => setTimeout(resolve, 50));
       };
       await requestAndSettle(0);
       const lambda = spawn.mock.results[0].value as ChildProcess;
-      const [messageListeners, closeListeners] = [lambda.listenerCount('message'), lambda.listenerCount('close')];
+      const [errorListeners, closeListeners] = [lambda.listenerCount('error'), lambda.listenerCount('close')];
 
       for (let request = 1; request < 30; request += 1) {
         await (await fetch(`${baseUrl}/${request}`)).text();
@@ -227,7 +242,7 @@ describe('httpMiddleware', () => {
       await requestAndSettle(30);
 
       expect(spawn).toHaveBeenCalledTimes(1);
-      expect(lambda.listenerCount('message')).toBe(messageListeners);
+      expect(lambda.listenerCount('error')).toBe(errorListeners);
       expect(lambda.listenerCount('close')).toBe(closeListeners);
     } finally {
       spawn.mockRestore();
@@ -307,8 +322,8 @@ describe('httpMiddleware', () => {
 
   it('runs the handler that it was given, also when another one of the same file runs already', async () => {
     await start();
-    const { httpMiddleware } = require(path.join(build, 'index.js'));
-    const other = http.createServer(httpMiddleware({ lambdaPath, handlerKey: 'other', communication: { type: 'ipc' }, env: { PID_FILE: pidFile } }));
+    const { httpMiddleware } = current;
+    const other = http.createServer(httpMiddleware({ lambdaPath, handlerKey: 'other', env: { PID_FILE: pidFile } }));
     await new Promise<void>((resolve) => other.listen(0, resolve));
 
     try {
@@ -322,7 +337,7 @@ describe('httpMiddleware', () => {
 
   it('hands the path parameters of a caller that routes requests to the lambda, instead of the proxy path', async () => {
     const { httpMiddleware } = load();
-    const middleware = httpMiddleware({ lambdaPath, communication: { type: 'ipc' }, env: { PID_FILE: pidFile } });
+    const middleware = httpMiddleware({ lambdaPath, env: { PID_FILE: pidFile } });
     server = http.createServer((request, response) => middleware.handle(request, response, { id: '42' }));
     await new Promise<void>((resolve) => server.listen(0, resolve));
 
@@ -397,14 +412,6 @@ describe('httpMiddleware', () => {
       await start({ restrictFileSystem: false });
 
       expect(await (await fetch(`${baseUrl}/write-code`)).text()).toBe('written');
-    });
-
-    it('keeps the requests and responses of the file communication in a folder of the lambda, and answers', async () => {
-      await start({ communication: { type: 'file' } });
-
-      const response = await fetch(`${baseUrl}/hello`);
-
-      expect(await response.text()).toBe('echo /hello');
     });
   });
 
@@ -509,17 +516,35 @@ describe('httpMiddleware', () => {
       expect(JSON.parse(announced.text)).toEqual({ message: 'Request Entity Too Large' });
     });
 
-    it('does not hold a lambda while the body is still coming in', async () => {
-      await start({ limit: 1, acquireTimeout: 100 });
+    it('streams the body to the lambda while it comes in, so a lambda is held by an upload that is still going', async () => {
+      await start({ limit: 1, acquireTimeout: 200 });
       const slowUpload = http.request(`${baseUrl}/event`, { method: 'POST', headers: { 'Content-Length': '10' } });
       slowUpload.on('error', () => undefined);
       slowUpload.write('12345');
 
       try {
-        expect((await send({ path: '/hello' })).status).toBe(200);
+        expect((await send({ path: '/hello' })).status).toBe(503);
       } finally {
         slowUpload.destroy();
       }
+    });
+
+    it('gives the lambda a body that came in parts, whole', async () => {
+      await start({ limit: 1 });
+      const upload = http.request(`${baseUrl}/event`, { method: 'POST', headers: { 'Content-Length': '10' } });
+      const answered = new Promise<string>((resolve) => upload.on('response', (response) => response.setEncoding('utf8').once('data', resolve)));
+      upload.write('12345', () => upload.end('67890'));
+
+      expect(JSON.parse(await answered)).toMatchObject({ body: '1234567890' });
+    });
+
+    it('lets go of the lambda when the client goes away halfway through the body', async () => {
+      await start({ limit: 1, acquireTimeout: 2000 });
+      const slowUpload = http.request(`${baseUrl}/event`, { method: 'POST', headers: { 'Content-Length': '10' } });
+      slowUpload.on('error', () => undefined);
+      await new Promise((resolve) => slowUpload.write('12345', () => resolve(slowUpload.destroy())));
+
+      expect((await send({ path: '/hello' })).status).toBe(200);
     });
   });
 
@@ -552,8 +577,7 @@ describe('httpMiddleware', () => {
 
     it('gives every middleware a limit of its own', async () => {
       const { httpMiddleware } = load();
-      const create = () =>
-        http.createServer(httpMiddleware({ lambdaPath, limit: 1, acquireTimeout: 50, communication: { type: 'ipc' }, env: { PID_FILE: pidFile } }));
+      const create = () => http.createServer(httpMiddleware({ lambdaPath, limit: 1, acquireTimeout: 50, env: { PID_FILE: pidFile } }));
       const servers = [create(), create()];
       await Promise.all(servers.map((instance) => new Promise<void>((resolve) => instance.listen(0, resolve))));
 
@@ -675,21 +699,9 @@ describe('httpMiddleware', () => {
     });
   });
 
-  it('starts a storage driver once, as starting it again would drop what the requests of the middlewares before have stored', async () => {
-    const driver = path.join(build, 'counting-driver.js');
-    const starts = path.join(build, 'starts');
-    await fs.writeFile(driver, `module.exports = class { static start() { require('fs').appendFileSync(${JSON.stringify(starts)}, 'x'); } };`);
-    const { httpMiddleware } = load();
-
-    httpMiddleware({ lambdaPath, communication: { type: 'counting', path: driver } });
-    httpMiddleware({ lambdaPath, communication: { type: 'counting', path: driver } });
-
-    expect(await fs.readFile(starts, 'utf8')).toBe('x');
-  });
-
   it('stops its lambdas when it is closed', async () => {
     const { httpMiddleware } = load();
-    const middleware = httpMiddleware({ lambdaPath, communication: { type: 'ipc' } });
+    const middleware = httpMiddleware({ lambdaPath });
     server = http.createServer(middleware);
     await new Promise<void>((resolve) => server.listen(0, resolve));
     const pid = Number((await fetch(`http://localhost:${(server.address() as { port: number }).port}/`)).headers.get('x-pid'));

@@ -1,11 +1,10 @@
+import { WORKER_EVENT, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
 import type { Request, Response } from 'express';
-import { WebSocketCloseCode, WORKER_EVENT } from '../constants';
-import type { WorkerOutputEvent } from '../types';
+import { WebSocketCloseCode } from '../constants';
 import type createRequestHandOff from './create-request-hand-off';
 import createResponseHandOff from './create-response-hand-off';
 import createWorkerMessageListener from './create-worker-message-listener';
 import type createWsConnection from './create-ws-connection';
-import type { WorkerLease } from './workerPool';
 
 const setup = ({ withWebSocket = false, headersSent = false } = {}) => {
   const request = { socket: { setTimeout: jest.fn() } };
