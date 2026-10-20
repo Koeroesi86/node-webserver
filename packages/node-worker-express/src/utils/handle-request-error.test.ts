@@ -1,7 +1,6 @@
+import { WorkerAbandonedError, WorkerUnavailableError } from '@koeroesi86/node-worker-pool';
 import type { Response } from 'express';
 import handleRequestError from './handle-request-error';
-import WorkerAbandonedError from './workerAbandonedError';
-import WorkerUnavailableError from './workerUnavailableError';
 
 const createResponse = (headersSent = false) =>
   ({ headersSent, writeHead: jest.fn(), end: jest.fn() }) as never as Response & { writeHead: jest.Mock; end: jest.Mock };

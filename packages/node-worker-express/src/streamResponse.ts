@@ -1,6 +1,6 @@
+import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from '@koeroesi86/node-worker-pool';
 import { Socket } from 'node:net';
 import { pipeline } from 'node:stream/promises';
-import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from './types';
 
 const proceeds = (result: unknown) => result !== false;
 

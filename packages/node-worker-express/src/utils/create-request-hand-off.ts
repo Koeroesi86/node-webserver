@@ -1,11 +1,9 @@
+import { WORKER_EVENT, type RequestEvent, type ResponseMessage, type WorkerLease } from '@koeroesi86/node-worker-pool';
 import net from 'net';
 import { TLSSocket } from 'tls';
 import type { Request, Response } from 'express';
-import { WORKER_EVENT } from '../constants';
-import type { RequestEvent, ResponseMessage } from '../types';
 import getReadStop from './get-read-stop';
 import { handedOffRequests, handedOffResponses, requestHandOffDoneEvent } from './is-handed-off';
-import type { WorkerLease } from './workerPool';
 
 interface RequestHandOffParams {
   request: Request;

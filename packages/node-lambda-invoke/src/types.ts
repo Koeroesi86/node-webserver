@@ -1,17 +1,6 @@
-import type Lambda from './classes/Lambda';
 import type RequestEvent from './classes/RequestEvent';
-import type ResponseEvent from './classes/ResponseEvent';
-import type Worker from './classes/Worker';
-
-/** a listener of any event of an EventEmitter */
-export type Listener = Parameters<NodeJS.EventEmitter['on']>[1];
 
 export type Logger = (...args: unknown[]) => void;
-
-export interface Communication {
-  type?: string;
-  path?: string;
-}
 
 export interface HttpMiddlewareOptions {
   lambdaPath: string;
@@ -31,13 +20,12 @@ export interface HttpMiddlewareOptions {
   /** the largest body of a request in bytes, larger ones are answered with 413, 0 for no limit. Defaults to 6291456 (6 MiB), the payload limit of AWS. */
   limitRequestBody?: number;
   /**
-   * Whether a lambda can only write to its own folders (its `/tmp`, see `os.tmpdir()`, and the folder of the `file` communication) and not to the rest of the file system, as on AWS. Defaults to true.
+   * Whether a lambda can only write to its own folder (its `/tmp`, see `os.tmpdir()`) and not to the rest of the file system, as on AWS. Defaults to true.
    * Needs a node that has the permission model.
    */
   restrictFileSystem?: boolean;
   /** variables added to the environment of the lambdas, which only get a few of the server (`PATH`, `HOME`, `TZ`, ...) */
   env?: Record<string, string>;
-  communication?: Communication;
   /** the registry (see `createLambdaStats`) where the middleware lists its lambdas for the stats. Defaults to the one of `getLambdaStats`. */
   stats?: LambdaStats;
 }
@@ -85,14 +73,6 @@ export interface RequestContext {
   identity: { sourceIp: string; userAgent: string };
 }
 
-/** an event emitted by a lambda worker */
-export interface LambdaEvent {
-  type?: string;
-  id?: string;
-  /** when the invocation times out, in milliseconds since the epoch */
-  deadline?: number;
-}
-
 /** the callback of a handler: an error, or the response */
 export type LambdaCallback = (error?: unknown, response?: unknown) => void;
 
@@ -115,41 +95,3 @@ export interface LambdaContext {
 
 /** a handler of a lambda: it answers with the callback, or with the promise it returns, whichever settles first */
 export type LambdaHandler = (event: RequestEvent, context: LambdaContext, callback: LambdaCallback) => unknown;
-
-/** what a storage can be attached to: the worker itself, a lambda or the current process */
-export type StorageInstance = Lambda | Worker | NodeJS.Process;
-
-export interface Storage {
-  setResponse: (response: ResponseEvent) => Promise<unknown>;
-  getResponse: () => Promise<ResponseEvent>;
-  setRequest: (request: RequestEvent) => Promise<unknown>;
-  getRequest: () => Promise<RequestEvent>;
-  destroy: () => Promise<unknown>;
-}
-
-export interface StorageDriverConstructor {
-  /** `folder` is the folder of the lambda for the files of a storage, there is one for the `file` communication */
-  new (id: string, instance: StorageInstance, folder?: string): Storage;
-  start?: () => void;
-}
-
-export interface LambdaPoolOptions {
-  lambdaPath: string;
-  handlerKey: string;
-  /** how many lambdas this pool may run, 0 or nothing for no limit */
-  limit?: number;
-  /** how long a request may wait for a lambda when the limit is reached, in milliseconds */
-  acquireTimeout?: number;
-  /** how long a lambda may take to start, in milliseconds */
-  startTimeout?: number;
-  /** how long a handler may take to answer, in milliseconds, a lambda is allowed to run that long past the time it is drained */
-  timeout?: number;
-  /** whether the lambdas can only write to their own folders */
-  restrictFileSystem?: boolean;
-  /** variables added to the environment of the lambdas */
-  env?: Record<string, string>;
-  logger?: Logger;
-  communication: Communication;
-  /** where the pool lists itself for the stats, the one of `getLambdaStats` when not given */
-  stats?: LambdaStats;
-}

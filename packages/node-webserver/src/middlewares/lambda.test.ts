@@ -38,16 +38,16 @@ describe('lambdaMiddleware', () => {
     expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ logger: log });
   });
 
-  it('uses the handler key `handler` and the communication `ipc` unless told otherwise', () => {
+  it('uses the handler key `handler` unless told otherwise', () => {
     lambdaMiddleware(instance({ lambda: '/lambdas/a.js' }), jest.fn());
 
-    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ handlerKey: 'handler', communication: { type: 'ipc' } });
+    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ handlerKey: 'handler' });
   });
 
-  it('passes the communication, the limit and the acquire timeout on', () => {
-    lambdaMiddleware(instance({ lambda: '/lambdas/a.js', communication: 'file', limit: 3, acquireTimeout: 500 }), jest.fn());
+  it('passes the limit and the acquire timeout on', () => {
+    lambdaMiddleware(instance({ lambda: '/lambdas/a.js', limit: 3, acquireTimeout: 500 }), jest.fn());
 
-    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ communication: { type: 'file' }, limit: 3, acquireTimeout: 500 });
+    expect(jest.mocked(httpMiddleware).mock.calls[0][0]).toMatchObject({ limit: 3, acquireTimeout: 500 });
   });
 
   it('passes the timeouts, the limit of the body and the environment on', () => {
@@ -114,7 +114,7 @@ describe('lambdaMiddleware', () => {
 
     it('validates and registers route targets when the table is built', () => {
       const started: Array<ReturnType<typeof httpMiddleware>> = [];
-      const target = httpMiddleware({ lambdaPath: slashes(orders), handlerKey: 'handler', communication: { type: 'ipc' } });
+      const target = httpMiddleware({ lambdaPath: slashes(orders), handlerKey: 'handler' });
       const match = createLambdaRouteTable([{ path: '/orders', lambda: orders }], () => target, started);
 
       expect(match('/orders')?.target).toBe(target);
@@ -122,7 +122,7 @@ describe('lambdaMiddleware', () => {
     });
 
     it('refuses a missing lambda before making its route target', () => {
-      const createTarget = jest.fn(() => httpMiddleware({ lambdaPath: '', communication: { type: 'ipc' } }));
+      const createTarget = jest.fn(() => httpMiddleware({ lambdaPath: '' }));
 
       expect(() => createLambdaRouteTable([{ path: '/orders', lambda: path.join(folder, 'missing.js') }], createTarget, [])).toThrow(/is not a file/);
       expect(createTarget).not.toHaveBeenCalled();

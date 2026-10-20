@@ -18,7 +18,7 @@ From the root, in order, fixing a failure before going on (later steps run the `
 3. `pnpm quality` (runs the unit tests with coverage, then fallow)
 4. `pnpm test:integration`
 
-- Load test (`pnpm load-test`): required when the request path changed (`packages/node-webserver/src/**`, `node-worker/**`, `node-worker-express/**`, `node-lambda-invoke/**`, except tests and docs). Check `command -v k6 docker podman`; with none, it is **Not run** here (CI runs it), never silently skipped.
+- Load test (`pnpm load-test`): required when the request path changed (`packages/node-webserver/src/**`, `node-worker/**`, `node-worker-pool/**`, `node-worker-express/**`, `node-lambda-invoke/**`, except tests and docs). Check `command -v k6 docker podman`; with none, it is **Not run** here (CI runs it), never silently skipped.
 - Workflow change: also `zizmor .github` (offline works).
 - Finally run the `verify-task` skill on the branch's issue and include its gaps. Skip with a note if no issue is found.
 

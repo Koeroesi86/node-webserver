@@ -1,8 +1,8 @@
+import { Protocols, WorkerPool } from '@koeroesi86/node-worker-pool';
 import { randomBytes } from 'crypto';
 import path from 'path';
 import url from 'url';
-import { DefaultOptions, Protocols, StaticOptionsEnv } from '../constants';
-import WorkerPool from '../utils/workerPool';
+import { DefaultOptions, StaticOptionsEnv } from '../constants';
 import isWebSocket from '../utils/isWebSocket';
 import createSlotCounter from '../utils/create-slot-counter';
 import hasBody from '../utils/hasBody';

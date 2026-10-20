@@ -79,4 +79,40 @@ describe('Worker', () => {
 
     expect(worker.instance.kill).toHaveBeenNthCalledWith(1, 'SIGINT');
   });
+
+  it('should send the signal it is given', () => {
+    const worker = new Worker('ls', { stdio: 'inherit' });
+    worker.terminate('SIGKILL');
+
+    expect(worker.instance.kill).toHaveBeenNthCalledWith(1, 'SIGKILL');
+  });
+
+  it('should not signal a process that is gone', () => {
+    const worker = new Worker('ls', { stdio: 'inherit' });
+    Object.assign(worker.instance, { signalCode: 'SIGKILL' });
+    worker.terminate();
+
+    expect(worker.exited).toBe(true);
+    expect(worker.instance.kill).not.toHaveBeenCalled();
+    Object.assign(worker.instance, { signalCode: null });
+  });
+
+  it('should place the flags right after the executable', () => {
+    new Worker('node file.js', { execArgv: ['--permission', '--allow-fs-write=/tmp/a b'], stdio: 'inherit' });
+
+    expect(mockedSpawn).toHaveBeenNthCalledWith(1, 'node', ['--permission', '--allow-fs-write=/tmp/a b', 'file.js'], { stdio: 'inherit' });
+  });
+
+  it('should not split a command that is given as parts', () => {
+    new Worker(['node', '/path with spaces/file.js']);
+
+    expect(mockedSpawn).toHaveBeenNthCalledWith(1, 'node', ['/path with spaces/file.js'], {});
+  });
+
+  it('should expose the output of the process', () => {
+    const worker = new Worker('ls');
+
+    expect(worker.stdout).toBe(worker.instance.stdout);
+    expect(worker.stderr).toBe(worker.instance.stderr);
+  });
 });

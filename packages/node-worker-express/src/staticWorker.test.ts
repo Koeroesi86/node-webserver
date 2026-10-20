@@ -1,12 +1,19 @@
+import type { HandOffEvent, InvokableWorker, ResponseEvent, WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { StaticOptionsEnv, StaticStreamThreshold } from './constants';
 import staticWorker from './staticWorker';
-import type { InvokableWorker, ResponseEvent, StaticOptions, WorkerRequestEvent } from './types';
+import type { StaticOptions } from './types';
 
 jest.mock('./utils/getCharset', () => ({ __esModule: true, default: jest.fn().mockResolvedValue('utf-8') }));
+
+/** the static worker only sends single values */
+const withSingleValues = ({ headers = {}, ...response }: ResponseEvent | HandOffEvent) => ({
+  ...response,
+  headers: Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, `${value}`])),
+});
 
 describe('staticWorker', () => {
   let parent: string;
@@ -50,8 +57,8 @@ describe('staticWorker', () => {
 
   /** the first response of the worker */
   const request = (requestPath: string, httpMethod = 'GET', headers: Record<string, string> = {}) =>
-    new Promise<ResponseEvent>((resolve) => {
-      staticWorker(event(requestPath, httpMethod, headers), resolve);
+    new Promise<ResponseEvent & { headers: Record<string, string> }>((resolve) => {
+      staticWorker(event(requestPath, httpMethod, headers), (response) => resolve(withSingleValues(response)));
     });
   const bodyOf = ({ body }: ResponseEvent) => `${body ?? ''}`;
 
@@ -365,8 +372,8 @@ describe('staticWorker', () => {
       delete process.env[StaticOptionsEnv];
 
       return (requestPath: string, headers: Record<string, string> = {}, httpMethod = 'GET') =>
-        new Promise<ResponseEvent>((resolve) => {
-          worker(event(requestPath, httpMethod, headers), resolve);
+        new Promise<ResponseEvent & { headers: Record<string, string> }>((resolve) => {
+          worker(event(requestPath, httpMethod, headers), (response) => resolve(withSingleValues(response)));
         });
     };
 

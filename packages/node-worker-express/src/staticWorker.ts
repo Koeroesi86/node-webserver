@@ -1,7 +1,7 @@
+import type { InvokableWorker } from '@koeroesi86/node-worker-pool';
 import path from 'path';
 import fs from 'fs/promises';
 import { StaticOptionsEnv } from './constants';
-import { InvokableWorker } from './types';
 import decodePath from './utils/decode-path';
 import findCacheControl from './utils/find-cache-control';
 import isInside from './utils/isInside';

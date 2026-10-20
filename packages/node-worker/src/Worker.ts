@@ -1,13 +1,28 @@
 import { ChildProcess, Serializable, spawn } from 'child_process';
+import type { WorkerOptions } from './types';
 
 /** `require('@koeroesi86/node-worker')` returns the class itself */
 class Worker implements EventTarget {
   readonly commandParts: string[];
   readonly instance: ChildProcess;
 
-  constructor(command: string, options: Parameters<typeof spawn>[2] = {}) {
-    this.commandParts = command.split(' ');
-    this.instance = spawn(this.commandParts[0], [...this.commandParts.slice(1)], options);
+  /** `command` is split on spaces, an array is taken as it is: the executable, then its arguments */
+  constructor(command: string | string[], { execArgv = [], ...options }: WorkerOptions = {}) {
+    this.commandParts = Array.isArray(command) ? command : command.split(' ');
+    this.instance = spawn(this.commandParts[0], [...execArgv, ...this.commandParts.slice(1)], options);
+  }
+
+  get stdout() {
+    return this.instance.stdout;
+  }
+
+  get stderr() {
+    return this.instance.stderr;
+  }
+
+  /** whether the process is gone, by exiting or by a signal */
+  get exited() {
+    return this.instance.exitCode !== null || this.instance.signalCode !== null;
   }
 
   set onmessage(onmessage: (...args: unknown[]) => unknown) {
@@ -44,9 +59,10 @@ class Worker implements EventTarget {
     return false;
   };
 
-  terminate = () => {
-    if (this.instance.exitCode === null) {
-      this.instance.kill('SIGINT');
+  /** SIGINT lets a worker finish, one that ignores it is stopped with SIGTERM and then SIGKILL */
+  terminate = (signal: NodeJS.Signals = 'SIGINT') => {
+    if (!this.exited) {
+      this.instance.kill(signal);
     }
   };
 

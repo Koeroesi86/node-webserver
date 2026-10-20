@@ -31,7 +31,6 @@ const createLambda = ({ log, config, lambda, handler, limit, stats }: CreateLamb
     lambdaPath: lambda.replace(/\\/g, '/'),
     handlerKey: handler || 'handler',
     logger: log,
-    communication: { type: config?.communication || 'ipc' },
     limit,
     acquireTimeout: config?.acquireTimeout,
     startTimeout: config?.startTimeout,

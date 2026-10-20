@@ -1,3 +1,4 @@
+import { RequestBodyWindow, WORKER_EVENT, WorkerAbandonedError, WorkerBusyError, WorkerUnavailableError } from '@koeroesi86/node-worker-pool';
 import express from 'express';
 import fs from 'fs/promises';
 import http from 'http';
@@ -5,18 +6,15 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
-import { RequestBodyWindow, WebSocketWindow, WORKER_EVENT } from '../constants';
+import { WebSocketWindow } from '../constants';
 import { isRequestHandedOff, requestHandOffDoneEvent } from '../utils/is-handed-off';
 import { getServerMetrics } from '../utils/metrics';
-import WorkerAbandonedError from '../utils/workerAbandonedError';
-import WorkerBusyError from '../utils/workerBusyError';
-import WorkerUnavailableError from '../utils/workerUnavailableError';
 import { clientFrame } from '../utils/ws-client-frame.test-helper';
 import workerMiddleware from './index';
 
 type Handlers = { onMessage: (message: unknown) => void; onExit: (code: number | null) => void };
 
-jest.mock('../utils/workerPool', () => {
+jest.mock('@koeroesi86/node-worker-pool', () => {
   class FakePool {
     static last: FakePool;
     acquire = jest.fn();
@@ -30,10 +28,10 @@ jest.mock('../utils/workerPool', () => {
     }
   }
 
-  return { __esModule: true, default: FakePool };
+  return { ...jest.requireActual('@koeroesi86/node-worker-pool'), WorkerPool: FakePool };
 });
 
-const FakePool = jest.requireMock('../utils/workerPool').default;
+const FakePool = jest.requireMock('@koeroesi86/node-worker-pool').WorkerPool;
 
 describe('workerMiddleware', () => {
   let root: string;

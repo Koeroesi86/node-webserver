@@ -1,5 +1,5 @@
+import type { WorkerPool } from '@koeroesi86/node-worker-pool';
 import type { Response } from 'express';
-import type WorkerPool from './workerPool';
 
 type Acquire = WorkerPool['acquire'];
 

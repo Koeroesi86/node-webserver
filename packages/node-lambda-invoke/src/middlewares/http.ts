@@ -1,28 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
-import LambdaPool from '../classes/LambdaPool';
-import LambdaRequestAbandonedError from '../classes/LambdaRequestAbandonedError';
-import LambdaUnavailableError from '../classes/LambdaUnavailableError';
 import RequestBodyTooLargeError from '../classes/RequestBodyTooLargeError';
-import {
-  DEFAULT_LIMIT_REQUEST_BODY,
-  DEFAULT_TIMEOUT,
-  MESSAGE_ENDPOINT_TIMED_OUT,
-  MESSAGE_INTERNAL_SERVER_ERROR,
-  MESSAGE_PAYLOAD_TOO_LARGE,
-  MESSAGE_SERVICE_UNAVAILABLE,
-} from '../constants';
-import { isRegistered, getRegisteredPath } from '../registry';
-import createRequestEvent from '../utils/create-request-event';
-import createResponseHeaders from '../utils/create-response-headers';
+import { DEFAULT_LIMIT_REQUEST_BODY, DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT } from '../constants';
+import answerFailure from '../utils/answer-failure';
+import answerOutcome from '../utils/answer-outcome';
+import createLambdaPool from '../utils/create-lambda-pool';
+import createLambdaStatsSource from '../utils/create-lambda-stats-source';
+import createWorkerRequestEvent from '../utils/create-worker-request-event';
 import invokeLambda from '../utils/invoke-lambda';
-import isValidResponse from '../utils/is-valid-response';
-import readRequestBody from '../utils/read-request-body';
 import sweepLambdaFolders from '../utils/sweep-lambda-folders';
-import writeError from '../utils/write-error';
-import type ResponseEvent from '../classes/ResponseEvent';
-import type { Communication, HttpMiddlewareOptions, StorageDriverConstructor } from '../types';
+import { defaultLambdaStats } from '../utils/get-lambda-stats';
+import type { HttpMiddlewareOptions } from '../types';
 
 /**
  * the middleware, `handle`, which answers a request with `pathParameters` for the event (for a caller that routes requests to several middlewares and knows more about the path than the lambda),
@@ -33,25 +22,8 @@ export type HttpMiddleware = ((request: IncomingMessage, response: ServerRespons
   close: () => void;
 };
 
-/** the drivers that were started: starting one empties its storage, which a middleware that is created later must not do to the requests of the others */
-const startedDrivers = new Set<StorageDriverConstructor>();
-
-const writeResponse = (response: ServerResponse, responseEvent: ResponseEvent) => {
-  if (!isValidResponse(responseEvent)) {
-    writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
-    return;
-  }
-
-  response.writeHead(responseEvent.statusCode, createResponseHeaders(responseEvent));
-
-  if (!responseEvent.body) {
-    response.end();
-    return;
-  }
-
-  const bufferEncoding = responseEvent.isBase64Encoded ? 'base64' : 'utf8';
-  response.end(Buffer.from(responseEvent.body, bufferEncoding));
-};
+/** a path limit that is never reached, for a middleware without a limit: the pool keeps a single worker for a limit of 0 */
+const NO_LIMIT = Number.MAX_SAFE_INTEGER;
 
 function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
   const {
@@ -59,40 +31,20 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     handlerKey = 'handler',
     logger = () => {},
     limit = availableParallelism(),
-    acquireTimeout,
-    startTimeout,
+    acquireTimeout = 10000,
+    startTimeout = DEFAULT_START_TIMEOUT,
     timeout = DEFAULT_TIMEOUT,
     limitRequestBody = DEFAULT_LIMIT_REQUEST_BODY,
     env,
-    restrictFileSystem,
-    communication = {},
-    stats,
+    restrictFileSystem = true,
+    stats = defaultLambdaStats,
   } = options;
-  const currentCommunication: Communication = !communication.type ? { type: 'ipc' } : { ...communication };
-  const storagePath = isRegistered(currentCommunication.type ?? '') ? getRegisteredPath(currentCommunication.type) : currentCommunication.path;
-  if (!storagePath) {
-    return Object.assign((req: IncomingMessage, res: ServerResponse, next?: () => void) => next?.(), { handle: () => {}, close: () => {} });
-  }
 
-  const StorageDriver: StorageDriverConstructor = require(storagePath);
-  if (StorageDriver.start && !startedDrivers.has(StorageDriver)) {
-    startedDrivers.add(StorageDriver);
-    StorageDriver.start();
-  }
   sweepLambdaFolders();
-  const lambdaPool = new LambdaPool({
-    lambdaPath,
-    handlerKey,
-    limit,
-    acquireTimeout,
-    startTimeout,
-    timeout,
-    restrictFileSystem,
-    env,
-    logger,
-    communication: currentCommunication,
-    stats,
-  });
+  const pool = createLambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, timeout, restrictFileSystem, env, logger });
+  const statsSource = createLambdaStatsSource(lambdaPath, pool);
+  stats.add(statsSource);
+
   const handle = (request: IncomingMessage, response: ServerResponse, pathParameters?: Record<string, string>) => {
     const requestId = randomUUID();
 
@@ -106,54 +58,37 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     response.once('close', onClose);
 
     const handleRequest = async () => {
-      // read before a lambda is taken, so that a slow upload does not hold one
-      const body = await readRequestBody(request, limitRequestBody);
-      const requestEvent = createRequestEvent(request, requestId, body, pathParameters);
-      const lambdaInstance = await lambdaPool.getLambda(clientGone.signal);
-
-      if (clientGone.signal.aborted) {
-        lambdaPool.release(lambdaInstance);
-        return;
+      if (limitRequestBody > 0 && Number(request.headers['content-length']) > limitRequestBody) {
+        throw new RequestBodyTooLargeError(`The body is larger than ${limitRequestBody} bytes.`);
       }
 
-      const storage = new StorageDriver(requestId, lambdaInstance, lambdaInstance.storageFolder);
-      const outcome = await invokeLambda(lambdaInstance, requestId, requestEvent, timeout);
+      const lease = await pool.acquire(lambdaPath, {}, limit > 0 ? limit : NO_LIMIT, clientGone.signal);
 
-      if (outcome.type === 'response') writeResponse(response, outcome.responseEvent);
-      if (outcome.type === 'closed') writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
-      if (outcome.type === 'timeout') {
-        writeError(response, 504, MESSAGE_ENDPOINT_TIMED_OUT);
-        // it is still busy with the request, and the pool lets go of it once it is gone
-        lambdaInstance.terminate('SIGKILL');
+      try {
+        await lease.ready();
+        if (clientGone.signal.aborted) return;
+
+        const event = createWorkerRequestEvent({ request, pathParameters, deadline: Date.now() + timeout });
+        const outcome = await invokeLambda({ lease, request, requestId, event, timeout, limitRequestBody });
+
+        answerOutcome({ outcome, request, response, lease });
+      } finally {
+        lease.release();
       }
-
-      return storage.destroy();
     };
 
     handleRequest()
-      .catch((err) => {
-        if (err instanceof LambdaRequestAbandonedError) return;
-
-        if (err instanceof RequestBodyTooLargeError) {
-          // the rest of the body is not read, so the connection is closed once the answer is out
-          response.setHeader('Connection', 'close');
-          response.once('finish', () => request.destroy());
-          writeError(response, 413, MESSAGE_PAYLOAD_TOO_LARGE);
-          return;
-        }
-
-        // the client went away halfway through the body, there is nobody to answer
-        if (!response.writable) return;
-
-        logger(err);
-        // the lambdas that may run are all busy
-        if (err instanceof LambdaUnavailableError) writeError(response, 503, MESSAGE_SERVICE_UNAVAILABLE);
-        else writeError(response, 502, MESSAGE_INTERNAL_SERVER_ERROR);
-      })
+      .catch((error) => answerFailure({ error, request, response, logger }))
       .finally(() => response.off('close', onClose));
   };
 
-  return Object.assign((request: IncomingMessage, response: ServerResponse) => handle(request, response), { handle, close: () => lambdaPool.close() });
+  return Object.assign((request: IncomingMessage, response: ServerResponse) => handle(request, response), {
+    handle,
+    close: () => {
+      // the lambdas stop once they answered, the timer that ends them for good does not keep the process alive
+      pool.dispose(DEFAULT_TIMEOUT).then(() => stats.remove(statsSource));
+    },
+  });
 }
 
 export default createHttpMiddleware;

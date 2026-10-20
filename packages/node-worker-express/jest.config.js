@@ -1,16 +1,8 @@
 const { resolve } = require('path');
 
+// the setup of the tests of node-worker-pool (they are the same kind: processes and sockets), with a root and a cache of its own
 module.exports = {
-  verbose: true,
+  ...require('../node-worker-pool/jest.config.js'),
   rootDir: resolve(__dirname),
   cacheDirectory: resolve(__dirname, '../../.cache/jest/node-worker-express'),
-  testEnvironment: 'node',
-  setupFilesAfterEnv: [resolve(__dirname, '../../jest-retry.js')],
-  ...require('../../jest-coverage.js'),
-  transform: {
-    // the build bundles ES modules, the tests run as CommonJS
-    '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'commonjs', moduleResolution: 'node', target: 'es2022', esModuleInterop: true, noImplicitAny: false, skipLibCheck: true } }],
-  },
-  testMatch: ['**/src/**/*.test.ts'],
-  moduleFileExtensions: ['ts', 'js', 'json'],
 };

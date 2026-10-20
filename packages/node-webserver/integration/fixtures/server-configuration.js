@@ -9,11 +9,11 @@ const worker = (hostname, extra = {}) => ({
   ...extra,
 });
 
-const lambda = (hostname, file, communication) => ({
+const lambda = (hostname, file) => ({
   hostname,
   protocol: 'http',
   type: 'lambda',
-  lambdaOptions: { lambda: resolve(__dirname, file), handler: 'handler', communication },
+  lambdaOptions: { lambda: resolve(__dirname, file), handler: 'handler' },
 });
 
 // one file with two handlers on two routes, and a second file on a third; a path that none of them matches is not answered by a lambda at all
@@ -60,8 +60,7 @@ module.exports = {
       cert: process.env.TLS_CERT,
       options: { root: resolve(__dirname, 'websocket'), index: ['worker.js'] },
     }),
-    lambda('lambda-ipc.localhost', 'lambda.js', 'ipc'),
-    lambda('lambda-file.localhost', 'lambda-file.js', 'file'),
+    lambda('lambda.localhost', 'lambda.js'),
     lambdaRoutes('lambda-routes.localhost'),
     {
       hostname: 'child.localhost',

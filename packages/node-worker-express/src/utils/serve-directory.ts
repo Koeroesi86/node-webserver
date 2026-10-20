@@ -1,6 +1,6 @@
+import type { ResponseCallback, WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
 import fs from 'fs/promises';
 import { ForbiddenPaths } from '../constants';
-import type { ResponseCallback, WorkerRequestEvent } from '../types';
 import { defaultCacheControl } from './find-cache-control';
 import notFoundResponse from './not-found-response';
 import renderDirectoryListing from './render-directory-listing';

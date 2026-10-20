@@ -626,13 +626,6 @@
             "$ref": "#/definitions/lambdaRoute"
           }
         },
-        "communication": {
-          "type": "string",
-          "enum": [
-            "ipc",
-            "file"
-          ]
-        },
         "limit": {
           "type": "integer",
           "minimum": 0

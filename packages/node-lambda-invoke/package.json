@@ -22,7 +22,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@koeroesi86/node-worker": "workspace:*"
+    "@koeroesi86/node-worker-pool": "workspace:*"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

@@ -1,9 +1,7 @@
+import { Protocols, WORKER_EVENT, type RequestEvent, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
 import { EventEmitter } from 'events';
 import type { Request, Response } from 'express';
-import { Protocols, WORKER_EVENT } from '../constants';
-import type { RequestEvent, WorkerOutputEvent } from '../types';
 import serveRequest from './serve-request';
-import type { WorkerLease } from './workerPool';
 
 const mockWebSocket = { receive: jest.fn(), dispose: jest.fn() };
 jest.mock('./create-ws-connection', () => ({ __esModule: true, default: jest.fn(() => mockWebSocket) }));

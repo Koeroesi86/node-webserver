@@ -10,14 +10,16 @@
     "packages/*/src/example/**",
     "packages/node-webserver/integration/**",
     // forked per lambda and per worker by their path, so no import leads to them
-    "packages/node-lambda-invoke/src/middlewares/invoke.ts",
-    "packages/node-worker-express/src/workerInvoke.ts",
+    "packages/node-lambda-invoke/src/middlewares/runner.ts",
+    "packages/node-worker-pool/src/workerInvoke.ts",
     // run by the pipeline and by k6
     "tools/src/scripts/**",
     "tools/src/k6/**"
   ],
   // the exports of the published packages are used by their users, not by the repository
   "publicPackages": ["@koeroesi86/*"],
+  // node-worker-express exports the budget of the worker pool next to its middleware, as it always did: it is what its `workerBudget` option takes
+  "ignoreExports": [{ "file": "packages/node-worker-express/src/index.ts", "exports": ["createWorkerBudget"] }],
   "rules": {
     // errors: dead code stops the build
     "unused-files": "error",
@@ -38,6 +40,7 @@
   "boundaries": {
     "zones": [
       { "name": "node-worker", "patterns": ["packages/node-worker/**"] },
+      { "name": "node-worker-pool", "patterns": ["packages/node-worker-pool/**"] },
       { "name": "node-worker-express", "patterns": ["packages/node-worker-express/**"] },
       { "name": "node-lambda-invoke", "patterns": ["packages/node-lambda-invoke/**"] },
       { "name": "node-webserver", "patterns": ["packages/node-webserver/**"] },
@@ -48,16 +51,18 @@
     // a zone without a rule may import anything, so the ones that import no other package have an empty one
     "rules": [
       { "from": "node-worker", "allow": [] },
-      { "from": "node-lambda-invoke", "allow": ["node-worker"] },
+      { "from": "node-worker-pool", "allow": ["node-worker"] },
+      { "from": "node-lambda-invoke", "allow": ["node-worker-pool"] },
       { "from": "tools", "allow": [] },
-      { "from": "node-worker-express", "allow": ["node-worker"] },
-      { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke"] },
+      { "from": "node-worker-express", "allow": ["node-worker-pool"] },
+      // node-worker-pool through the exports of node-worker-express that are its (the budget of the workers, the types of the protocol), which the server uses as the ones of the middleware
+      { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke", "node-worker-pool"] },
       { "from": "node-webserver-cli", "allow": ["node-webserver"] },
       { "from": "node-webserver-service", "allow": ["node-webserver"] }
     ]
   },
   // proves who uses an export of a package, which the syntactic pass can only guess
-  "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "packages/node-webserver-service/tsconfig.json", "tools/tsconfig.json"] },
+  "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-pool/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "packages/node-webserver-service/tsconfig.json", "tools/tsconfig.json"] },
   "health": {
     // run by node, a browser or k6 on their own and not measured by the unit tests, they are examples and test fixtures, not the product
     "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
@@ -78,10 +83,11 @@
   },
   "duplicates": {
     // the same parseArgv in the three entry packages: they are published on their own and share no package, so it stays a copy
-    "ignoredClones": ["dup:b6c38f85:3"],
+    // the socket pair helper of the tests of node-worker-express (get-read-stop) and of node-worker-pool: a helper of tests is not published, so each package that tests with it keeps a copy
+    "ignoredClones": ["dup:b6c38f85:3", "dup:88080b2d:2"],
     // examples, fixtures and k6 scenarios are standalone on purpose: each is run on its own, by a user, by a child process or by k6
     "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
-    // nothing is duplicated now beyond the reviewed clone above; 0 would switch the limit off, so 1 % is the strictest limit, and duplication can not grow
+    // nothing is duplicated now beyond the reviewed clones above; 0 would switch the limit off, so 1 % is the strictest limit, and duplication can not grow
     "threshold": 1
   }
 }

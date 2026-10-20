@@ -19,9 +19,6 @@ http
       lambdaPath,
       handlerKey,
       logger,
-      // communication: {
-      //   type: 'ipc', // file|ipc default: ipc
-      // },
     })
   )
   .listen(

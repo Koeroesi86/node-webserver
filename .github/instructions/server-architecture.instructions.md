@@ -1,5 +1,5 @@
 ---
-applyTo: "packages/node-webserver/**,packages/node-worker/**,packages/node-worker-express/**,packages/node-lambda-invoke/**"
+applyTo: "packages/node-webserver/**,packages/node-worker/**,packages/node-worker-pool/**,packages/node-worker-express/**,packages/node-lambda-invoke/**"
 ---
 
 # Server architecture instructions

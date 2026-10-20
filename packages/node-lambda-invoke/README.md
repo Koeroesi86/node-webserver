@@ -38,10 +38,6 @@ http
     handlerKey,
     logger,
     limit,
-    communication: {
-      // file|ipc|custom --- When 'custom' used, path is needed
-      type: 'ipc',
-    }
   }))
   .listen(
     { host, port, exclusive: true },
@@ -52,7 +48,7 @@ http
 `close()` on the middleware stops its lambdas, the idle ones at once and the busy ones once they answered, for a middleware that is not used any more. A request that still comes gets a lambda that stops after it.
 `handle(request, response, pathParameters)` on the middleware does the same as calling it, and gives the lambda the `pathParameters` of the event, for a server that chooses between several middlewares by the path and has more to tell about it than the lambda (the named groups of a route).
 Every middleware has the pool, and so the limit, of its own lambda and handler, which is how `@koeroesi86/node-webserver` gives each route of a lambda server its own limit.
-The storage driver of a communication is started (which empties what it stored) by the first middleware that uses it, not by the ones created after it.
+The lambdas are workers of the pool of [`@koeroesi86/node-worker-pool`](../node-worker-pool): a lambda process answers one request at a time, the body of a request is streamed to it while it arrives, and the request and the response travel over the framed channel of the pool, as bytes.
 
 ## Running locally
 
@@ -74,9 +70,8 @@ The options of `httpMiddleware`:
 | `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 502 |
 | `timeout` | how long the handler may take to answer, 900000 ms (15 minutes) by default, then the lambda is stopped and the request is answered with 504 |
 | `limitRequestBody` | the largest body of a request in bytes, 6291456 (6 MiB, the payload limit of AWS) by default, 0 for no limit. Larger ones are answered with 413. |
-| `restrictFileSystem` | whether a lambda can only write to its own folders (`os.tmpdir()`, the folder of the `file` communication) and not to the rest of the file system, true by default. Needs a node with the permission model. |
+| `restrictFileSystem` | whether a lambda can only write to its own folder (`os.tmpdir()`) and not to the rest of the file system, true by default. Needs a node with the permission model. |
 | `env` | variables for the lambdas, which get only a few of the process that runs the middleware (`PATH`, `HOME`, `TZ`, ...) and the ones AWS sets for a function (`AWS_LAMBDA_FUNCTION_NAME`, `LAMBDA_TASK_ROOT`, `_HANDLER`) |
-| `communication` | `{ type: 'ipc' }` (default), `{ type: 'file' }`, or `{ type: 'custom', path }` for a storage of your own |
 
 A lambda answers one request at a time. It is an AWS Lambda handler behind API Gateway (a REST API with the proxy integration), as far as that goes on one machine, and the README of [`@koeroesi86/node-webserver`](../node-webserver) describes the event, the context,
 the answers, the storage and the differences in full. In short:

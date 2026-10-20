@@ -1,11 +1,9 @@
+import { WORKER_EVENT, type ResponseMessage, type WorkerLease } from '@koeroesi86/node-worker-pool';
 import net from 'net';
 import { TLSSocket } from 'tls';
 import type { Request, Response } from 'express';
-import { WORKER_EVENT } from '../constants';
-import type { ResponseMessage } from '../types';
 import createResponseHandOff from './create-response-hand-off';
 import { handedOffResponses } from './is-handed-off';
-import type { WorkerLease } from './workerPool';
 
 interface Overrides {
   encrypted?: boolean;
