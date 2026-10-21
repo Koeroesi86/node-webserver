@@ -5,6 +5,8 @@ export {
   createChannel,
   createWorkerBudget,
   type SpawnOptions,
+  startUnrefInterval,
+  startUnrefTimer,
   startWorkerProcess,
   type WireMessage,
   workerAbandonedError as WorkerAbandonedError,

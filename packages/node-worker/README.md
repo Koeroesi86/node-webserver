@@ -81,6 +81,8 @@ It rejects with `WorkerBusyError` (the line is full, or the request waited for `
 The lease has `send`, `subscribe`, `handOff` and `release`, and for a pool that waits for the handshake `ready()`, which resolves when the worker is ready for its request. `kill()` kills a worker whose request ran out of time without counting a crash,
 the lease is still to be released. `getStats()` has `workers`, `starting` (workers that are not ready yet), `active` (requests that run), `waiting`, `refused`, `abandoned`, `evicted`, `failing` and `paths`.
 
+`startUnrefTimer(callback, delay)` and `startUnrefInterval(callback, delay)` are `setTimeout` and `setInterval` that do not keep the process alive, which the pool uses for its own timers.
+
 ### The side of the worker process
 
 `worker-invoke.js` is the runner of the worker files of node-worker-express: it loads the file and calls `startWorkerProcess(worker)`, which opens the channel (the fourth stdio of the process), serves the requests that come over it with
