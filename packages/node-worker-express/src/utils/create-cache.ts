@@ -40,21 +40,19 @@ const createCache = <V>({ maxEntries, maxBytes = Infinity, ttl, sizeOf = bufferL
     return entries.delete(key);
   };
 
+  const firstExpired = (time: number) => {
+    const [first] = expiring;
+    return first && time >= first[1].expiresAt ? first[0] : undefined;
+  };
+
   // stops at the first entry still valid, so an entry with a longer ttl of its own keeps the ones set after it until they are read or pushed out
   const dropExpired = () => {
     const time = now();
-    for (const [key, entry] of expiring) {
-      if (time < entry.expiresAt) return;
-      remove(key);
-    }
+    for (let key = firstExpired(time); key !== undefined; key = firstExpired(time)) remove(key);
   };
 
   const evict = () => {
-    while (entries.size > maxEntries || bytes > maxBytes) {
-      const oldest = entries.keys().next();
-      if (oldest.done) return;
-      remove(oldest.value);
-    }
+    while (entries.size > 0 && (entries.size > maxEntries || bytes > maxBytes)) remove(entries.keys().next().value);
   };
 
   return {

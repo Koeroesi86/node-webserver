@@ -141,7 +141,7 @@ export const compareWithBase = async (options: ComparisonOptions): Promise<Compa
   process.once('SIGTERM', interrupt);
 
   try {
-    for (const { side, directory, round } of steps) await runSide(side, directory, round);
+    await steps.reduce((previous, { side, directory, round }) => previous.then(() => runSide(side, directory, round)), Promise.resolve());
   } finally {
     await stopAll();
     process.off('SIGINT', interrupt);

@@ -4,6 +4,7 @@ import { Readable } from 'stream';
 export default function createEmptyBody() {
   return new Readable({
     read() {
+      // eslint-disable-next-line no-restricted-syntax -- pushing null is how a readable ends
       this.push(null);
     },
   });

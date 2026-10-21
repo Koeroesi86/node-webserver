@@ -27,6 +27,7 @@ const createSocketBody = (socket: net.Socket, prefix: Buffer, length: number) =>
     if (remaining > 0) return;
 
     socket.off('data', onData);
+    // eslint-disable-next-line no-restricted-syntax -- pushing null is how a readable ends
     stream.push(null);
   }
 
@@ -36,6 +37,7 @@ const createSocketBody = (socket: net.Socket, prefix: Buffer, length: number) =>
     socket.on('data', onData);
     socket.once('close', () => remaining > 0 && stream.destroy(new Error('The request was aborted.')));
   } else {
+    // eslint-disable-next-line no-restricted-syntax -- pushing null is how a readable ends
     stream.push(null);
   }
 

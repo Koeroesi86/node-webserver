@@ -31,18 +31,28 @@ const frame = (opcode: number, payload: Buffer) => {
   return Buffer.concat([header, mask, payload.map((byte, index) => byte ^ mask[index % 4])]);
 };
 
+/** the frame at `offset`, which is not masked as it comes from the server, and where it ends, or nothing while the buffer holds only a part of it */
+const readFrame = (buffer: Buffer, offset: number): { frame: { opcode: number; payload: Buffer }; end: number } | undefined => {
+  if (buffer.length - offset < 2) return undefined;
+
+  const code = buffer[offset + 1] & 0x7f;
+  const headerLength = 2 + (code === 126 ? 2 : code === 127 ? 8 : 0);
+  if (buffer.length - offset < headerLength) return undefined;
+
+  const length = code === 126 ? buffer.readUInt16BE(offset + 2) : code === 127 ? Number(buffer.readBigUInt64BE(offset + 2)) : code;
+  const end = offset + headerLength + length;
+  if (buffer.length < end) return undefined;
+
+  return { frame: { opcode: buffer[offset] & 0x0f, payload: buffer.subarray(offset + headerLength, end) }, end };
+};
+
 /** reads the frames of the server, which are not masked */
 const readFrames = (buffer: Buffer): { frames: Array<{ opcode: number; payload: Buffer }>; rest: Buffer } => {
   const frames: Array<{ opcode: number; payload: Buffer }> = [];
   let offset = 0;
-  while (buffer.length - offset >= 2) {
-    const code = buffer[offset + 1] & 0x7f;
-    const headerLength = 2 + (code === 126 ? 2 : code === 127 ? 8 : 0);
-    if (buffer.length - offset < headerLength) break;
-    const length = code === 126 ? buffer.readUInt16BE(offset + 2) : code === 127 ? Number(buffer.readBigUInt64BE(offset + 2)) : code;
-    if (buffer.length - offset < headerLength + length) break;
-    frames.push({ opcode: buffer[offset] & 0x0f, payload: buffer.subarray(offset + headerLength, offset + headerLength + length) });
-    offset += headerLength + length;
+  for (let read = readFrame(buffer, offset); read; read = readFrame(buffer, offset)) {
+    frames.push(read.frame);
+    offset = read.end;
   }
   return { frames, rest: buffer.subarray(offset) };
 };

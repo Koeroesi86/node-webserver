@@ -27,11 +27,11 @@ const proxyServerMiddleware = (instance: ServerConfig, logger: Logger, seed?: Pr
     throw new Error(`proxy server ${hostname} needs either a target or a dynamic one in its proxyOptions.`);
   }
 
-  if (target) {
-    if (typeof target !== 'string' || !URL.canParse(target)) {
-      throw new Error(`the target of proxy server ${hostname} must be a URL.`);
-    }
+  if (target && (typeof target !== 'string' || !URL.canParse(target))) {
+    throw new Error(`the target of proxy server ${hostname} must be a URL.`);
+  }
 
+  if (target) {
     const fixed = createProxyTarget(new URL(target), { secure, ca });
 
     const handler: RequestHandler = (request, response) => {

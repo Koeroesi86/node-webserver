@@ -7,6 +7,7 @@ const parseQueryString = (query: string) => {
   });
   const entries = Array.from(multiValue.entries());
 
+  // eslint-disable-next-line no-restricted-syntax -- aws passes null when there are no query parameters
   if (entries.length === 0) return { single: null, multi: null };
 
   return {

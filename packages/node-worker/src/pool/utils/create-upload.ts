@@ -36,6 +36,7 @@ export default function createUpload(contexts: RequestContexts, channel: Channel
     receive: ({ body }) => {
       if (body === null) {
         forget();
+        // eslint-disable-next-line no-restricted-syntax -- pushing null is how a readable ends
         stream.push(null);
       } else if (stream.push(body)) {
         acknowledge();

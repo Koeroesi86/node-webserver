@@ -61,7 +61,7 @@ export function sampleEventLoop() {
   const response = http.get(`${baseUrl}/metrics`, { headers: { Host: healthHostname }, tags: { route: 'metrics' } });
   check(response, { 'metrics answered': (r) => r.status === 200 }, { route: 'metrics' });
   if (response.status === 200) {
-    eventLoopMax.add(response.json('eventLoopDelayMs.max') as number);
+    eventLoopMax.add(Number(response.json('eventLoopDelayMs.max')));
   }
   sleep(0.5);
 }

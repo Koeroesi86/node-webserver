@@ -35,6 +35,14 @@ const createRouteMatcher = <Route extends RouteSelector, T>(routes: Route[], res
   const paths = new Map<string, { position: number; target: T }>();
   const patterns: Array<{ position: number; matcher: RegExp; target: T }> = [];
 
+  const addPath = (path: unknown, position: number, target: T) => {
+    if (typeof path !== 'string' || !path.startsWith('/') || path.length > RoutePathLimit) {
+      throw new Error(`The path of routes[${position}] has to start with / and be at most ${RoutePathLimit} characters long.`);
+    }
+    // a later route for the same path is never reached
+    if (!paths.has(path)) paths.set(path, { position, target });
+  };
+
   routes.forEach((route, position) => {
     const target = resolveTarget(route, position);
 
@@ -42,14 +50,7 @@ const createRouteMatcher = <Route extends RouteSelector, T>(routes: Route[], res
       throw new Error(`routes[${position}] has both a path and a pattern.`);
     }
 
-    if ('path' in route) {
-      if (typeof route.path !== 'string' || !route.path.startsWith('/') || route.path.length > RoutePathLimit) {
-        throw new Error(`The path of routes[${position}] has to start with / and be at most ${RoutePathLimit} characters long.`);
-      }
-      // a later route for the same path is never reached
-      if (!paths.has(route.path)) paths.set(route.path, { position, target });
-      return;
-    }
+    if ('path' in route) return addPath(route.path, position, target);
 
     if (typeof route.pattern !== 'string') {
       throw new Error(`routes[${position}] needs a path or a pattern.`);
@@ -63,13 +64,17 @@ const createRouteMatcher = <Route extends RouteSelector, T>(routes: Route[], res
     const exact = paths.get(pathname);
     // only the patterns listed before the path can come first
     const before = exact?.position ?? Infinity;
-    for (const { position, matcher, target } of patterns) {
-      if (position > before) break;
-      const found = matcher.exec(pathname);
-      if (found) return { target, ...(found.groups && { pathParameters: parametersOf(found.groups) }) };
-    }
+    const matches: Array<RouteMatcherResult<T>> = [];
+    // `some` stops at the first pattern that matches or comes after the path
+    patterns.some(({ position, matcher, target }) => {
+      if (position > before) return true;
 
-    return exact && { target: exact.target };
+      const found = matcher.exec(pathname);
+      if (found) matches.push({ target, ...(found.groups && { pathParameters: parametersOf(found.groups) }) });
+      return found !== null;
+    });
+
+    return matches[0] ?? (exact && { target: exact.target });
   };
 };
 

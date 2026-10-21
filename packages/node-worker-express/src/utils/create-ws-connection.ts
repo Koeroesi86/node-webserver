@@ -74,6 +74,11 @@ const createWsConnection = (socket: Socket, { limitMessage, pingInterval, idleTi
       onMessage(event.data);
     });
 
+  const closeOnProtocolError = (error: unknown) => {
+    if (!(error instanceof WsProtocolError)) throw error;
+    close(error.code, error.message);
+  };
+
   const receive = (chunk: Buffer) => {
     if (!opened || closing) return;
 
@@ -81,8 +86,7 @@ const createWsConnection = (socket: Socket, { limitMessage, pingInterval, idleTi
     try {
       handleEvents(chunk);
     } catch (error) {
-      if (!(error instanceof WsProtocolError)) throw error;
-      close(error.code, error.message);
+      closeOnProtocolError(error);
     }
     if (!closing && isFull()) socket.pause();
   };

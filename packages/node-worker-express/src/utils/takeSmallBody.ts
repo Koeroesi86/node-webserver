@@ -14,14 +14,12 @@ const takeSmallBody = (request: IncomingMessage, limit: number): Buffer | undefi
 
   const announced = request.headers['content-length'] === undefined ? Number.NaN : Number(request.headers['content-length']);
 
-  if (Number.isInteger(announced) && announced >= 0) {
-    if (announced > limit || request.readableLength < announced) return undefined;
-
-    return announced === 0 ? Buffer.alloc(0) : request.read(announced);
-  }
-
   // `complete` is set when the parser has seen the end of the body, which then sits in the buffer of the request: a body that is cut off is not complete
-  return request.complete && request.readableLength <= limit ? (request.read() ?? Buffer.alloc(0)) : undefined;
+  if (!Number.isInteger(announced) || announced < 0)
+    return request.complete && request.readableLength <= limit ? (request.read() ?? Buffer.alloc(0)) : undefined;
+  if (announced > limit || request.readableLength < announced) return undefined;
+
+  return announced === 0 ? Buffer.alloc(0) : request.read(announced);
 };
 
 export default takeSmallBody;

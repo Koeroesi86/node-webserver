@@ -66,20 +66,24 @@ class WaitingLine<Request, Result> {
 
   /** offers every waiting request to `serve`, the first one first: a request it gives a result for is served, one it gives nothing for keeps its place, one it throws for fails */
   wakeUp = (serve: (request: Request) => Result | undefined) => {
-    this.queue.splice(0).forEach((waiter) => {
-      try {
-        const result = serve(waiter.request);
-        if (result === undefined) {
-          this.queue.push(waiter);
-          return;
-        }
-        clearTimeout(waiter.timer);
-        waiter.resolve(result);
-      } catch (error) {
-        clearTimeout(waiter.timer);
-        waiter.reject(error);
-      }
-    });
+    this.queue.splice(0).forEach((waiter) => this.offer(waiter, serve));
+  };
+
+  private offer = (waiter: Waiter<Request, Result>, serve: (request: Request) => Result | undefined) => {
+    let result: Result | undefined;
+    try {
+      result = serve(waiter.request);
+    } catch (error) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+      return;
+    }
+    if (result === undefined) {
+      this.queue.push(waiter);
+      return;
+    }
+    clearTimeout(waiter.timer);
+    waiter.resolve(result);
   };
 
   getStats = () => ({

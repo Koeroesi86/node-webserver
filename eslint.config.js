@@ -17,6 +17,11 @@ module.exports = [
     plugins: { '@typescript-eslint': tsPlugin, prettier: prettierPlugin },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-non-null-assertion': 'error',
+      'no-else-return': 'error',
+      '@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'never' }],
+      'max-depth': ['error', 1],
+      'no-restricted-syntax': ['error', { selector: "Literal[raw='null']:not(BinaryExpression > Literal)", message: 'Use undefined instead of null.' }],
       'prettier/prettier': [
         'error',
         {
@@ -27,6 +32,14 @@ module.exports = [
         },
         { usePrettierrc: false },
       ],
+    },
+  },
+  {
+    // mocks and fixtures need casts, and the null of a mocked node api
+    files: ['**/*.test.ts', '**/*.test-helper.ts', '**/test-helpers/**/*.ts', '**/__mocks__/**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-assertions': 'off',
+      'no-restricted-syntax': 'off',
     },
   },
   {

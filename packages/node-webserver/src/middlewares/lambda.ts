@@ -73,7 +73,7 @@ const lambdaMiddleware = (instance: ServerConfig, log: LogFunction, stats?: Lamb
       started
     );
     const fallback = createFallbackLambda(log, config, stats);
-    if (fallback) started.push(fallback);
+    started.push(...(fallback ? [fallback] : []));
 
     return Object.assign(dispatchRequest(match, fallback), { close: () => closeLambdas(started) });
   } catch (error) {

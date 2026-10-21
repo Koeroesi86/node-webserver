@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import explainPermissionError from './explain-permission-error';
 import getServiceFiles from './get-service-files';
 import runCommand from './run-command';
 import type { UserContext } from './get-service-files';
@@ -24,15 +25,14 @@ const installService = async (definition: ServiceDefinition, dependencies: Parti
   const deps = { ...defaultDependencies, ...dependencies };
   const { filePath, content, install } = getServiceFiles(deps.platform, definition, user);
 
+  // only the user services live in a folder that may not exist yet
+  const folders = definition.userService ? [dirname(filePath)] : [];
+
   try {
-    if (definition.userService) await deps.makeFolder(dirname(filePath));
+    await Promise.all(folders.map((folder) => deps.makeFolder(folder)));
     await deps.writeFile(filePath, content);
   } catch (error) {
-    const { code } = error as NodeJS.ErrnoException;
-    if (code === 'EACCES' || code === 'EPERM') {
-      throw new Error(`Installing the service writes ${filePath}, run this as root (sudo) or administrator.`);
-    }
-    throw error;
+    throw explainPermissionError(error, `Installing the service writes ${filePath}, run this as root (sudo) or administrator.`);
   }
 
   for (const [command, ...args] of install) {

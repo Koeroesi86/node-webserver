@@ -24,15 +24,20 @@ const isStoredTarget = (value: unknown): value is StoredTarget =>
 
 const isExpired = ({ expiresAt }: { expiresAt?: number }) => expiresAt !== undefined && expiresAt <= Date.now();
 
+const readStored = (persistPath: string, { secure, ca }: StoreOptions): ProxyTarget | undefined => {
+  const stored: unknown = JSON.parse(readFileSync(persistPath, 'utf8'));
+  if (!isStoredTarget(stored) || isExpired(stored)) return undefined;
+
+  return { ...createProxyTarget(new URL(stored.target), { secure, ca }, stored.expiresAt), setAt: stored.setAt };
+};
+
 /** the target a proxy server had before a restart, unless it expired since */
-const restore = ({ persistPath, secure, ca, logger }: StoreOptions): ProxyTarget | undefined => {
+const restore = (options: StoreOptions): ProxyTarget | undefined => {
+  const { persistPath, logger } = options;
   if (!persistPath || !existsSync(persistPath)) return undefined;
 
   try {
-    const stored: unknown = JSON.parse(readFileSync(persistPath, 'utf8'));
-    if (!isStoredTarget(stored) || isExpired(stored)) return undefined;
-
-    return { ...createProxyTarget(new URL(stored.target), { secure, ca }, stored.expiresAt), setAt: stored.setAt };
+    return readStored(persistPath, options);
   } catch (error) {
     logger.warning(`[${getDate()}] The target kept in ${persistPath} cannot be read, it is left unset:`, error);
     return undefined;
