@@ -10,6 +10,7 @@ import {
   createSlotCounter,
   createStaticWorkerOptions,
   createTargetResolver,
+  createWatchedProbe,
   registerMetricsSource,
   warmPaths,
 } from '../utils';
@@ -48,7 +49,7 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   }
   const getLimitPerPath = (indexPath: string) => (typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath);
   const webSocketSlots = createSlotCounter(config.limitWebSocketConnections);
-  const probe = createProbe();
+  const probe = createWatchedProbe(createProbe());
   const pathLatency = createPathLatency();
   const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
   void warmPaths({
@@ -89,6 +90,7 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   return Object.assign(handler, {
     close: (timeout?: number) => {
       unregisterMetrics();
+      probe.close();
       return workerPool.dispose(timeout);
     },
   });

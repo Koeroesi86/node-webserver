@@ -374,17 +374,18 @@ describe('workerMiddleware', () => {
       const added = path.join(t.root, 'plain', 'added.html');
 
       expect((await fetch(`${t.baseUrl}/plain/added.html`)).status).toBe(404);
-      const asked = access.mock.calls.length;
+      const askedAboutAdded = () => access.mock.calls.filter(([fileName]) => fileName === added).length;
+      const asked = askedAboutAdded();
       await fs.writeFile(added, 'added');
 
       try {
         expect((await fetch(`${t.baseUrl}/plain/added.html`)).status).toBe(404);
-        expect(access.mock.calls.length).toBe(asked);
+        expect(askedAboutAdded()).toBe(asked);
 
         // the probe remembers its answers for a second
         jest.spyOn(Date, 'now').mockReturnValue(now + 1500);
         expect(await (await fetch(`${t.baseUrl}/plain/added.html`)).text()).toBe('added');
-        expect(access.mock.calls.length).toBeGreaterThan(asked);
+        expect(askedAboutAdded()).toBeGreaterThan(asked);
       } finally {
         await fs.rm(added);
       }

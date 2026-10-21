@@ -22,6 +22,7 @@ export type { RouteMatch } from './create-route-table';
 export { default as createSlotCounter } from './create-slot-counter';
 export { default as createStaticWorkerOptions } from './create-static-worker-options';
 export { default as createTargetResolver } from './create-target-resolver';
+export { default as createWatchedProbe } from './create-watched-probe';
 export { default as createWorkerMessageListener } from './create-worker-message-listener';
 export { default as createWsConnection } from './create-ws-connection';
 export type { WsConnectionOptions } from './create-ws-connection';
