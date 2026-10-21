@@ -1,3 +1,4 @@
+import fsSync from 'fs';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -231,6 +232,26 @@ describe('createWatchedProbe', () => {
 
     expect(exists).toHaveBeenCalledTimes(2);
     expect(probe.stats().directories).toBe(0);
+  });
+
+  it('drops the listing when its watcher reports an error, and asks the probe below again', async () => {
+    const watch = jest.spyOn(fsSync, 'watch');
+    const { base, exists } = countingBase();
+    const probe = createWatchedProbe(base);
+    await probe.exists(path.join(directory, 'missing.txt'));
+    await untilListed(probe, exists);
+    const watcher = watch.mock.results[0].value;
+    const closeWatcher = jest.spyOn(watcher, 'close');
+    exists.mockClear();
+
+    watcher.emit('error', new Error('watching failed'));
+    await probe.exists(path.join(directory, 'other-missing.txt'));
+
+    expect(probe.stats()).toEqual({ directories: 0, listings: 0, entries: 0 });
+    expect(closeWatcher).toHaveBeenCalled();
+    expect(exists).toHaveBeenCalledTimes(1);
+    watch.mockRestore();
+    probe.close();
   });
 
   it('keeps using the probe below for a directory that cannot be watched', async () => {

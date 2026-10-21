@@ -410,6 +410,19 @@ describe('workerMiddleware', () => {
       expect(watch).toHaveBeenCalledWith(path.join(t.root, 'plain'), expect.anything());
     });
 
+    it('closes the watchers of the folders it listed when it is closed', async () => {
+      const watch = jest.spyOn(fsSync, 'watch');
+      const middleware = await start();
+      await fetch(`${t.baseUrl}/plain/missing-1.html`);
+      await fetch(`${t.baseUrl}/plain/missing-2.html`);
+      expect(watch).toHaveBeenCalledTimes(1);
+      const closeWatcher = jest.spyOn(watch.mock.results[0].value, 'close');
+
+      await middleware.close(1000);
+
+      expect(closeWatcher).toHaveBeenCalled();
+    });
+
     it('reads and drops the body of a request to a missing path', async () => {
       await start();
       const connections: net.Socket[] = [];
