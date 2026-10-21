@@ -34,6 +34,7 @@ const createBodyForwarder = ({ request, lease, requestId, limit, onTooBig, onPro
       // the worker takes the parts at its pace, so a slow worker slows the upload down instead of filling the memory
       if (unacknowledged >= RequestBodyWindow) request.pause();
     },
+    // eslint-disable-next-line no-restricted-syntax -- a null body is how the protocol ends a request body
     end: () => lease.send({ type: WORKER_EVENT.REQUEST_BODY, requestId, event: { body: null } }),
     acknowledge: () => {
       unacknowledged -= 1;

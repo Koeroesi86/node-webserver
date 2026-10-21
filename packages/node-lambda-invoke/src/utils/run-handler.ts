@@ -19,6 +19,16 @@ const failure = (error: unknown) => {
 /** anything but an object is not a response, it is answered with 502 later on as it has no status code */
 const toResponseEvent = (response: unknown) => Object.assign(new ResponseEvent(), typeof response === 'object' ? response : undefined);
 
+/** an async handler settles with the promise it returns */
+const settleOnPromise = (result: unknown, resolve: (response: ResponseEvent) => void) => {
+  if (!isPromiseLike(result)) return;
+
+  result.then(
+    (response) => resolve(toResponseEvent(response)),
+    (error) => resolve(failure(error ?? new Error('The handler rejected.')))
+  );
+};
+
 /**
  * Calls the handler and settles with its response: the promise it returns, or its callback, whichever settles first.
  * A handler that throws, rejects or passes an error to the callback is a failure. The context is made with the callback to give to its `done`.
@@ -34,12 +44,7 @@ const runHandler = (
     try {
       const result = handler.call(thisArg, event, createContext(callback), callback);
 
-      if (isPromiseLike(result)) {
-        result.then(
-          (response) => resolve(toResponseEvent(response)),
-          (error) => resolve(failure(error ?? new Error('The handler rejected.')))
-        );
-      }
+      settleOnPromise(result, resolve);
     } catch (error) {
       // a handler that throws would take the process, and so the lambda, down with it
       resolve(failure(error));

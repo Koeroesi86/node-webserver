@@ -3,7 +3,7 @@ import { clearLine, cursorTo } from 'readline';
 let t: NodeJS.Timeout;
 const writeLine = () => {
   clearLine(process.stdout, 0);
-  cursorTo(process.stdout, 0, null);
+  cursorTo(process.stdout, 0);
 
   process.stdout.write(`Current time: ${new Date().toLocaleTimeString()}`);
   t = setTimeout(writeLine, 1000);

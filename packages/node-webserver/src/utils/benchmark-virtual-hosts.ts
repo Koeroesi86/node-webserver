@@ -3,7 +3,6 @@ import http from 'http';
 import vHost from 'vhost';
 import { performance } from 'perf_hooks';
 import virtualHostRouter from './virtual-host-router';
-import type { AddressInfo } from 'net';
 import type { Express } from 'express';
 import type { VirtualHost } from '../types/virtual-host';
 
@@ -14,11 +13,20 @@ export interface VirtualHostsBenchmark {
   router: number;
 }
 
+const repeat = async (times: number, task: () => Promise<void>) => {
+  for (let count = 0; count < times; count += 1) {
+    await task();
+  }
+};
+
 const requestMean = async (app: Express, hostname: string, requests: number): Promise<number> => {
   const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('The benchmark server did not listen on a port.');
+
+  const { port } = address;
   const request = () =>
     new Promise<void>((resolve, reject) => {
       http.get({ host: '127.0.0.1', port, agent, headers: { Host: hostname } }, (response) => response.resume().on('end', resolve)).on('error', reject);
@@ -26,13 +34,9 @@ const requestMean = async (app: Express, hostname: string, requests: number): Pr
 
   try {
     // the first requests warm the code up and open the connection
-    for (let warmUp = 0; warmUp < Math.min(requests, 200); warmUp += 1) {
-      await request();
-    }
+    await repeat(Math.min(requests, 200), request);
     const start = performance.now();
-    for (let count = 0; count < requests; count += 1) {
-      await request();
-    }
+    await repeat(requests, request);
     return (performance.now() - start) / requests;
   } finally {
     agent.destroy();

@@ -61,16 +61,25 @@ const createWorkerMessageListener = ({
     }
   };
 
-  const emit = (event: ResponseMessage) => {
-    // the worker has written the body to the client and ended the connection, it waits for the acknowledgement of the end
-    if (handOff.isActive()) {
-      if (event.body !== null) return;
+  // the worker has written the body to the client and ended the connection, it waits for the acknowledgement of the end
+  const emitAfterHandOff = (event: ResponseMessage) => {
+    if (event.body !== null) return;
 
-      acknowledge();
-      handOff.finish();
-      cleanup();
-      return;
-    }
+    acknowledge();
+    handOff.finish();
+    cleanup();
+  };
+
+  const startHandOff = (event: Parameters<typeof handOff.start>[0] | undefined) => {
+    if (event) void handOff.start(event);
+  };
+
+  const finishRequestHandOff = (event: Parameters<typeof requestHandOff.finish>[0] | undefined) => {
+    if (event) requestHandOff.finish(event);
+  };
+
+  const emit = (event: ResponseMessage) => {
+    if (handOff.isActive()) return emitAfterHandOff(event);
 
     if (!response.headersSent) response.writeHead(event.statusCode, event.headers);
 
@@ -110,10 +119,10 @@ const createWorkerMessageListener = ({
         emit(responseEvent.event);
         break;
       case WORKER_EVENT.RESPONSE_HANDOFF:
-        if (responseEvent.event) void handOff.start(responseEvent.event);
+        startHandOff(responseEvent.event);
         break;
       case WORKER_EVENT.REQUEST_HANDOFF_DONE:
-        if (responseEvent.event) requestHandOff.finish(responseEvent.event);
+        finishRequestHandOff(responseEvent.event);
         cleanup();
         break;
       case WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE:

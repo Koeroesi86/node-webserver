@@ -78,22 +78,30 @@ export class FrameDecoder<T extends WireMessage> {
     let offset = 0;
     this.needed = 0;
 
-    while (buffer.length - offset >= 4) {
-      const frameLength = buffer.readUInt32LE(offset);
-      if (frameLength > this.maxFrameLength) {
-        throw new Error(`A frame of ${frameLength} bytes is longer than the ${this.maxFrameLength} allowed.`);
-      }
-      if (buffer.length - offset - 4 < frameLength) {
-        this.needed = 4 + frameLength;
-        break;
-      }
-      this.onMessage(this.decode(buffer.subarray(offset + 4, offset + 4 + frameLength)));
-      offset += 4 + frameLength;
-    }
+    while (this.hasFrame(buffer, offset)) offset = this.readFrame(buffer, offset);
 
     const rest = buffer.subarray(offset);
     this.chunks = rest.length > 0 ? [rest] : [];
     this.size = rest.length;
+  }
+
+  /** whether a whole frame starts at the offset, otherwise how many bytes the next chunk has to complete it */
+  private hasFrame(buffer: Buffer, offset: number) {
+    if (buffer.length - offset < 4) return false;
+    const frameLength = buffer.readUInt32LE(offset);
+    if (frameLength > this.maxFrameLength) {
+      throw new Error(`A frame of ${frameLength} bytes is longer than the ${this.maxFrameLength} allowed.`);
+    }
+    if (buffer.length - offset - 4 >= frameLength) return true;
+    this.needed = 4 + frameLength;
+    return false;
+  }
+
+  /** hands the frame at the offset on and returns the offset after it */
+  private readFrame(buffer: Buffer, offset: number) {
+    const frameLength = buffer.readUInt32LE(offset);
+    this.onMessage(this.decode(buffer.subarray(offset + 4, offset + 4 + frameLength)));
+    return offset + 4 + frameLength;
   }
 
   private decode(frame: Buffer): T {
@@ -107,6 +115,7 @@ export class FrameDecoder<T extends WireMessage> {
 
     const message = JSON.parse(frame.toString('utf8', 5, bodyStart));
 
+    // eslint-disable-next-line no-restricted-syntax -- a null body is how the protocol ends a request body
     if (kind === BodyKind.end) message.event.body = null;
     if (kind === BodyKind.bytes) message.event.body = frame.subarray(bodyStart);
     if (kind === BodyKind.text) message.event.body = frame.toString('utf8', bodyStart);

@@ -240,6 +240,7 @@ export function websocketSession() {
   });
 
   const upgraded = check(response, { [`${route} upgraded`]: (r) => r && r.status === 101 }, { route });
+  // eslint-disable-next-line no-restricted-syntax -- k6 takes the response to check as null for a check that is not about one
   check(null, { [`${route} frames received`]: () => received >= wsMinMessages, [`${route} frames are valid`]: () => valid }, { route });
   wsSessionOk.add(upgraded && received >= wsMinMessages && valid && closedCleanly);
 }

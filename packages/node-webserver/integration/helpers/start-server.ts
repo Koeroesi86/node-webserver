@@ -113,12 +113,15 @@ export const startServer = async (env: Record<string, string> = {}): Promise<Run
 
   const deadline = Date.now() + startTimeout;
 
-  while (!(await isListening(port))) {
-    if (exitCode !== undefined || Date.now() > deadline) {
-      await stop();
-      throw new Error(`The server did not start (exit code ${exitCode}):\n${output}`);
-    }
+  const assertStarting = async () => {
+    if (exitCode === undefined && Date.now() <= deadline) return;
 
+    await stop();
+    throw new Error(`The server did not start (exit code ${exitCode}):\n${output}`);
+  };
+
+  while (!(await isListening(port))) {
+    await assertStarting();
     await new Promise((done) => setTimeout(done, 100));
   }
 

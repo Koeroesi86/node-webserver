@@ -226,6 +226,12 @@ describe('httpMiddleware', () => {
     const spawn = jest.spyOn(childProcess, 'spawn');
     await start({ lambdaPath: ownLambdaPath });
 
+    const requestInTurn = async (from: number, to: number) => {
+      for (let request = from; request < to; request += 1) {
+        await (await fetch(`${baseUrl}/${request}`)).text();
+      }
+    };
+
     try {
       // a request lets go of the lambda after the response was handed over
       const requestAndSettle = async (request: number) => {
@@ -236,9 +242,7 @@ describe('httpMiddleware', () => {
       const lambda = spawn.mock.results[0].value as ChildProcess;
       const [errorListeners, closeListeners] = [lambda.listenerCount('error'), lambda.listenerCount('close')];
 
-      for (let request = 1; request < 30; request += 1) {
-        await (await fetch(`${baseUrl}/${request}`)).text();
-      }
+      await requestInTurn(1, 30);
       await requestAndSettle(30);
 
       expect(spawn).toHaveBeenCalledTimes(1);
@@ -598,11 +602,15 @@ describe('httpMiddleware', () => {
       server.on('request', () => arrived.push(arrived.length + 1));
       const answered: string[] = [];
 
+      const arrivedCount = async (count: number) => {
+        while (arrived.length < count) await new Promise((resolve) => setImmediate(resolve));
+      };
+
       const responses = [];
       for (let index = 1; index <= 4; index += 1) {
         responses.push(fetch(`${baseUrl}/slow/${index}`).then(async (response) => answered.push(await response.text())));
         // the next one is sent when this one has reached the server, so that the order of arrival is known
-        for (; arrived.length < index;) await new Promise((resolve) => setImmediate(resolve));
+        await arrivedCount(index);
       }
       await Promise.all(responses);
 

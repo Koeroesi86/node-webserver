@@ -35,8 +35,9 @@ const request = (route: keyof typeof routes, id: number, tag: string = `lambda-$
 
 // starts the lambdas of all three, so that the run does not measure their start
 export function setup() {
+  const routeNames: Array<keyof typeof routes> = ['routed', 'single', 'orders'];
   for (let index = 0; index < 8; index += 1) {
-    (Object.keys(routes) as Array<keyof typeof routes>).forEach((route) => request(route, index, 'warm-up'));
+    routeNames.forEach((route) => request(route, index, 'warm-up'));
   }
 }
 

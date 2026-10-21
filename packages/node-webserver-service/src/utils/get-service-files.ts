@@ -44,10 +44,13 @@ const getServiceFiles = (
     };
   }
 
+  // checked before the platform branch, which stays flat
+  if (platform === 'darwin' && userService && uid === undefined)
+    throw new Error('--user needs the user id of the current user, which this platform does not give.');
+
   if (platform === 'darwin') {
     const label = `${LAUNCHD_LABEL_PREFIX}.${name}`;
     const filePath = posix.join(userService ? posix.join(home, LAUNCHD_AGENTS_FOLDER) : LAUNCHD_FOLDER, `${label}.plist`);
-    if (userService && uid === undefined) throw new Error('--user needs the user id of the current user, which this platform does not give.');
     const domain = userService ? `gui/${uid}` : 'system';
     return {
       filePath,

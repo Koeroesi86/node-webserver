@@ -79,17 +79,21 @@ const createFileSink = ({ folder, startedAt, flushInterval }: FileSinkOptions) =
     });
   }
 
+  function beginWrite(level: keyof LogLevels) {
+    const file = getLogFile(level);
+    const text = file.pending ? undefined : takeLines(level);
+    if (!text) return;
+
+    const data = Buffer.from(text, 'utf8');
+    const entry = { data, position: file.offset };
+    file.pending = entry;
+    file.offset += data.length;
+    writeBehind(level, file, entry);
+  }
+
   function startWrite(level: keyof LogLevels) {
     try {
-      const file = getLogFile(level);
-      const text = file.pending ? undefined : takeLines(level);
-      if (!text) return;
-
-      const data = Buffer.from(text, 'utf8');
-      const entry = { data, position: file.offset };
-      file.pending = entry;
-      file.offset += data.length;
-      writeBehind(level, file, entry);
+      beginWrite(level);
     } catch (error) {
       takeLines(level);
       console.error(`Could not write log file of ${level}:`, error);
@@ -107,21 +111,25 @@ const createFileSink = ({ folder, startedAt, flushInterval }: FileSinkOptions) =
   }
 
   /** Writes a file's buffered lines and, before them, the chunk that may not have reached the disk, in the place it belongs. Blocks, for the exit. */
+  function writeFile(level: keyof LogLevels) {
+    const file = getLogFile(level);
+    const text = takeLines(level);
+
+    if (file.pending) {
+      const { data, position } = file.pending;
+      file.pending = undefined;
+      writeAll(file.fd, data, position);
+    }
+
+    if (!text) return;
+    const data = Buffer.from(text, 'utf8');
+    writeAll(file.fd, data, file.offset);
+    file.offset += data.length;
+  }
+
   function flushFile(level: keyof LogLevels) {
     try {
-      const file = getLogFile(level);
-      const text = takeLines(level);
-
-      if (file.pending) {
-        const { data, position } = file.pending;
-        file.pending = undefined;
-        writeAll(file.fd, data, position);
-      }
-
-      if (!text) return;
-      const data = Buffer.from(text, 'utf8');
-      writeAll(file.fd, data, file.offset);
-      file.offset += data.length;
+      writeFile(level);
     } catch (error) {
       takeLines(level);
       console.error(`Could not write log file of ${level}:`, error);

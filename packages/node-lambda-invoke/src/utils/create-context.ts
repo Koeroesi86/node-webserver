@@ -18,6 +18,8 @@ const createContext = (requestId: string, deadline: number, done: LambdaCallback
     logStreamName: AWS_LAMBDA_LOG_STREAM_NAME,
     getRemainingTimeInMillis: () => Math.max(0, (Number.isFinite(deadline) ? deadline : Date.now() + DEFAULT_TIMEOUT) - Date.now()),
     done,
+    // the callback of a lambda takes the error first, and null when there is none
+    // eslint-disable-next-line no-restricted-syntax -- the lambda contract of aws
     succeed: (response) => done(null, response),
     fail: (error) => done(error ?? new Error('The function failed.')),
   };

@@ -46,8 +46,8 @@ export function sampleMemory() {
   const response = http.get(`${baseUrl}/metrics`, { headers: { Host: healthHostname }, tags: { route: 'metrics' } });
   check(response, { 'metrics answered': (r) => r.status === 200 }, { route: 'metrics' });
   if (response.status === 200) {
-    external.add((response.json('memory.external') as number) / (1024 * 1024));
-    rss.add((response.json('memory.rss') as number) / (1024 * 1024));
+    external.add(Number(response.json('memory.external')) / (1024 * 1024));
+    rss.add(Number(response.json('memory.rss')) / (1024 * 1024));
   }
   sleep(0.1);
 }
@@ -59,6 +59,11 @@ const connect = (route: string, query: string, handlers: (socket: ws.Socket) => 
     socket.setTimeout(() => socket.close(), 30000);
   });
   check(response, { [`${route} upgraded`]: (r) => r && r.status === 101 }, { route });
+};
+
+const sendMessage = (socket: ws.Socket, text: string | undefined) => {
+  if (text === undefined) socket.sendBinary(binary);
+  else socket.send(text);
 };
 
 /** sends the messages faster than the worker handles them, and reads what comes back: text and binary, in the order they were sent */
@@ -74,8 +79,7 @@ export function fastProducer() {
         // every fourth message is binary
         const text = index % 4 === 3 ? undefined : `${index}:${'ő'.repeat(producedSize / 2)}`;
         sent.push(text);
-        if (text === undefined) socket.sendBinary(binary);
-        else socket.send(text);
+        sendMessage(socket, text);
       }
     });
     const take = (matches: boolean) => {
@@ -92,6 +96,7 @@ export function fastProducer() {
   });
 
   const ok = received === producedMessages && valid;
+  // eslint-disable-next-line no-restricted-syntax -- k6 takes the response to check as null for a check that is not about one
   check(null, { 'fast producer got every message back, in order': () => ok }, { route: 'wsFastProducer' });
   sessionOk.add(ok);
 }
@@ -117,6 +122,7 @@ export function slowConsumer() {
   });
 
   const ok = received === floodMessages && valid && code === 1000;
+  // eslint-disable-next-line no-restricted-syntax -- k6 takes the response to check as null for a check that is not about one
   check(null, { 'slow consumer got every message, in order, and a normal close': () => ok }, { route: 'wsSlowConsumer' });
   sessionOk.add(ok);
 }

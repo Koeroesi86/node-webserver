@@ -55,14 +55,23 @@ export const runChannelBench = async (mode: ChannelMode, scale = 1, cases: Chann
     };
   };
 
-  try {
-    // the child has to be up before the first message
-    await new Promise((resolveStart) => setTimeout(resolveStart, 300));
+  const warmUp = async () => {
     for (let warmed = 0; warmed < Math.max(1, Math.round(channelBenchWarmUp * scale)); warmed += 1) await roundTrip(undefined);
+  };
+
+  const measureAll = async () => {
     const results: ChannelBenchResult[] = [];
     for (const benchCase of cases) results.push(await measure(benchCase));
 
     return results;
+  };
+
+  try {
+    // the child has to be up before the first message
+    await new Promise((resolveStart) => setTimeout(resolveStart, 300));
+    await warmUp();
+
+    return await measureAll();
   } finally {
     child.kill();
     await once(child, 'close');

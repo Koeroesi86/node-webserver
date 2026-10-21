@@ -176,9 +176,12 @@ describe('streamResponse', () => {
   it('stops when the client is gone, and lets the source clean up', async () => {
     const { parts, callback } = collect((part) => part < 2);
     let cleanedUp = false;
+    async function* chunks() {
+      for (let index = 0; index < 100; index += 1) yield `chunk ${index}`;
+    }
     async function* source() {
       try {
-        for (let index = 0; index < 100; index += 1) yield `chunk ${index}`;
+        yield* chunks();
       } finally {
         cleanedUp = true;
       }

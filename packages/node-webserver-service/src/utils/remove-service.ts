@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises';
+import explainPermissionError from './explain-permission-error';
 import getServiceFiles from './get-service-files';
 import { defaultDependencies } from './install-service';
 import type { InstallDependencies } from './install-service';
@@ -20,11 +21,7 @@ const removeService = async (definition: ServiceDefinition, dependencies: Partia
   try {
     await deps.removeFile(filePath);
   } catch (error) {
-    const { code } = error as NodeJS.ErrnoException;
-    if (code === 'EACCES' || code === 'EPERM') {
-      throw new Error(`Removing the service deletes ${filePath}, run this as root (sudo) or administrator.`);
-    }
-    throw error;
+    throw explainPermissionError(error, `Removing the service deletes ${filePath}, run this as root (sudo) or administrator.`);
   }
 
   for (const [command, ...args] of afterRemove) {

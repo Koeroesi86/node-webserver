@@ -395,14 +395,12 @@ describe('workerInvoke', () => {
     channel.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'a' });
 
     const marker = path.join(folder, 'stopped');
-    for (let waited = 0; waited < 3000; waited += 10) {
-      if (
-        await fs.access(marker).then(
-          () => true,
-          () => false
-        )
-      )
-        break;
+    const stopped = () =>
+      fs.access(marker).then(
+        () => true,
+        () => false
+      );
+    for (let waited = 0; waited < 3000 && !(await stopped()); waited += 10) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(await fs.readFile(marker, 'utf8')).toBe('1');

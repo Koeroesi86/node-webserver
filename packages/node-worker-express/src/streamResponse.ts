@@ -1,6 +1,7 @@
 import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from '@koeroesi86/node-worker/pool';
 import { Socket } from 'node:net';
 import { pipeline } from 'node:stream/promises';
+import forEachWhile from './utils/for-each-while';
 
 const proceeds = (result: unknown) => result !== false;
 
@@ -55,41 +56,46 @@ async function streamResponse(
   if (socket instanceof Socket) {
     const sent = await writeToSocket(socket, body);
     // the server waits for the end to free the worker
+    // eslint-disable-next-line no-restricted-syntax -- a body of null is the end of the response in the protocol of the worker
     return proceeds(await send({ body: null })) && sent;
   }
+  const isFull = () => written.length > 0 && (written.length >= window || inFlight >= windowBytes);
+  const settleOldest = async () => {
+    inFlight -= sizes.shift() ?? 0;
+    return proceeds(await written.shift());
+  };
   // the oldest part is awaited until both the number of parts and the bytes in flight are within the window, false when the client went away
-  const drain = async () => {
-    while (written.length > 0 && (written.length >= window || inFlight >= windowBytes)) {
-      inFlight -= sizes.shift() ?? 0;
-      if (!proceeds(await written.shift())) return false;
-    }
+  const drain = async (): Promise<boolean> => !isFull() || ((await settleOldest()) && drain());
 
-    return true;
+  const writeChunk = async (chunk: string | Buffer | Uint8Array) => {
+    // a copy: the bytes leave with the next write to the channel, and the source may reuse its buffer by then
+    const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.concat([chunk]);
+    // an empty part would look like the end for nobody, but it is a message that has to be acknowledged for nothing
+    if (buffer.length === 0) return true;
+
+    written.push(send({ body: buffer }));
+    sizes.push(buffer.length);
+    inFlight += buffer.length;
+    return drain();
   };
 
-  try {
-    for await (const chunk of body) {
-      // a copy: the bytes leave with the next write to the channel, and the source may reuse its buffer by then
-      const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.concat([chunk]);
-      // an empty part would look like the end for nobody, but it is a message that has to be acknowledged for nothing
-      if (buffer.length === 0) continue;
-
-      written.push(send({ body: buffer }));
-      sizes.push(buffer.length);
-      inFlight += buffer.length;
-      if (!(await drain())) {
-        completed = false;
-        return false;
-      }
+  // false when the client went away, an error of the source only ends the response early
+  const sendParts = async () => {
+    try {
+      return await forEachWhile(body, writeChunk);
+    } catch (error) {
+      console.error(error);
+      completed = false;
+      return true;
+    } finally {
+      destroyBody(body);
     }
-  } catch (error) {
-    console.error(error);
-    completed = false;
-  } finally {
-    destroyBody(body);
-  }
+  };
+
+  if (!(await sendParts())) return false;
 
   // the last part, without a body, ends the response
+  // eslint-disable-next-line no-restricted-syntax -- a body of null is the end of the response in the protocol of the worker
   written.push(send({ body: null }));
   const results = await Promise.all(written);
 

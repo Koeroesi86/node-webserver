@@ -216,10 +216,8 @@ describe('staticWorker', () => {
         let previous = -1;
         let since = process.hrtime.bigint();
         while (process.hrtime.bigint() - since < BigInt(quietMilliseconds) * 1_000_000n) {
-          if (sent !== previous) {
-            previous = sent;
-            since = process.hrtime.bigint();
-          }
+          since = sent === previous ? since : process.hrtime.bigint();
+          previous = sent;
           await new Promise((resolve) => setImmediate(resolve));
         }
       };

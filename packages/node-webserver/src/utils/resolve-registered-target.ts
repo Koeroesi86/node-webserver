@@ -7,11 +7,7 @@ type Resolved = { url: URL } | { status: number; error: string };
 const isPort = (port: unknown): port is number => Number.isInteger(port) && Number(port) > 0 && Number(port) < 65536;
 
 const toUrl = (body: Record<string, unknown>, clientAddress: string, { protocol = 'http', port }: DynamicTargetOptions): URL | string => {
-  if (body.target !== undefined) {
-    if (typeof body.target !== 'string' || !URL.canParse(body.target)) return 'The target must be a URL.';
-
-    return new URL(body.target);
-  }
+  if (body.target !== undefined) return typeof body.target === 'string' && URL.canParse(body.target) ? new URL(body.target) : 'The target must be a URL.';
 
   // like the `myip` of dyndns: the service registers itself, from where it calls
   const targetPort = body.port ?? port;

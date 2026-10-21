@@ -64,7 +64,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
 
       const lease = await pool.acquire(lambdaPath, {}, limit > 0 ? limit : NO_LIMIT, clientGone.signal);
 
-      try {
+      const serve = async () => {
         await lease.ready();
         if (clientGone.signal.aborted) return;
 
@@ -72,6 +72,10 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
         const outcome = await invokeLambda({ lease, request, requestId, event, timeout, limitRequestBody });
 
         answerOutcome({ outcome, request, response, lease });
+      };
+
+      try {
+        await serve();
       } finally {
         lease.release();
       }

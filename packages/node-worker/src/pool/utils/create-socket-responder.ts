@@ -78,18 +78,19 @@ const createSocketResponder = (socket: net.Socket) => {
     end();
   };
 
+  const emitHead = async (event: ResponseEvent) => {
+    const { code, head, failed } = prepareHead(event.statusCode, event.headers);
+    headWritten = true;
+    statusCode = code;
+    await write(head);
+    if (!failed) return;
+    // the worker streams a body for a response that is not the one it meant, the 500 has no body to follow
+    await write(internalServerError);
+    end();
+  };
+
   const emit = async (event: ResponseEvent) => {
-    if (!headWritten) {
-      const { code, head, failed } = prepareHead(event.statusCode, event.headers);
-      headWritten = true;
-      statusCode = code;
-      await write(head);
-      // the worker streams a body for a response that is not the one it meant, the 500 has no body to follow
-      if (failed) {
-        await write(internalServerError);
-        end();
-      }
-    }
+    if (!headWritten) await emitHead(event);
     if (ended) return false;
     if (event.body === null) {
       end();

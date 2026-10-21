@@ -27,6 +27,7 @@ const createHttpsServer = (
       const secureContext = getContext(domain);
       // without an answer the handshake of a host that has no certificate would wait until the client gives up
       if (!secureContext) return callback(new Error(`No certificate for ${domain}.`));
+      // eslint-disable-next-line no-restricted-syntax -- the sni callback of node takes null for no error
       callback(null, secureContext);
     },
   };

@@ -6,7 +6,8 @@ import { DefaultOptions, StaticOptionsEnv } from '../constants';
 import isWebSocket from '../utils/isWebSocket';
 import createSlotCounter from '../utils/create-slot-counter';
 import hasBody from '../utils/hasBody';
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
+import type { ParsedUrlQuery } from 'querystring';
 import { MiddlewareOptions, WorkerMiddleware } from '../types';
 import createProbe from '../utils/createProbe';
 import normalizeStaticOptions from '../utils/normalize-static-options';
@@ -91,42 +92,51 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     getLimitPerPath,
   });
 
+  const serve = async (
+    request: Request,
+    response: Response,
+    tracked: ReturnType<typeof trackRequest>,
+    { query, pathname }: { query: ParsedUrlQuery; pathname: string }
+  ) => {
+    const pathFragments = pathname.split(/\//gi).filter(Boolean);
+    const target = await resolveTarget(request, response, pathname, pathFragments);
+    if (!target) return;
+
+    const { indexPath, isWorker, pathParameters } = target;
+    const protocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
+    const { inlineBody, streamsBody } = await prepareRequestBody(
+      request,
+      protocol === Protocols.http && hasBody(request) && isWorker,
+      config.inlineRequestBody
+    );
+
+    if (inlineBody !== undefined && config.limitRequestBody && inlineBody.length > config.limitRequestBody) {
+      writeTextResponse(response, 413, 'Request body too large.');
+      return;
+    }
+
+    const event = buildRequestEvent({ request, protocol, pathname, pathFragments, query, rootPath, pathParameters, streamsBody });
+
+    // a websocket slot is taken before the worker, so connections above the limit do not queue for one
+    const served = await runInSlot(
+      () => (protocol === Protocols.websocket ? webSocketSlots.take(indexPath) : noop),
+      () => {
+        // by worker file like the pool, so every static file counts in the static worker's (a missing path answered above only in the totals)
+        tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
+        return acquireLease(response, indexPath, isWorker);
+      },
+      (lease, releaseSlot) =>
+        serveRequest({ request, response, lease, requestId: createRequestId(), event, inlineBody, streamsBody, releaseSlot, options: config })
+    );
+    if (!served) writeTextResponse(response, 503, 'Too many connections.', { 'Retry-After': 1 });
+  };
+
   const handler: RequestHandler = async (request, response, next) => {
     const { query, pathname } = url.parse(request.url, true);
     const tracked = trackRequest(response);
 
     try {
-      const pathFragments = pathname.split(/\//gi).filter(Boolean);
-      const target = await resolveTarget(request, response, pathname, pathFragments);
-      if (!target) return;
-
-      const { indexPath, isWorker, pathParameters } = target;
-      const protocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
-      const { inlineBody, streamsBody } = await prepareRequestBody(
-        request,
-        protocol === Protocols.http && hasBody(request) && isWorker,
-        config.inlineRequestBody
-      );
-
-      if (inlineBody !== undefined && config.limitRequestBody && inlineBody.length > config.limitRequestBody) {
-        writeTextResponse(response, 413, 'Request body too large.');
-        return;
-      }
-
-      const event = buildRequestEvent({ request, protocol, pathname, pathFragments, query, rootPath, pathParameters, streamsBody });
-
-      // a websocket slot is taken before the worker, so connections above the limit do not queue for one
-      const served = await runInSlot(
-        () => (protocol === Protocols.websocket ? webSocketSlots.take(indexPath) : noop),
-        () => {
-          // by worker file like the pool, so every static file counts in the static worker's (a missing path answered above only in the totals)
-          tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
-          return acquireLease(response, indexPath, isWorker);
-        },
-        (lease, releaseSlot) =>
-          serveRequest({ request, response, lease, requestId: createRequestId(), event, inlineBody, streamsBody, releaseSlot, options: config })
-      );
-      if (!served) writeTextResponse(response, 503, 'Too many connections.', { 'Retry-After': 1 });
+      await serve(request, response, tracked, { query, pathname });
     } catch (e) {
       handleRequestError(e, response, next);
     }

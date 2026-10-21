@@ -148,18 +148,19 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
   responseTimeout.arm();
   if (requestHandOff.isAllowed()) {
     void requestHandOff.start();
-  } else {
-    lease.send({
-      type: WORKER_EVENT.REQUEST,
-      requestId,
-      // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
-      event: inlineBody === undefined ? event : { ...event, body: inlineBody },
-    });
+    return;
+  }
 
-    if (streamsBody) {
-      request.on('data', bodyForwarder.part);
-      request.once('end', bodyForwarder.end);
-    }
+  lease.send({
+    type: WORKER_EVENT.REQUEST,
+    requestId,
+    // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
+    event: inlineBody === undefined ? event : { ...event, body: inlineBody },
+  });
+
+  if (streamsBody) {
+    request.on('data', bodyForwarder.part);
+    request.once('end', bodyForwarder.end);
   }
 };
 

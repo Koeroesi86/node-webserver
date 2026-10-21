@@ -6,6 +6,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
 
 /** the text of the body when it is valid UTF-8, otherwise the bytes in base64 */
 const encodeBody = (body: Buffer | undefined) => {
+  // eslint-disable-next-line no-restricted-syntax -- an event without a body has a null one on aws
   if (body === undefined) return { body: null, isBase64Encoded: false };
 
   try {
@@ -21,6 +22,7 @@ const toValues = (value: string | string[]) => (Array.isArray(value) ? value : [
 const toQueryParameters = (query: WorkerRequestEvent['queryStringParameters']) => {
   const entries = Object.entries(query);
 
+  // eslint-disable-next-line no-restricted-syntax -- aws passes null when there are no query parameters
   if (entries.length === 0) return { single: null, multi: null };
 
   return {
@@ -56,7 +58,9 @@ const createLambdaEvent = (workerEvent: WorkerRequestEvent, body?: Buffer): Requ
     queryStringParameters: single,
     multiValueQueryStringParameters: multi,
     // the captures of a route are what the route is about, the rest of the path is only the proxy resource when nothing named it
+    // eslint-disable-next-line no-restricted-syntax -- aws passes null when there are no path parameters
     pathParameters: pathParameters ?? (proxy === '' ? null : { proxy }),
+    // eslint-disable-next-line no-restricted-syntax -- aws passes null when the stage has no variables
     stageVariables: null,
     requestContext: {
       accountId: '000000000000',
