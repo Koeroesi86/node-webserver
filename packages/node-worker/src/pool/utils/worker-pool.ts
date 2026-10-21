@@ -249,16 +249,13 @@ class WorkerPool implements WorkerBudgetMember {
   };
 
   /** the messages of a worker: the ready signal belongs to the worker, all others to the request they carry */
-  private receive = (worker: () => Worker | undefined) => (message: WorkerOutputEvent) => {
+  private receive = (message: WorkerOutputEvent, worker: Worker) => {
     if (message.type !== WORKER_EVENT.READY) {
       this.registry.getSubscription(message.requestId)?.onMessage?.(message);
       return;
     }
 
-    const instance = worker();
-    if (instance === undefined) return;
-
-    this.markReady(instance);
+    this.markReady(worker);
     // a request that waits for a worker may use it now
     this.wakeWaiting();
   };
@@ -270,14 +267,23 @@ class WorkerPool implements WorkerBudgetMember {
   private createWorker = (workerPath: string, options: SpawnOptions): Worker => {
     const id = randomUUID();
     const prepared = this.settings.prepareWorker?.({ workerPath, id }) ?? {};
-    let created: Worker | undefined;
-    let spawned: ReturnType<typeof spawnWorker>;
+    const { instance, channel } = this.spawn(workerPath, this.mergeOptions(options, prepared), prepared);
+    const entry = this.createEntry(instance, workerPath, id);
+    this.registry.add(instance, entry, channel);
+    if (prepared.onClose) this.cleanups.set(instance, prepared.onClose);
+    this.watchClose(instance, entry);
+
+    return instance;
+  };
+
+  /** a worker that could not be started has nothing to undo later, so what was prepared for it is undone at once */
+  private spawn = (workerPath: string, options: SpawnOptions, prepared: PreparedWorker) => {
     try {
-      spawned = spawnWorker({
+      return spawnWorker({
         workerPath,
         command: this.settings.createCommand(workerPath),
-        options: this.mergeOptions(options, prepared),
-        onMessage: this.receive(() => created),
+        options,
+        onMessage: this.receive,
         onStdout: this.settings.onStdout,
         onStderr: this.settings.onStderr,
       });
@@ -285,27 +291,29 @@ class WorkerPool implements WorkerBudgetMember {
       prepared.onClose?.();
       throw error;
     }
-    const { instance, channel } = spawned;
-    created = instance;
+  };
+
+  private createEntry = (worker: Worker, workerPath: string, id: string): WorkerEntry => {
     const entry: WorkerEntry = {
       workerPath,
       id,
       lastUsed: Date.now(),
-      idleTimer: this.timers.idle(instance),
-      ageTimer: this.timers.age(instance),
+      idleTimer: this.timers.idle(worker),
+      ageTimer: this.timers.age(worker),
       readiness: this.startTimeout > 0 ? createWorkerReadiness() : undefined,
     };
-    entry.startTimer = this.timers.start(instance, entry);
-    this.registry.add(instance, entry, channel);
-    if (prepared.onClose) this.cleanups.set(instance, prepared.onClose);
+    entry.startTimer = this.timers.start(worker, entry);
 
-    const uptime = watchWorkerUptime(this.settings.minUptime, () => this.restartBackoff.clear(workerPath));
-    instance.addEventListenerOnce('close', (code: number) => {
-      const closed = { worker: instance, entry, code, uptime, leases: [] };
+    return entry;
+  };
+
+  /** a worker that ends goes through the close steps, and counts as stable once it ran for the minimum uptime */
+  private watchClose = (worker: Worker, entry: WorkerEntry) => {
+    const uptime = watchWorkerUptime(this.settings.minUptime, () => this.restartBackoff.clear(entry.workerPath));
+    worker.addEventListenerOnce('close', (code: number) => {
+      const closed = { worker, entry, code, uptime, leases: [] };
       this.closeSteps.forEach((step) => step(closed));
     });
-
-    return instance;
   };
 
   /** the workers of a path that take requests: one that is being stopped or retired takes no more */

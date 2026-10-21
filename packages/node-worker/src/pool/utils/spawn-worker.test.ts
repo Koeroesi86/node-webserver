@@ -57,13 +57,15 @@ describe('spawnWorker', () => {
     expect([options.mock.calls.length, FakeWorker.instances[0].options.cwd]).toEqual([1, '/made']);
   });
 
-  it('hands the messages of the worker to onMessage', async () => {
+  it('hands the messages of the worker to onMessage, with the worker they came from', async () => {
     const message = { requestId: 'r' } as never as WorkerOutputEvent;
-    const received = new Promise<WorkerOutputEvent>((resolve) => spawnWorker({ workerPath: '/root/a.js', command: [], options: {}, onMessage: resolve }));
+    const received = new Promise<unknown[]>((resolve) =>
+      spawnWorker({ workerPath: '/root/a.js', command: [], options: {}, onMessage: (...args) => resolve(args) })
+    );
 
     FakeWorker.instances[0].socket.push(Buffer.concat(encodeMessage(message)));
 
-    await expect(received).resolves.toEqual(message);
+    await expect(received).resolves.toEqual([message, FakeWorker.instances[0]]);
   });
 
   it('writes to the socket of the worker through the channel it returns', () => {

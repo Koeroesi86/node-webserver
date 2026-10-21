@@ -14,8 +14,8 @@ interface SpawnParams {
   /** the executable and its arguments, ending with the worker file for the runners that take it as their last argument */
   command: string[];
   options: SpawnOptions;
-  /** receives the messages of all requests of the worker */
-  onMessage: (message: WorkerOutputEvent) => void;
+  /** receives the messages of all requests of the worker, with the worker they came from */
+  onMessage: (message: WorkerOutputEvent, worker: Worker) => void;
   /** receive what the worker writes to its stdout and stderr, attached once when it starts */
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
@@ -45,7 +45,7 @@ const spawnWorker = ({
   }
 
   // a single listener dispatches the messages of all requests of the worker
-  const channel = createChannel<WorkerOutputEvent, WorkerInputEvent>(socket, onMessage);
+  const channel = createChannel<WorkerOutputEvent, WorkerInputEvent>(socket, (message) => onMessage(message, instance));
 
   // once per worker and from the start, so that nothing it writes waits unread in the pipe
   if (onStdout) instance.instance.stdout?.on('data', onStdout);
