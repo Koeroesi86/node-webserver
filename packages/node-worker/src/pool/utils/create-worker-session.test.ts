@@ -1,6 +1,6 @@
 import { duplexPair } from 'stream';
 import { Protocols, WORKER_EVENT } from '../constants';
-import createChannel from './createChannel';
+import createChannel from './create-channel';
 import createWorkerSession from './create-worker-session';
 import { createSocketPair, readUntilClosed } from './socket-pair.test-helper';
 import type { InvokableWorker, RequestMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';

@@ -1,9 +1,9 @@
-import addExitListeners from './exitHandler';
+import addExitListeners from './exit-handler';
 import createGracefulStop from './create-graceful-stop';
 import setupShutdown from './setup-shutdown';
 import createMockLogger from './mock-logger.test-helper';
 
-jest.mock('./exitHandler', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('./exit-handler', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('./create-graceful-stop', () => ({ __esModule: true, default: jest.fn() }));
 
 describe('setupShutdown', () => {

@@ -1,4 +1,4 @@
-import WorkerClass from './Worker';
+import WorkerClass from './worker';
 import WaitingLineClass from './waiting-line';
 import type { WorkerOptions as WorkerOptionsType } from './types';
 

@@ -6,7 +6,7 @@ import streamResponse from './stream-response';
 import chooseStaticAnswer from './choose-static-answer';
 import findCacheControl from './find-cache-control';
 import findPrecompressed from './find-precompressed';
-import getFileInfo, { getEtag } from './getFileInfo';
+import getFileInfo, { getEtag } from './get-file-info';
 import type { NormalizedStaticOptions } from './normalize-static-options';
 import type { ByteRange } from './parse-range';
 import readSmallFile from './read-small-file';

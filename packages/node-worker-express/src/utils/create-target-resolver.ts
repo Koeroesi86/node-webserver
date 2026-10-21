@@ -1,9 +1,9 @@
 import type { Request, Response } from 'express';
 import { ForbiddenPaths } from '../constants';
-import type { Probe } from './createProbe';
+import type { Probe } from './create-probe';
 import notFoundResponse from './not-found-response';
-import resolvePath from './resolvePath';
-import TtlCache from './ttlCache';
+import resolvePath from './resolve-path';
+import TtlCache from './ttl-cache';
 import writeTextResponse from './write-text-response';
 
 /** how long the way to a path is remembered, and how many paths are, so that a client asking for endless different ones cannot grow the cache */

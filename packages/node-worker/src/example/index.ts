@@ -1,4 +1,4 @@
-import Worker from '../Worker';
+import Worker from '../worker';
 
 const worker = new Worker('ts-node ./script.ts', {
   stdio: 'inherit',

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'fs';
 import { rm, writeFile } from 'fs/promises';
 import createProxyTarget from './create-proxy-target';
 import retireAgent from './retire-agent';
-import getDate from './getDate';
+import getDate from './get-date';
 import type { Logger, ProxyTarget, TargetStore } from '../types';
 
 interface StoreOptions {

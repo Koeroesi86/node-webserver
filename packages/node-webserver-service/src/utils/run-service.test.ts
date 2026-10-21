@@ -31,7 +31,7 @@ const until = async (condition: () => Promise<boolean>) => {
 };
 
 /** runs the built script, which is what the generated systemd unit and launchd plist start */
-describeWithSignals('manageService.js --run', () => {
+describeWithSignals('manage-service.js --run', () => {
   let folder: string;
 
   beforeEach(() => {

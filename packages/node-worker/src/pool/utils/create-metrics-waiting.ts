@@ -1,6 +1,6 @@
 import { WORKER_EVENT } from '../constants';
 import type { WorkerOutputEvent } from '../types';
-import type { Channel } from './createChannel';
+import type { Channel } from './create-channel';
 import type { RequestContexts } from './create-request-contexts';
 import type { ServerMetrics } from '../types';
 

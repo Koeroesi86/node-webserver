@@ -318,7 +318,7 @@ describe('workerMiddleware', () => {
       await fetch(`${t.baseUrl}/plain/file.txt`);
 
       expect(FakePool.last.acquire).toHaveBeenCalledWith(
-        expect.stringMatching(/staticWorker\.js$/),
+        expect.stringMatching(/static-worker\.js$/),
         expect.anything(),
         expect.anything(),
         expect.any(AbortSignal)

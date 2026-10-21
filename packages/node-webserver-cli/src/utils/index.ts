@@ -1,2 +1,2 @@
-export { default as parseArgv } from './parseArgv';
-export type { ParsedArgv } from './parseArgv';
+export { default as parseArgv } from './parse-argv';
+export type { ParsedArgv } from './parse-argv';

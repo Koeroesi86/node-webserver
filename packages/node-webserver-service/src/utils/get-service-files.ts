@@ -62,7 +62,7 @@ const getServiceFiles = (
   }
 
   throw new Error(
-    `Services are generated for systemd (linux) and launchd (macOS), not for ${platform}. On Windows run "node <package>/dist/scripts/manageService.js --run --configuration <file>" from WinSW, NSSM or Task Scheduler, see the README.`
+    `Services are generated for systemd (linux) and launchd (macOS), not for ${platform}. On Windows run "node <package>/dist/scripts/manage-service.js --run --configuration <file>" from WinSW, NSSM or Task Scheduler, see the README.`
   );
 };
 

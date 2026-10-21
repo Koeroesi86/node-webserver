@@ -4,9 +4,9 @@ import { RETIRE_TIMEOUT, RELOAD_DEBOUNCE } from '../constants';
 import type { Configuration, LoadedInstance, Logger, ServerState } from '../types';
 import createContextLookup from './create-context-lookup';
 import debounce from './debounce';
-import getDate from './getDate';
+import getDate from './get-date';
 import getWatchedFiles from './get-watched-files';
-import setupVirtualHosts from './setupVirtualHosts';
+import setupVirtualHosts from './setup-virtual-hosts';
 import watchFiles from './watch-files';
 
 type InstanceLoader = (previous: LoadedInstance[]) => LoadedInstance[];

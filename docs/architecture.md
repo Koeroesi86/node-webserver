@@ -18,7 +18,7 @@ The front server listens on the http and the https port (HTTP/2 and SNI optional
 3. The middleware of the server type takes over: the worker pool of `node-worker` behind `node-worker-express`, the `lambda` middleware (which runs on the same pool), or the `proxy` middleware (`packages/node-webserver/src/middlewares/`).
 4. Access logs are written when the response is complete, and compression is applied if the server has it on.
 
-`server/startServer.ts` builds two express apps from the configuration, one for http and one for https with SNI. With `http2` on, the https port also serves a separate app for HTTP/2 requests.
+`server/start-server.ts` builds two express apps from the configuration, one for http and one for https with SNI. With `http2` on, the https port also serves a separate app for HTTP/2 requests.
 
 ## Rules for the front process
 

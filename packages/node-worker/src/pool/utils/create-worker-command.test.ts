@@ -2,7 +2,7 @@ import path from 'path';
 import createWorkerCommand, { workerCommands } from './create-worker-command';
 
 describe('createWorkerCommand', () => {
-  const invoke = path.resolve(__dirname, '../workerInvoke.js');
+  const invoke = path.resolve(__dirname, '../worker-invoke.js');
 
   it('runs a JavaScript worker through the invoker', () => {
     expect(createWorkerCommand('/app/worker.js')).toEqual(['node', '--expose-gc', invoke, '/app/worker.js']);

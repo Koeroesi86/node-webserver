@@ -22,7 +22,7 @@ import createRequestContexts from './create-request-contexts';
 import type { Stream } from './create-request-contexts';
 import createResponseSender from './create-response-sender';
 import createWorkerEvent from './create-worker-event';
-import createChannel from './createChannel';
+import createChannel from './create-channel';
 import invokeWorker from './invoke-worker';
 import isRequestHandOff from './is-request-hand-off';
 import receiveWsMessage from './receive-ws-message';

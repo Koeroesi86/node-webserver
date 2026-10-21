@@ -1,5 +1,5 @@
 import type { EventEmitter } from 'events';
-import WorkerPool from './workerPool';
+import WorkerPool from './worker-pool';
 import createWorkerBudget from './create-worker-budget';
 import { pathA, pathB, createPool, acquireAll } from './worker-pool.test-helper';
 

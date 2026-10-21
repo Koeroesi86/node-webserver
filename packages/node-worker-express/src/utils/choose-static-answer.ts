@@ -1,5 +1,5 @@
 import type { Stats } from 'fs';
-import isNotModified from './isNotModified';
+import isNotModified from './is-not-modified';
 import matchesIfRange from './matches-if-range';
 import parseRange from './parse-range';
 import type { ByteRange } from './parse-range';

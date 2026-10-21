@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { uncachedProbe } from './createProbe';
+import { uncachedProbe } from './create-probe';
 import warmPaths from './warm-paths';
 
 describe('warmPaths', () => {

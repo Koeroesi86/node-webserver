@@ -5,7 +5,7 @@ const definition: ServiceDefinition = {
   name: 'nws',
   displayName: 'Node webserver',
   nodePath: '/usr/bin/node',
-  scriptPath: '/opt/nws/dist/scripts/manageService.js',
+  scriptPath: '/opt/nws/dist/scripts/manage-service.js',
   configPath: '/etc/nws/configuration.js',
   workingDirectory: '/etc/nws',
 };
@@ -15,7 +15,7 @@ describe('createSystemdUnit', () => {
     const unit = createSystemdUnit(definition);
 
     expect(unit).toContain('Description=Node webserver');
-    expect(unit).toContain('ExecStart="/usr/bin/node" "/opt/nws/dist/scripts/manageService.js" "--run" "--configuration" "/etc/nws/configuration.js"');
+    expect(unit).toContain('ExecStart="/usr/bin/node" "/opt/nws/dist/scripts/manage-service.js" "--run" "--configuration" "/etc/nws/configuration.js"');
     expect(unit).toContain('WorkingDirectory=/etc/nws');
     expect(unit).toContain('Restart=on-failure');
     expect(unit).toContain('WantedBy=multi-user.target');

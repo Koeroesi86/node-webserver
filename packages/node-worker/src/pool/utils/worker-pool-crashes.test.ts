@@ -1,6 +1,6 @@
 import { WORKER_EVENT } from '../constants';
-import WorkerPool from './workerPool';
-import WorkerUnavailableError from './workerUnavailableError';
+import WorkerPool from './worker-pool';
+import WorkerUnavailableError from './worker-unavailable-error';
 import { pathA, pathB, createPool, acquireAll } from './worker-pool.test-helper';
 
 jest.mock('../../index', () => require('./fake-worker.test-helper').createFakeWorkerModule());
