@@ -15,10 +15,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createVersion } from '../utils/create-version';
-import { describePlanItem } from '../utils/describe-plan-item';
-import { planVersions } from '../utils/plan-versions';
-import { stampPackage } from '../utils/stamp-package';
+import { createVersion, describePlanItem, planVersions, stampPackage } from '../utils';
 
 const { GITHUB_RUN_ID, GITHUB_REF_NAME, NPM_REGISTRY_URL = 'https://registry.npmjs.org', VERSION_DRY_RUN, PUBLISH_ALL } = process.env;
 

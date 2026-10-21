@@ -3,10 +3,10 @@ import os from 'os';
 import path from 'path';
 import exampleConfiguration from '../configuration.example';
 import checkConfiguration from './check-configuration';
-import createInstanceHandler from './create-instance-handler';
+import { createInstanceHandler } from '../server';
 
 // the check must not start anything, which the real handler would do for every type
-jest.mock('./create-instance-handler', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../server/create-instance-handler', () => ({ __esModule: true, default: jest.fn() }));
 
 describe('checkConfiguration', () => {
   let folder: string;

@@ -4,6 +4,14 @@
   "description": "A local Lambda implementation",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./configuration.schema.json": "./configuration.schema.json"
+  },
   "files": [
     "dist",
     "configuration.schema.json",

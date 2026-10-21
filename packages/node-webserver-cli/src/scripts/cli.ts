@@ -2,7 +2,7 @@
 
 import { resolve } from 'path';
 import startServer, { checkConfiguration, formatProblems } from '@koeroesi86/node-webserver';
-import parseArgv from '../utils/parseArgv';
+import { parseArgv } from '../utils';
 
 const { config, check } = parseArgv();
 

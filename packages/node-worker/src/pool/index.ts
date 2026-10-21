@@ -1,16 +1,19 @@
-export { default as WorkerPool } from './utils/workerPool';
-export type { WorkerLease, SpawnOptions } from './utils/workerPool';
-export type { WorkerOptions } from './utils/spawn-worker';
-export { default as createWorkerBudget } from './utils/create-worker-budget';
-export { default as startWorkerProcess } from './utils/start-worker-process';
-export { default as createBodyForwarder } from './utils/create-body-forwarder';
-export type { BodyForwarderParams } from './utils/create-body-forwarder';
-export { default as createChannel } from './utils/createChannel';
-export type { Channel } from './utils/createChannel';
-export type { WireMessage } from './utils/frames';
-export { default as WorkerAbandonedError } from './utils/workerAbandonedError';
-export { default as WorkerBusyError } from './utils/workerBusyError';
-export { default as WorkerUnavailableError } from './utils/workerUnavailableError';
-export { default as WorkerStartError } from './utils/workerStartError';
+export {
+  type BodyForwarderParams,
+  type Channel,
+  createBodyForwarder,
+  createChannel,
+  createWorkerBudget,
+  type SpawnOptions,
+  startWorkerProcess,
+  type WireMessage,
+  workerAbandonedError as WorkerAbandonedError,
+  workerBusyError as WorkerBusyError,
+  type WorkerLease,
+  type WorkerOptions,
+  workerPool as WorkerPool,
+  workerStartError as WorkerStartError,
+  workerUnavailableError as WorkerUnavailableError,
+} from './utils';
 export * from './constants';
 export * from './types';

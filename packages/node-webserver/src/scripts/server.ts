@@ -1,6 +1,5 @@
-import { findPorts } from '../utils/ports';
-import createLogger from '../utils/create-logger';
-import startServer from '../utils/startServer';
+import { startServer } from '../server';
+import { createLogger, findPorts } from '../utils';
 import Configuration from '../configuration.example';
 
 const logger = createLogger(Configuration);

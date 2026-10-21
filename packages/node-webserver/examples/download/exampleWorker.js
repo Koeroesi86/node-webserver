@@ -1,4 +1,4 @@
-const streamResponse = require('@koeroesi86/node-worker-express/dist/streamResponse');
+const streamResponse = require('@koeroesi86/node-worker-express').streamResponse;
 
 const part = 1024 * 1024;
 const clamp = (value, fallback, max) => Math.min(Number.isInteger(value) && value > 0 ? value : fallback, max);

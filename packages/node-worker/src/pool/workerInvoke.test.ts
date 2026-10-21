@@ -8,8 +8,7 @@ import path from 'path';
 import { Duplex } from 'stream';
 import ts from 'typescript';
 import { WORKER_EVENT } from './constants';
-import createChannel from './utils/createChannel';
-import type { Channel } from './utils/createChannel';
+import { type Channel, createChannel } from './utils';
 import type { ResponseMessage, WorkerInputEvent } from './types';
 import type { ServerMetrics } from './types';
 

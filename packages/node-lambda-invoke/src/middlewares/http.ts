@@ -1,16 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
-import RequestBodyTooLargeError from '../classes/RequestBodyTooLargeError';
+import { RequestBodyTooLargeError } from '../classes';
 import { DEFAULT_LIMIT_REQUEST_BODY, DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT } from '../constants';
-import answerFailure from '../utils/answer-failure';
-import answerOutcome from '../utils/answer-outcome';
-import createLambdaPool from '../utils/create-lambda-pool';
-import createLambdaStatsSource from '../utils/create-lambda-stats-source';
-import createWorkerRequestEvent from '../utils/create-worker-request-event';
-import invokeLambda from '../utils/invoke-lambda';
-import sweepLambdaFolders from '../utils/sweep-lambda-folders';
-import { defaultLambdaStats } from '../utils/get-lambda-stats';
+import {
+  answerFailure,
+  answerOutcome,
+  createLambdaPool,
+  createLambdaStatsSource,
+  createWorkerRequestEvent,
+  defaultLambdaStats,
+  invokeLambda,
+  sweepLambdaFolders,
+} from '../utils';
 import type { HttpMiddlewareOptions } from '../types';
 
 /**

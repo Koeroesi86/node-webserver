@@ -1,11 +1,6 @@
 import type { RequestHandler, Response } from 'express';
 import { CONTROL_BODY_LIMIT, CONTROL_FAILURES_PER_WINDOW, CONTROL_RATE_WINDOW, CONTROL_UPDATES_PER_WINDOW } from '../constants';
-import createRateLimiter from '../utils/create-rate-limiter';
-import getClientAddress from '../utils/get-client-address';
-import getDate from '../utils/getDate';
-import readBody from '../utils/read-body';
-import resolveRegisteredTarget from '../utils/resolve-registered-target';
-import tokensMatch from '../utils/tokens-match';
+import { createRateLimiter, getClientAddress, getDate, readBody, resolveRegisteredTarget, tokensMatch } from '../utils';
 import type { DynamicTargetOptions, Logger, ProxyTarget, TargetStore } from '../types';
 
 interface ControlOptions extends DynamicTargetOptions {

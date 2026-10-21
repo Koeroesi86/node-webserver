@@ -1,7 +1,7 @@
 import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from '@koeroesi86/node-worker/pool';
 import { Socket } from 'node:net';
 import { pipeline } from 'node:stream/promises';
-import forEachWhile from './utils/for-each-while';
+import forEachWhile from './for-each-while';
 
 const proceeds = (result: unknown) => result !== false;
 
@@ -102,5 +102,5 @@ async function streamResponse(
   return completed && results.every(proceeds);
 }
 
-/** required by its file path in the workers (`dist/streamResponse`), so it has to stay a CommonJS `module.exports` */
+/** the workers get it as `require('@koeroesi86/node-worker-express').streamResponse`, which is this function, so it stays a CommonJS `module.exports` */
 export = streamResponse;

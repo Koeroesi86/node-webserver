@@ -3,17 +3,17 @@ import { Agent } from 'http';
 import { middleware } from '@koeroesi86/node-worker-express';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
-import lambdaMiddleware from '../middlewares/lambda';
+import { lambda as lambdaMiddleware } from '../middlewares';
 import createInstanceHandler from './create-instance-handler';
-import createMockLogger from './mock-logger.test-helper';
-import retireAgent from './retire-agent';
+import createMockLogger from '../utils/mock-logger.test-helper';
+import { retireAgent } from '../utils';
 import type { Request, Response } from 'express';
 import type { LoadedInstance, ServerConfig, ServerRuntime } from '../types';
 
 // the child process and the proxy are started by the middleware, one that leaves the request open is enough here
 jest.mock('../middlewares/proxy', () => ({ __esModule: true, default: jest.fn(() => jest.fn()) }));
 // the agent of a target is checked by the test of the target store
-jest.mock('./retire-agent', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../utils/retire-agent', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../middlewares/lambda', () => ({ __esModule: true, default: jest.fn(() => Object.assign(jest.fn(), { close: jest.fn() })) }));
 jest.mock('@koeroesi86/node-worker-express', () => ({ middleware: jest.fn(() => Object.assign(jest.fn(), { close: jest.fn(async () => {}) })) }));
 

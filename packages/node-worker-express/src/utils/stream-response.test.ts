@@ -1,13 +1,13 @@
 import type { ResponseCallback, ResponseEvent } from '@koeroesi86/node-worker/pool';
 import net from 'net';
 import { Readable } from 'stream';
-import streamResponse from './streamResponse';
+import streamResponse from './stream-response';
 
 const bodyOf = (parts: ResponseEvent[]) => Buffer.concat(parts.map(({ body }) => body).filter(Buffer.isBuffer));
 
 describe('streamResponse', () => {
-  it('is the module.exports of its file, as workers require it by its path', () => {
-    expect(jest.requireActual('./streamResponse')).toBe(streamResponse);
+  it('is the module.exports of its file, which workers get as the streamResponse of the package', () => {
+    expect(jest.requireActual('./stream-response')).toBe(streamResponse);
   });
 
   /** collects the parts, `acknowledge` decides what the promise of each part resolves to */

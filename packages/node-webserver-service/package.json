@@ -15,6 +15,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "exports": {
+    "./package.json": "./package.json"
+  },
   "bin": {
     "nws-service": "./dist/scripts/manageService.js"
   },

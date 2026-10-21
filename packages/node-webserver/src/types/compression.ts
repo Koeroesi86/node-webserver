@@ -1,5 +1,5 @@
 import type { Transform } from 'stream';
-import type { CompressionEncoding } from '../utils/compression-streams';
+import type { CompressionEncoding } from '../utils';
 
 export interface CompressionOptions {
   /** responses of a known size below this many bytes are sent as they are. Defaults to 1024. */

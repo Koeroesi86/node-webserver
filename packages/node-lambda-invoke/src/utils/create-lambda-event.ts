@@ -1,5 +1,5 @@
 import type { WorkerRequestEvent } from '@koeroesi86/node-worker/pool';
-import RequestEvent from '../classes/RequestEvent';
+import { RequestEvent } from '../classes';
 import parseRawHeaders from './parse-raw-headers';
 
 const decoder = new TextDecoder('utf-8', { fatal: true });

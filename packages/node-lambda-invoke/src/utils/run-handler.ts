@@ -1,6 +1,5 @@
-import ResponseEvent from '../classes/ResponseEvent';
+import { type RequestEvent, ResponseEvent } from '../classes';
 import { MESSAGE_INTERNAL_SERVER_ERROR } from '../constants';
-import type RequestEvent from '../classes/RequestEvent';
 import type { LambdaContext, LambdaHandler } from '../types';
 
 const isPromiseLike = (value: unknown): value is PromiseLike<unknown> =>

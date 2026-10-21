@@ -1,9 +1,5 @@
 import createInstanceHandler from './create-instance-handler';
-import loadInstanceModule from './load-instance-module';
-import readFingerprint from './read-fingerprint';
-import reportProblems from './report-problems';
-import setupSecureContexts from './setupSecureContexts';
-import validateServers from './validate-servers';
+import { loadInstanceModule, readFingerprint, reportProblems, setupSecureContexts, validateServers } from '../utils';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { CompressionBudget, Configuration, LoadedInstance, Logger } from '../types';

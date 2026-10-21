@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import type { RequestHandler } from 'express';
 
-import { getFreePort } from '../utils/ports';
+import { getFreePort } from '../utils';
 import { PROXY_PROTOCOLS } from '../constants';
 import proxyServerMiddleware from './proxy-server';
 import type { Logger, ServerConfig, ServerRuntime } from '../types';

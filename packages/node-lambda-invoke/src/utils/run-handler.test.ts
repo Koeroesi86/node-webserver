@@ -1,4 +1,4 @@
-import RequestEvent from '../classes/RequestEvent';
+import { RequestEvent } from '../classes';
 import createContext from './create-context';
 import runHandler from './run-handler';
 import type { LambdaHandler } from '../types';

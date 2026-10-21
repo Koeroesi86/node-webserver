@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import loadInstances from './load-instances';
-import createMockLogger from './mock-logger.test-helper';
+import createMockLogger from '../utils/mock-logger.test-helper';
 import type { ServerConfig } from '../types';
 
 // the real middleware, as the routes are checked by it: a mistake in them has to stop the server while its configuration is loaded

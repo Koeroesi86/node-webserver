@@ -1,7 +1,7 @@
 // Starts the server of the built package with the configuration of the fixtures, like the script of the package does with its own.
 
 const { findPorts } = require('../../dist/utils/ports');
-const startServer = require('../../dist/utils/startServer').default;
+const startServer = require('../../dist/server/startServer').default;
 const configuration = require('./server-configuration');
 
 findPorts(configuration.portLookup)

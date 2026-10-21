@@ -2,7 +2,7 @@ import express from 'express';
 import { WORKER_EVENT } from '@koeroesi86/node-worker/pool';
 import http from 'http';
 import net from 'net';
-import { isRequestHandedOff, requestHandOffDoneEvent } from '../utils/is-handed-off';
+import { isRequestHandedOff, requestHandOffDoneEvent } from '../utils';
 import workerMiddleware from './index';
 import { setupMiddlewareTest, type Handlers } from './middleware.test-helper';
 

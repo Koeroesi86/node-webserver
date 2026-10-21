@@ -1,4 +1,4 @@
-import type ResponseEvent from '../classes/ResponseEvent';
+import type { ResponseEvent } from '../classes';
 
 /** the headers of a response: `headers`, the values of `multiValueHeaders` added to them, and the `cookies` as `Set-Cookie` headers */
 const createResponseHeaders = ({ headers, multiValueHeaders, cookies }: ResponseEvent): Record<string, string | string[]> => {

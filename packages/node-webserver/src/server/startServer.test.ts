@@ -1,11 +1,11 @@
 import net from 'net';
 import { getServerMetrics } from '@koeroesi86/node-worker-express';
-import setupShutdown from './setup-shutdown';
+import { setupShutdown } from '../utils';
 import startServer from './startServer';
-import createMockLogger from './mock-logger.test-helper';
+import createMockLogger from '../utils/mock-logger.test-helper';
 
 // the exit listeners belong to the process, not to the server under test
-jest.mock('./setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../utils/setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
 
 describe('startServer', () => {
   const configuration = { servers: [], portHttp: 0, portHttps: 0, statsDomain: false as const, watchServers: false };
@@ -97,7 +97,7 @@ describe('startServer', () => {
     const counts = () => events.map((event) => process.listenerCount(event));
     const start = counts();
     // the real shutdown, as the listeners it adds are what must not be left behind
-    jest.mocked(setupShutdown).mockImplementation(jest.requireActual('./setup-shutdown').default);
+    jest.mocked(setupShutdown).mockImplementation(jest.requireActual('../utils/setup-shutdown').default);
 
     const first = await startServer(configuration, createMockLogger());
     const second = await startServer(configuration, createMockLogger());

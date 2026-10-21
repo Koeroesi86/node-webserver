@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { WorkerAbandonedError, WorkerBusyError, WorkerStartError, WorkerUnavailableError } from '@koeroesi86/node-worker/pool';
-import RequestBodyTooLargeError from '../classes/RequestBodyTooLargeError';
+import { RequestBodyTooLargeError } from '../classes';
 import answerFailure from './answer-failure';
 
 const answer = (error: unknown, writable = true) => {

@@ -4,6 +4,24 @@
   "description": "NodeJS implementation of WebWorkers, and a pool of worker processes on it",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./pool": {
+      "types": "./dist/pool/index.d.ts",
+      "default": "./dist/pool/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "pool": [
+        "dist/pool/index.d.ts"
+      ]
+    }
+  },
   "scripts": {
     "test": "jest",
     "build": "rimraf dist && tsc -p tsconfig.build.json",
@@ -33,7 +51,6 @@
     "typescript": "^6.0.3"
   },
   "files": [
-    "dist",
-    "pool"
+    "dist"
   ]
 }

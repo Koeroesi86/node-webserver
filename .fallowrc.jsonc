@@ -72,7 +72,7 @@
         "reason": "http.test.ts runs the compiled dist of the middleware with real lambda processes, so jest does not instrument the source, but it checks what the middleware answers"
       },
       {
-        "files": ["packages/node-webserver/src/utils/startServer.ts", "packages/node-webserver/src/utils/setupStatsHandler.ts"],
+        "files": ["packages/node-webserver/src/server/startServer.ts", "packages/node-webserver/src/utils/setupStatsHandler.ts"],
         "functions": ["startServer", "refreshInstanceStats"],
         "maxCrap": 60,
         "reason": "wiring of the real servers and sockets, which the integration test starts from the bundle and checks end to end; the unit tests do not run it"

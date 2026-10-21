@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { FileCoverage, PackageCoverage } from '../types/coverage';
-import { buildCoverageReport } from '../utils/build-coverage-report';
-import { summarizeFileCoverage } from '../utils/summarize-file-coverage';
+import { buildCoverageReport, summarizeFileCoverage } from '../utils';
 
 // Merges the istanbul output of `pnpm test:coverage` (`coverage/coverage-final.json` of every package and of the tools) into one markdown report and one json file.
 //   node coverage-report.js [workspace-root]

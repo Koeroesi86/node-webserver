@@ -1,7 +1,5 @@
 import { copyFileSync, existsSync } from 'fs';
-import parseArguments from '../utils/parse-arguments';
-import resolveConfigurationPath from '../utils/resolve-configuration-path';
-import start from '../utils/start';
+import { parseArguments, resolveConfigurationPath, start } from '../utils';
 import { DEFAULT_CONFIGURATION_PATH } from '../constants';
 
 const { configuration } = parseArguments(process.argv.slice(2));
