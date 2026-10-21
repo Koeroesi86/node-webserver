@@ -2,7 +2,7 @@ import type { ResponseCallback, ResponseEvent, WorkerRequestEvent } from '@koero
 import { createReadStream } from 'fs';
 import type { Stats } from 'fs';
 import { StaticStreamThreshold } from '../constants';
-import streamResponse from '../streamResponse';
+import streamResponse from './stream-response';
 import chooseStaticAnswer from './choose-static-answer';
 import findCacheControl from './find-cache-control';
 import findPrecompressed from './find-precompressed';

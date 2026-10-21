@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { defaultDuration, defaultPortHttp, defaultPortHttps } from '../constants/load-test';
-import { runLoadTest } from '../utils/run-load-test';
+import { runLoadTest } from '../utils';
 
 // Starts the example server and runs the k6 scenarios against it on this machine, with the installed k6 or else the official Docker image.
 //   node load-test.js [duration of the example load test, 15s]

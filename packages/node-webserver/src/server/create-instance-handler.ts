@@ -2,13 +2,13 @@ import type { RequestHandler } from 'express';
 import { middleware as workerMiddleware } from '@koeroesi86/node-worker-express';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
-import compressionMiddleware from '../middlewares/compression';
-import proxyMiddleware from '../middlewares/proxy';
-import proxyServerMiddleware from '../middlewares/proxy-server';
-import lambdaMiddleware from '../middlewares/lambda';
-import getDate from './getDate';
-import trackRequests from './track-requests';
-import untilIdle from './until-idle';
+import {
+  compression as compressionMiddleware,
+  lambda as lambdaMiddleware,
+  proxy as proxyMiddleware,
+  proxyServer as proxyServerMiddleware,
+} from '../middlewares';
+import { getDate, trackRequests, untilIdle } from '../utils';
 import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
 
 interface Context {

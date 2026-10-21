@@ -1,7 +1,5 @@
-import checkConfiguration from './utils/check-configuration';
-import formatProblems from './utils/format-problems';
-import startServer from './utils/startServer';
-import * as ports from './utils/ports';
+import { startServer } from './server';
+import { checkConfiguration, formatProblems, ports } from './utils';
 
 const api = Object.assign(startServer, { default: startServer, startServer, checkConfiguration, formatProblems, ports });
 

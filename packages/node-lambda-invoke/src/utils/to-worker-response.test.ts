@@ -1,4 +1,4 @@
-import ResponseEvent from '../classes/ResponseEvent';
+import { ResponseEvent } from '../classes';
 import toWorkerResponse from './to-worker-response';
 
 const response = (fields: Partial<ResponseEvent>) => Object.assign(new ResponseEvent(), fields);

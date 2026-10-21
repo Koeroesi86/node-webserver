@@ -1,4 +1,4 @@
-import { compareFiles } from '../utils/compare-files';
+import { compareFiles } from '../utils';
 
 // Compares the k6 summaries of the base of a pull request with the ones of the pull request itself, both measured in the same job.
 //   node compare.js --base base-1.json base-2.json ... --head head-1.json head-2.json ... [--base-cpu ...] [--head-cpu ...] [--base-binary ...] [--head-binary ...]

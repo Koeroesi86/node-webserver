@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { isHandedOff, isRequestHandedOff, requestHandOffDoneEvent } from '@koeroesi86/node-worker-express';
-import getDate from '../utils/getDate';
+import { getDate } from '../utils';
 import type { Logger, LogLevels } from '../types';
 
 // the host header is read from the parsed headers, request.get() lowercases the name and looks at the special cases of express for every call

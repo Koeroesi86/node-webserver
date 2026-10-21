@@ -1,17 +1,19 @@
 import { WorkerPool } from '@koeroesi86/node-worker/pool';
 import path from 'path';
 import { DefaultOptions } from '../constants';
-import createSlotCounter from '../utils/create-slot-counter';
+import {
+  createLeaseAcquirer,
+  createPathLatency,
+  createProbe,
+  createRequestHandler,
+  createRouteTable,
+  createSlotCounter,
+  createStaticWorkerOptions,
+  createTargetResolver,
+  registerMetricsSource,
+  warmPaths,
+} from '../utils';
 import { MiddlewareOptions, WorkerMiddleware } from '../types';
-import createProbe from '../utils/createProbe';
-import createRouteTable from '../utils/create-route-table';
-import createPathLatency from '../utils/create-path-latency';
-import { registerMetricsSource } from '../utils/metrics';
-import createTargetResolver from '../utils/create-target-resolver';
-import createLeaseAcquirer from '../utils/create-lease-acquirer';
-import createRequestHandler from '../utils/create-request-handler';
-import createStaticWorkerOptions from '../utils/create-static-worker-options';
-import warmPaths from '../utils/warm-paths';
 
 const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const config = {

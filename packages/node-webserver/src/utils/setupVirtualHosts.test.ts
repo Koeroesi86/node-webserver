@@ -2,7 +2,7 @@ import express from 'express';
 import http from 'http';
 import zlib from 'zlib';
 import { middleware } from '@koeroesi86/node-worker-express';
-import createInstanceHandler from './create-instance-handler';
+import { createInstanceHandler } from '../server';
 import setupVirtualHosts from './setupVirtualHosts';
 import createMockLogger from './mock-logger.test-helper';
 import type { Express, RequestHandler } from 'express';

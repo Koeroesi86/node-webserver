@@ -1,7 +1,7 @@
 import { WORKER_EVENT, WorkerAbandonedError, WorkerBusyError, WorkerUnavailableError } from '@koeroesi86/node-worker/pool';
 import http from 'http';
 import path from 'path';
-import { getServerMetrics } from '../utils/metrics';
+import { getServerMetrics } from '../utils';
 import { setupMiddlewareTest } from './middleware.test-helper';
 
 jest.mock('@koeroesi86/node-worker/pool', () => require('./fake-pool.test-helper').createFakePoolModule());

@@ -1,4 +1,4 @@
-import ResponseEvent from '../classes/ResponseEvent';
+import { ResponseEvent } from '../classes';
 import createResponseHeaders from './create-response-headers';
 
 const response = (fields: Partial<ResponseEvent>) => Object.assign(new ResponseEvent(), fields);

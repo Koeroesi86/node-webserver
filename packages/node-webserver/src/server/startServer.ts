@@ -4,21 +4,23 @@ import http from 'http';
 import type net from 'net';
 import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget } from '@koeroesi86/node-worker-express';
-import accessLogsMiddleware from '../middlewares/accessLogs';
-import applyTrustedProxies from './apply-trusted-proxies';
-import configureServer from './configureServer';
-import createCompressionBudget from './create-compression-budget';
-import createHttp2App from './create-http2-app';
-import createLogger from './create-logger';
-import createHttpsServer from './create-https-server';
-import createServerReloader from './create-server-reloader';
-import hydrateConfiguration from './hydrate-configuration';
+import { accessLogs as accessLogsMiddleware } from '../middlewares';
+import {
+  applyTrustedProxies,
+  configureServer,
+  createCompressionBudget,
+  createHttp2App,
+  createHttpsServer,
+  createLogger,
+  createServerReloader,
+  hydrateConfiguration,
+  registerServerMetrics,
+  reportProblems,
+  setupProcessHooks,
+  setupStatsHandler,
+  validateConfiguration,
+} from '../utils';
 import loadInstances from './load-instances';
-import reportProblems from './report-problems';
-import registerServerMetrics from './register-server-metrics';
-import setupProcessHooks from './setup-process-hooks';
-import setupStatsHandler from './setupStatsHandler';
-import validateConfiguration from './validate-configuration';
 import type { Configuration, Logger } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));

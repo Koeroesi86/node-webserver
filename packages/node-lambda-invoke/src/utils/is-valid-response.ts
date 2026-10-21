@@ -1,4 +1,4 @@
-import type ResponseEvent from '../classes/ResponseEvent';
+import type { ResponseEvent } from '../classes';
 
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string');
 

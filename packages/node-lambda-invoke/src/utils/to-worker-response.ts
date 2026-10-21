@@ -1,6 +1,6 @@
 import type { ResponseEvent as WorkerResponseEvent } from '@koeroesi86/node-worker/pool';
 import { MESSAGE_INTERNAL_SERVER_ERROR } from '../constants';
-import type ResponseEvent from '../classes/ResponseEvent';
+import type { ResponseEvent } from '../classes';
 import createResponseHeaders from './create-response-headers';
 import isValidResponse from './is-valid-response';
 

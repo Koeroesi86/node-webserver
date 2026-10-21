@@ -4,12 +4,12 @@ import path from 'path';
 import tls from 'tls';
 import createInstanceHandler from './create-instance-handler';
 import loadInstances from './load-instances';
-import createMockLogger from './mock-logger.test-helper';
+import createMockLogger from '../utils/mock-logger.test-helper';
 import type { ServerConfig } from '../types';
 
 // a server starts processes, a handler that remembers whether it was stopped is enough here
 // the files of the certificates are no real ones here, an empty context stands in for theirs
-jest.mock('./find-certificate-problems', () => ({ __esModule: true, default: () => [] }));
+jest.mock('../utils/find-certificate-problems', () => ({ __esModule: true, default: () => [] }));
 jest.mock('./create-instance-handler', () => ({ __esModule: true, default: jest.fn(() => ({ handler: jest.fn(), close: jest.fn() })) }));
 
 describe('loadInstances', () => {

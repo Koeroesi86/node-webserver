@@ -1,10 +1,5 @@
 import type { RequestHandler } from 'express';
-import { defaultEncodings } from '../utils/compression-streams';
-import asString from '../utils/as-string';
-import chooseEncoding from '../utils/choose-encoding';
-import createCompressionBudget from '../utils/create-compression-budget';
-import decideCompression from '../utils/decide-compression';
-import patchResponse from '../utils/patch-response';
+import { asString, chooseEncoding, createCompressionBudget, decideCompression, defaultEncodings, patchResponse } from '../utils';
 import type { CompressionBudget, CompressionOptions } from '../types';
 
 /**

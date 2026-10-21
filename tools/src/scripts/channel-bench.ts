@@ -1,5 +1,4 @@
-import { runChannelBench } from '../utils/run-channel-bench';
-import { formatChannelBench } from '../utils/format-channel-bench';
+import { formatChannelBench, runChannelBench } from '../utils';
 import type { ChannelMode } from '../types/channel-bench';
 
 // Measures the channel between the server and a worker on its own, with no HTTP in the way: messages with and without bodies to a child that echoes them.

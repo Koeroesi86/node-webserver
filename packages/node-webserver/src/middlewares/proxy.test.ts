@@ -4,11 +4,11 @@ import http from 'http';
 import net from 'net';
 import { once } from 'events';
 import proxyMiddleware from './proxy';
-import { addPort, clearPorts } from '../utils/ports';
+import { addPort, clearPorts } from '../utils';
 import createMockLogger from '../utils/mock-logger.test-helper';
 import type { ServerConfig, ServerRuntime } from '../types';
 
-jest.mock('child_process', () => ({ spawn: jest.fn(() => ({ pid: 1 })) }));
+jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spawn: jest.fn(() => ({ pid: 1 })) }));
 
 const instance = (extra: Partial<ServerConfig> = {}): ServerConfig => ({
   hostname: 'child.localhost',

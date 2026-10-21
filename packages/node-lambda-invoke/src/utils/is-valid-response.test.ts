@@ -1,5 +1,5 @@
 import isValidResponse from './is-valid-response';
-import ResponseEvent from '../classes/ResponseEvent';
+import { ResponseEvent } from '../classes';
 
 /** what a lambda can send: anything that survives the trip to the server */
 const response = (fields: Record<string, unknown>) => Object.assign(new ResponseEvent(), fields);

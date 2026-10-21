@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { WorkerAbandonedError, WorkerBusyError } from '@koeroesi86/node-worker/pool';
-import RequestBodyTooLargeError from '../classes/RequestBodyTooLargeError';
+import { RequestBodyTooLargeError } from '../classes';
 import { MESSAGE_INTERNAL_SERVER_ERROR, MESSAGE_SERVICE_UNAVAILABLE } from '../constants';
 import type { Logger } from '../types';
 import writeError from './write-error';

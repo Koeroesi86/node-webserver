@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import net from 'net';
 import path from 'path';
-import { getServerMetrics } from '../utils/metrics';
+import { getServerMetrics } from '../utils';
 import workerMiddleware from './index';
 import { setupMiddlewareTest, type Handlers } from './middleware.test-helper';
 

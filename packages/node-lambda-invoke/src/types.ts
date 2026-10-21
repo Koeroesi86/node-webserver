@@ -1,4 +1,4 @@
-import type RequestEvent from './classes/RequestEvent';
+import type { RequestEvent } from './classes';
 
 export type Logger = (...args: unknown[]) => void;
 

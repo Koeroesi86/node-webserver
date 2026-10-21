@@ -2,7 +2,7 @@ import http2 from 'http2';
 import zlib from 'zlib';
 import type { Express, Request, Response } from 'express';
 import type { AddressInfo } from 'net';
-import compressionMiddleware from '../middlewares/compression';
+import { compression as compressionMiddleware } from '../middlewares';
 import createHttp2App from './create-http2-app';
 
 interface Reply {
