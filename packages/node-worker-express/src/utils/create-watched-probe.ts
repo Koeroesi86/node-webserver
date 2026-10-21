@@ -1,6 +1,6 @@
 import fs from 'fs';
-import fsPromises from 'fs/promises';
 import path from 'path';
+import readDirectoryNames from './read-directory-names';
 import TtlCache from './ttl-cache';
 import type { Probe } from './create-probe';
 
@@ -25,16 +25,19 @@ const watchDirectory = (directory: string) => {
 export default function createWatchedProbe(
   base: Probe,
   {
-    maxDirectories = 1000,
+    maxDirectories = 256,
     maxEntries = 5000,
+    maxTotalEntries = 20000,
     cooldown = 1000,
     oversizedCooldown = 60000,
     maxAge = 1000,
   }: {
-    /** how many directories are listed and watched at the same time, the oldest listing goes first */
+    /** how many directories are listed and watched at the same time, no more are listed until a listing has expired */
     maxDirectories?: number;
     /** a directory with more entries keeps using the probe below */
     maxEntries?: number;
+    /** how many names all listings hold together, which bounds their memory, a directory that would not fit is not listed */
+    maxTotalEntries?: number;
     /** how long a directory that changed, or could not be watched, is left alone before it is listed again */
     cooldown?: number;
     /** the same for a directory that is too large to list, which is costly to find out again */
@@ -42,15 +45,24 @@ export default function createWatchedProbe(
     /** how long a listing is kept at the longest, whatever the watcher reported */
     maxAge?: number;
   } = {}
-): Probe & { close: () => void } {
+): Probe & { close: () => void; stats: () => { directories: number; listings: number; entries: number } } {
   // a watcher is there from the moment the directory is read, a listing once the read is done
   const watchers = new Map<string, fs.FSWatcher>();
   const listings = new Map<string, { names: Set<string>; expires: number }>();
-  const changed = new TtlCache<true>(cooldown, maxDirectories * 10);
+  const changed = new TtlCache<true>(cooldown, maxDirectories);
+  const oversized = new TtlCache<true>(oversizedCooldown, maxDirectories);
+  const missed = new TtlCache<true>(cooldown, maxDirectories * 4);
+  const entryLimit = Math.min(maxEntries, maxTotalEntries);
+  let totalEntries = 0;
   let closed = false;
-  const oversized = new TtlCache<true>(oversizedCooldown, maxDirectories * 10);
+
+  // 0 directories switches the listings off, the probe below is then all there is
+  if (maxDirectories <= 0) {
+    return { ...base, stats: () => ({ directories: 0, listings: 0, entries: 0 }), close: () => undefined };
+  }
 
   const drop = (directory: string) => {
+    totalEntries -= listings.get(directory)?.names.size ?? 0;
     watchers.get(directory)?.close();
     watchers.delete(directory);
     listings.delete(directory);
@@ -62,25 +74,45 @@ export default function createWatchedProbe(
     changed.set(directory, true);
   };
 
-  const keep = (directory: string, watcher: fs.FSWatcher, names: string[]) => {
-    if (watchers.get(directory) !== watcher) return;
-    if (names.length <= maxEntries) {
-      listings.set(directory, { names: new Set(names.map(normalize)), expires: Date.now() + maxAge });
-      return;
-    }
-    drop(directory);
-    oversized.set(directory, true);
+  // listings are added with the same age, so the oldest is the first one to expire
+  const dropExpired = () => {
+    const [oldest, listing] = listings.entries().next().value ?? [];
+    if (oldest === undefined || listing.expires > Date.now()) return;
+
+    drop(oldest);
+    dropExpired();
   };
 
-  const makeRoom = () => {
-    const oldest = watchers.keys().next().value;
-    if (watchers.size >= maxDirectories && oldest !== undefined) drop(oldest);
+  const keep = (directory: string, watcher: fs.FSWatcher, names: Set<string> | undefined) => {
+    if (watchers.get(directory) !== watcher) return;
+    if (names === undefined) {
+      drop(directory);
+      oversized.set(directory, true);
+      return;
+    }
+
+    dropExpired();
+    if (totalEntries + names.size > maxTotalEntries) {
+      // the listings that are there stay, one that is read again and again would cost more than it saves
+      drop(directory);
+      changed.set(directory, true);
+      return;
+    }
+    listings.set(directory, { names, expires: Date.now() + maxAge });
+    totalEntries += names.size;
   };
 
   const list = (directory: string) => {
     if (closed || watchers.has(directory) || changed.get(directory) || oversized.get(directory)) return;
+    // a directory is listed when a second path in it is missing, a scan that asks for one path per directory would only fill the watchers
+    if (missed.get(directory) === undefined) {
+      missed.set(directory, true);
+      return;
+    }
 
-    makeRoom();
+    if (watchers.size >= maxDirectories) dropExpired();
+    if (watchers.size >= maxDirectories) return;
+
     // watching starts before reading, so that a change during the read drops the watcher and the stale listing is not kept
     const watcher = watchDirectory(directory);
     if (watcher === undefined) {
@@ -91,8 +123,7 @@ export default function createWatchedProbe(
     watchers.set(directory, watcher);
     watcher.on('change', () => dropWatched(directory, watcher));
     watcher.on('error', () => dropWatched(directory, watcher));
-    fsPromises
-      .readdir(directory)
+    readDirectoryNames(directory, entryLimit, normalize)
       .then((names) => keep(directory, watcher, names))
       .catch(() => dropWatched(directory, watcher));
   };
@@ -123,8 +154,10 @@ export default function createWatchedProbe(
   return {
     exists: answer(base.exists, false),
     stat: answer(base.stat, undefined),
+    stats: () => ({ directories: watchers.size, listings: listings.size, entries: totalEntries }),
     close: () => {
       closed = true;
+      totalEntries = 0;
       watchers.forEach((watcher) => watcher.close());
       watchers.clear();
       listings.clear();

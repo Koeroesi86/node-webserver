@@ -77,6 +77,8 @@ export const DefaultOptions: MiddlewareOptions = {
   limitWebSocketConnections: 1000,
   webSocketPingInterval: 30000,
   limitWebSocketIdleTimeout: 90000,
+  limitWatchedDirectories: 256,
+  limitWatchedEntries: 20000,
   onStdout: () => {},
   onStderr: () => {},
   onExit: () => {},

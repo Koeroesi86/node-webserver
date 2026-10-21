@@ -49,7 +49,7 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   }
   const getLimitPerPath = (indexPath: string) => (typeof config.limitPerPath === 'function' ? config.limitPerPath(indexPath) : config.limitPerPath);
   const webSocketSlots = createSlotCounter(config.limitWebSocketConnections);
-  const probe = createWatchedProbe(createProbe());
+  const probe = createWatchedProbe(createProbe(), { maxDirectories: config.limitWatchedDirectories, maxTotalEntries: config.limitWatchedEntries });
   const pathLatency = createPathLatency();
   const unregisterMetrics = registerMetricsSource(`workers:${config.name ?? rootPath}`, () => ({ ...workerPool.getStats(), latencyMs: pathLatency.read() }));
   void warmPaths({

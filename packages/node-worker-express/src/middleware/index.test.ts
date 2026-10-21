@@ -1,4 +1,5 @@
 import { WORKER_EVENT } from '@koeroesi86/node-worker/pool';
+import fsSync from 'fs';
 import fs from 'fs/promises';
 import http from 'http';
 import net from 'net';
@@ -389,6 +390,24 @@ describe('workerMiddleware', () => {
       } finally {
         await fs.rm(added);
       }
+    });
+
+    it('watches no folder with limitWatchedDirectories 0', async () => {
+      const watch = jest.spyOn(fsSync, 'watch');
+
+      await start({ limitWatchedDirectories: 0 });
+      await fetch(`${t.baseUrl}/plain/missing-1.html`);
+      await fetch(`${t.baseUrl}/plain/missing-2.html`);
+      expect(watch).not.toHaveBeenCalled();
+    });
+
+    it('lists the folder of paths that are missing', async () => {
+      const watch = jest.spyOn(fsSync, 'watch');
+
+      await start();
+      await fetch(`${t.baseUrl}/plain/missing-1.html`);
+      await fetch(`${t.baseUrl}/plain/missing-2.html`);
+      expect(watch).toHaveBeenCalledWith(path.join(t.root, 'plain'), expect.anything());
     });
 
     it('reads and drops the body of a request to a missing path', async () => {

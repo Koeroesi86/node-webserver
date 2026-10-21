@@ -62,6 +62,7 @@ export { default as parseRange } from './parse-range';
 export type { ByteRange } from './parse-range';
 export { default as prepareRequestBody } from './prepare-request-body';
 export { default as readSmallFile } from './read-small-file';
+export { default as readDirectoryNames } from './read-directory-names';
 export { default as registerRequestListeners } from './register-request-listeners';
 export { default as renderDirectoryListing } from './render-directory-listing';
 export type { DirectoryEntry } from './render-directory-listing';
