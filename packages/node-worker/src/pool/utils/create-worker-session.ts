@@ -1,6 +1,6 @@
 import net from 'net';
 import type { Duplex } from 'stream';
-import { InternalServerError, NoRequest, Protocols, WORKER_EVENT } from '../constants';
+import { NoRequest, Protocols, WORKER_EVENT } from '../constants';
 import type {
   HandOffEvent,
   InvokableWorker,
@@ -11,6 +11,7 @@ import type {
   WorkerOutputEvent,
   WSFrameEvent,
 } from '../types';
+import answerWorkerFailure from './answer-worker-failure';
 import closeWsConnection from './close-ws-connection';
 import createBodyStream from './create-body-stream';
 import createEmptyBody from './create-empty-body';
@@ -85,13 +86,7 @@ export default function createWorkerSession(worker: InvokableWorker, socket: Dup
       worker,
       createWorkerEvent(request, requestId, createBodyStream(contexts, channel, requestId, request.hasBody, body), () => metrics.request(requestId), body),
       callback,
-      (error) => {
-        console.error(error);
-        // a failing worker answers the request instead of leaving it waiting, unless it already did
-        if (!responded) {
-          callback(InternalServerError);
-        }
-      },
+      answerWorkerFailure(callback, () => responded),
       // a worker that answered without streaming is done, one that still streams cleans up after its last part
       () => {
         metrics.clear(requestId);
@@ -119,11 +114,7 @@ export default function createWorkerSession(worker: InvokableWorker, socket: Dup
       worker,
       createWorkerEvent({ ...event, hasBody: true }, requestId, handed.bodyStream, () => metrics.request(requestId)),
       handed.respond,
-      (error) => {
-        console.error(error);
-        // a failing worker answers the request instead of leaving it waiting, unless it already did
-        if (!handed.hasResponded()) handed.respond(InternalServerError);
-      }
+      answerWorkerFailure(handed.respond, handed.hasResponded)
     );
   };
 

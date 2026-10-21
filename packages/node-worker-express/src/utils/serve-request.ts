@@ -1,12 +1,13 @@
 import { Protocols, WORKER_EVENT, createBodyForwarder, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker/pool';
 import type { Request, Response } from 'express';
-import type { MiddlewareOptions } from '../types';
+import type { ServeRequestOptions } from '../types/serve-request-options';
 import attachWebSocket from './attach-web-socket';
-import createRequestHandOff from './create-request-hand-off';
-import createResponseHandOff from './create-response-hand-off';
+import createHandOffs from './create-hand-offs';
 import isHandedOff from './is-handed-off';
 import createResponseTimeout from './create-response-timeout';
 import createWorkerMessageListener from './create-worker-message-listener';
+import registerRequestListeners from './register-request-listeners';
+import sendRequest from './send-request';
 import writeTextResponse from './write-text-response';
 
 interface ServeRequestParams {
@@ -21,16 +22,7 @@ interface ServeRequestParams {
   streamsBody: boolean;
   /** frees the slot of a websocket connection */
   releaseSlot: () => void;
-  options: Pick<
-    MiddlewareOptions,
-    | 'handOffRequests'
-    | 'handOffResponses'
-    | 'limitRequestBody'
-    | 'limitResponseTimeout'
-    | 'limitWebSocketMessage'
-    | 'webSocketPingInterval'
-    | 'limitWebSocketIdleTimeout'
-  >;
+  options: ServeRequestOptions;
 }
 
 /** Hands a request to the worker of the lease and passes on what the worker answers, until the request is over and the worker and the slot are given back. */
@@ -38,9 +30,8 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
   const isSocketRequest = event.protocol === Protocols.websocket;
   /** what undoes the registrations of the request, run when it is over */
   const undo: Array<() => void> = [];
-  const webSocket = isSocketRequest
-    ? attachWebSocket({ request, lease, requestId, event, options, onClose: cleanupConnection, addUndo: (fn) => undo.push(fn) })
-    : undefined;
+  const addUndo = (fn: () => void) => undo.push(fn);
+  const webSocket = isSocketRequest ? attachWebSocket({ request, lease, requestId, event, options, onClose: cleanupConnection, addUndo }) : undefined;
 
   const failRequest = (statusCode: number, message: string) => {
     if (isSocketRequest) {
@@ -70,28 +61,14 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     onProgress: responseTimeout.arm,
   });
 
-  const handOff = createResponseHandOff({
-    request,
-    response,
-    lease,
-    requestId,
-    streamsBody,
-    minimumLength: options.handOffResponses,
-    timeout: options.limitResponseTimeout,
-    onHandedOver: responseTimeout.clear,
-    onFailed: () => failRequest(502, 'Worker could not take the connection.'),
-  });
-
-  const requestHandOff = createRequestHandOff({
+  const { handOff, requestHandOff } = createHandOffs({
     request,
     response,
     lease,
     requestId,
     event,
     streamsBody,
-    minimumLength: options.handOffRequests,
-    limit: options.limitRequestBody,
-    timeout: options.limitResponseTimeout,
+    options,
     onHandedOver: responseTimeout.clear,
     onFailed: () => failRequest(502, 'Worker could not take the connection.'),
   });
@@ -122,23 +99,7 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     undo.splice(0).forEach((fn) => fn());
   }
 
-  request.on('aborted', cleanupConnection);
-  undo.push(() => request.off('aborted', cleanupConnection));
-  if (streamsBody) {
-    undo.push(() => {
-      // what is still to come of the body is read and dropped, a request that is not read keeps its connection stuck
-      request.off('data', bodyForwarder.part);
-      request.off('end', bodyForwarder.end);
-      request.resume();
-    });
-  }
-  if (event.protocol === Protocols.http) {
-    // the close of the response, as the request closes as soon as its body was read, which says nothing about the client being gone
-    response.on('close', cleanupConnection);
-    response.on('finish', cleanupConnection);
-    undo.push(() => response.off('close', cleanupConnection));
-  }
-
+  registerRequestListeners({ request, response, event, streamsBody, bodyForwarder, cleanup: cleanupConnection, addUndo });
   lease.subscribe(requestId, messageListener, () => {
     // a worker that dies while it writes leaves the client with a truncated body, as when the body passes through here
     handOff.reset();
@@ -146,22 +107,7 @@ const serveRequest = ({ request, response, lease, requestId, event, inlineBody, 
     failRequest(502, 'Worker exited.');
   });
   responseTimeout.arm();
-  if (requestHandOff.isAllowed()) {
-    void requestHandOff.start();
-    return;
-  }
-
-  lease.send({
-    type: WORKER_EVENT.REQUEST,
-    requestId,
-    // a body that goes along travels as the bytes of the frame, which spares encoding it as base64 and decoding it in the worker
-    event: inlineBody === undefined ? event : { ...event, body: inlineBody },
-  });
-
-  if (streamsBody) {
-    request.on('data', bodyForwarder.part);
-    request.once('end', bodyForwarder.end);
-  }
+  sendRequest({ request, lease, requestId, event, inlineBody, streamsBody, requestHandOff, bodyForwarder });
 };
 
 export default serveRequest;

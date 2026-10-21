@@ -1,11 +1,12 @@
+import startUnrefTimer from './start-unref-timer';
+
 /** A worker that has been up for a while is healthy, whatever the ones before it did. */
 const watchWorkerUptime = (minUptime: number, onStable: () => void) => {
   let stable = false;
-  const timer = setTimeout(() => {
+  const timer = startUnrefTimer(() => {
     stable = true;
     onStable();
   }, minUptime);
-  timer.unref();
 
   return {
     isStable: () => stable,

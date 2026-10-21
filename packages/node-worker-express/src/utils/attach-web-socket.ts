@@ -1,6 +1,6 @@
 import { WORKER_EVENT, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker/pool';
 import type { Request } from 'express';
-import type { MiddlewareOptions } from '../types';
+import type { ServeRequestOptions } from '../types/serve-request-options';
 import createWsConnection from './create-ws-connection';
 
 interface AttachWebSocketParams {
@@ -8,7 +8,7 @@ interface AttachWebSocketParams {
   lease: WorkerLease;
   requestId: string;
   event: RequestEvent;
-  options: Pick<MiddlewareOptions, 'limitWebSocketMessage' | 'webSocketPingInterval' | 'limitWebSocketIdleTimeout'>;
+  options: Pick<ServeRequestOptions, 'limitWebSocketMessage' | 'webSocketPingInterval' | 'limitWebSocketIdleTimeout'>;
   /** called when the client closes the connection */
   onClose: () => void;
   /** takes what undoes a registration, to be run at the cleanup of the request */
