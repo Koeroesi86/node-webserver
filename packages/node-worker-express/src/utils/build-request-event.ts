@@ -2,6 +2,7 @@ import type { RequestEvent } from '@koeroesi86/node-worker/pool';
 import type { Request } from 'express';
 import type { ParsedUrlQuery } from 'querystring';
 import getClientIp from './get-client-ip';
+import toStringHeaders from './to-string-headers';
 
 interface RequestEventParams {
   request: Request;
@@ -21,9 +22,7 @@ const buildRequestEvent = ({ request, protocol, pathname, pathFragments, query, 
   path: pathname,
   pathFragments,
   queryStringParameters: { ...query },
-  // node joins repeated request headers into one string, only set-cookie stays an array and that is not a request header
-  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions -- the typings allow arrays and undefined that a request never has
-  headers: request.headers as Record<string, string>,
+  headers: toStringHeaders(request.headers),
   remoteAddress: getClientIp(request),
   rootPath,
   ...(pathParameters && { pathParameters }),
