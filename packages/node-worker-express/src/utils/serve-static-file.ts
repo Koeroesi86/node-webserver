@@ -1,4 +1,4 @@
-import type { ResponseCallback, ResponseEvent, WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
+import type { ResponseCallback, ResponseEvent, WorkerRequestEvent } from '@koeroesi86/node-worker/pool';
 import { createReadStream } from 'fs';
 import type { Stats } from 'fs';
 import { StaticStreamThreshold } from '../constants';

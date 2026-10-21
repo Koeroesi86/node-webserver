@@ -20,7 +20,7 @@ export interface ChannelBenchResult {
   latencyMicroseconds: number;
 }
 
-/** the createChannel of node-worker-pool, as far as the benchmark uses it */
+/** the createChannel of the pool of node-worker, as far as the benchmark uses it */
 export type CreateChannel = (
   socket: import('node:stream').Duplex,
   onMessage: (message: { type: string; requestId: string }) => void

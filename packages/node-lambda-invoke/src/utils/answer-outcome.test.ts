@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { WorkerLease } from '@koeroesi86/node-worker-pool';
+import type { WorkerLease } from '@koeroesi86/node-worker/pool';
 import answerOutcome from './answer-outcome';
 import type { InvocationOutcome } from './invoke-lambda';
 

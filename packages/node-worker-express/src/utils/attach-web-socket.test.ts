@@ -1,4 +1,4 @@
-import { WORKER_EVENT, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker-pool';
+import { WORKER_EVENT, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker/pool';
 import { EventEmitter } from 'events';
 import type { Request } from 'express';
 import attachWebSocket from './attach-web-socket';

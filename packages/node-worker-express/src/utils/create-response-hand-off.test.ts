@@ -1,4 +1,4 @@
-import { WORKER_EVENT, type ResponseMessage, type WorkerLease } from '@koeroesi86/node-worker-pool';
+import { WORKER_EVENT, type ResponseMessage, type WorkerLease } from '@koeroesi86/node-worker/pool';
 import net from 'net';
 import { TLSSocket } from 'tls';
 import type { Request, Response } from 'express';

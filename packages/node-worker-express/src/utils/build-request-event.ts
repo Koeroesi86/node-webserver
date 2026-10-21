@@ -1,4 +1,4 @@
-import type { RequestEvent } from '@koeroesi86/node-worker-pool';
+import type { RequestEvent } from '@koeroesi86/node-worker/pool';
 import type { Request } from 'express';
 import type { ParsedUrlQuery } from 'querystring';
 import getClientIp from './getClientIp';

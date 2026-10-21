@@ -39,7 +39,7 @@ class Worker implements EventTarget {
     }
   };
 
-  addEventListenerOnce = (event: string, listener: (...args: unknown[]) => unknown) => {
+  addEventListenerOnce = <Args extends unknown[]>(event: string, listener: (...args: Args) => unknown) => {
     if (this.instance.exitCode === null) {
       this.instance.once(event, listener);
     }

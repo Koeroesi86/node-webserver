@@ -1,4 +1,4 @@
-import { WORKER_EVENT, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
+import { WORKER_EVENT, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker/pool';
 import type { Request, Response } from 'express';
 import { WebSocketCloseCode } from '../constants';
 import type createRequestHandOff from './create-request-hand-off';

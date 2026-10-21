@@ -1,4 +1,4 @@
-import type { WorkerPool } from '@koeroesi86/node-worker-pool';
+import type { WorkerPool } from '@koeroesi86/node-worker/pool';
 import createLambdaStatsSource from './create-lambda-stats-source';
 
 const poolWith = (stats: Partial<ReturnType<WorkerPool['getCounts']>>) =>

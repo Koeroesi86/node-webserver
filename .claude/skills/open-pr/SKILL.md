@@ -17,8 +17,7 @@ A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and 
 
 | Changed | Publishes |
 |---|---|
-| `node-worker` | `node-worker`, `node-worker-pool`, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
-| `node-worker-pool` | itself, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
+| `node-worker` | `node-worker`, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
 | `node-worker-express`, `node-lambda-invoke` | itself, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
 | `node-webserver` | itself, `node-webserver-cli`, `node-webserver-service` |
 | `node-webserver-cli`, `node-webserver-service` | itself |

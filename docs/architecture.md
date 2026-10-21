@@ -15,7 +15,7 @@ The front server listens on the http and the https port (HTTP/2 and SNI optional
 
 1. A connection is accepted. TLS ends here, with a certificate per host name.
 2. The virtual host is looked up by the host name (exact names first, then wildcards in the order of the configuration).
-3. The middleware of the server type takes over: the worker pool of `node-worker-pool` behind `node-worker-express`, the `lambda` middleware (which runs on the same pool), or the `proxy` middleware (`packages/node-webserver/src/middlewares/`).
+3. The middleware of the server type takes over: the worker pool of `node-worker` behind `node-worker-express`, the `lambda` middleware (which runs on the same pool), or the `proxy` middleware (`packages/node-webserver/src/middlewares/`).
 4. Access logs are written when the response is complete, and compression is applied if the server has it on.
 
 `startServer.ts` builds two express apps from the configuration, one for http and one for https with SNI. With `http2` on, the https port also serves a separate app for HTTP/2 requests.
@@ -38,7 +38,7 @@ Details: [How the server and the workers talk](https://github.com/Koeroesi86/nod
 ```
 node-webserver-cli ────────┐
                            ├─► node-webserver ─┬─► node-lambda-invoke ───┐
-node-webserver-service ────┘                   └─► node-worker-express ──┴─► node-worker-pool ─► node-worker
+node-webserver-service ────┘                   └─► node-worker-express ──┴─► node-worker
 ```
 
 | Package | Role |
@@ -47,7 +47,6 @@ node-webserver-service ────┘                   └─► node-worker-e
 | `node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and systemd or launchd service generator |
 | `node-lambda-invoke` | runs Lambda style handlers locally, each a worker of the pool, one request at a time |
 | `node-worker-express` | the express middleware, the static worker and the routes, on top of the pool |
-| `node-worker-pool` | the pool of worker processes: leases, the framed channel, restart backoff, the shared budget, and the side of the worker process of the protocol |
-| `node-worker` | WebWorker-like API for Node |
+| `node-worker` | WebWorker-like API for Node, and the pool of worker processes on it (`@koeroesi86/node-worker/pool`): leases, the framed channel, restart backoff, the shared budget, and the side of the worker process of the protocol |
 
 `tools/` (`@koeroesi86/tools`) is never published: versioning for the pipeline and the k6 load tests.

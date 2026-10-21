@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'http';
-import { createBodyForwarder, WORKER_EVENT } from '@koeroesi86/node-worker-pool';
-import type { RequestEvent, ResponseMessage, WorkerLease, WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
+import { createBodyForwarder, WORKER_EVENT } from '@koeroesi86/node-worker/pool';
+import type { RequestEvent, ResponseMessage, WorkerLease, WorkerOutputEvent } from '@koeroesi86/node-worker/pool';
 
 export type InvocationOutcome =
   { type: 'response'; response: ResponseMessage } | { type: 'closed' } | { type: 'timeout' } | { type: 'tooLarge' } | { type: 'abandoned' };

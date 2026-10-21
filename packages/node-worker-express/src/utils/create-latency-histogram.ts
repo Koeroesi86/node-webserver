@@ -1,4 +1,4 @@
-import type { LatencyHistogram, LatencySnapshot } from '@koeroesi86/node-worker-pool';
+import type { LatencyHistogram, LatencySnapshot } from '@koeroesi86/node-worker/pool';
 import { LatencyBucketsMs } from '../constants';
 
 /**

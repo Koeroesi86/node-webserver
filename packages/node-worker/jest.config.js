@@ -1,10 +1,16 @@
 const { resolve } = require('path');
 
 module.exports = {
-  preset: 'ts-jest',
+  verbose: true,
+  rootDir: resolve(__dirname),
+  cacheDirectory: resolve(__dirname, '../../.cache/jest/node-worker'),
   testEnvironment: 'node',
   setupFilesAfterEnv: [resolve(__dirname, '../../jest-retry.js')],
   ...require('../../jest-coverage.js'),
-  cacheDirectory: resolve(__dirname, '../../.cache/jest/node-worker'),
-  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  transform: {
+    // the build bundles ES modules, the tests run as CommonJS
+    '^.+\\.ts$': ['ts-jest', { tsconfig: { module: 'commonjs', moduleResolution: 'node', target: 'es2022', esModuleInterop: true, strict: false, noImplicitAny: false, skipLibCheck: true } }],
+  },
+  testMatch: ['**/src/**/*.test.ts'],
+  moduleFileExtensions: ['ts', 'js', 'json'],
 };

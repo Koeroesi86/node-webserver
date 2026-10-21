@@ -1,4 +1,4 @@
-import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from '@koeroesi86/node-worker-pool';
+import type { ResponseCallback, ResponseEvent, StreamBody, StreamResponseOptions } from '@koeroesi86/node-worker/pool';
 import { Socket } from 'node:net';
 import { pipeline } from 'node:stream/promises';
 

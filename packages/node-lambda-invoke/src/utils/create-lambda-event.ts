@@ -1,4 +1,4 @@
-import type { WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
+import type { WorkerRequestEvent } from '@koeroesi86/node-worker/pool';
 import RequestEvent from '../classes/RequestEvent';
 import parseRawHeaders from './parse-raw-headers';
 

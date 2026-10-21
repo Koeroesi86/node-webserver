@@ -1,4 +1,4 @@
-import { Protocols, WorkerPool } from '@koeroesi86/node-worker-pool';
+import { Protocols, WorkerPool } from '@koeroesi86/node-worker/pool';
 import { randomBytes } from 'crypto';
 import path from 'path';
 import url from 'url';

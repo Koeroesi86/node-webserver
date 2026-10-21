@@ -1,5 +1,5 @@
 import { Readable } from 'stream';
-import type { ResponseCallback, WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
+import type { ResponseCallback, WorkerRequestEvent } from '@koeroesi86/node-worker/pool';
 import createLambdaWorker from './create-lambda-worker';
 
 const workerEvent = (bodyStream: Readable, fields: Partial<WorkerRequestEvent> = {}): WorkerRequestEvent => ({

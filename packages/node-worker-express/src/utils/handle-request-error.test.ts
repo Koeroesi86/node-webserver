@@ -1,4 +1,4 @@
-import { WorkerAbandonedError, WorkerUnavailableError } from '@koeroesi86/node-worker-pool';
+import { WorkerAbandonedError, WorkerUnavailableError } from '@koeroesi86/node-worker/pool';
 import type { Response } from 'express';
 import handleRequestError from './handle-request-error';
 

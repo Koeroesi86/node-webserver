@@ -20,7 +20,7 @@ Per requirement, tests: ✅ / ⚠️ / ❌ / N/A (reason). Read the tests, a tou
 
 Repository rules (`CLAUDE.md`), report only the ones that apply:
 - a test next to the code (`name.test.ts`) that fails without the change, for the success and the refusal path; no fixed sleeps; none passing only on a retry
-- request path changed (`node-webserver/src`, `node-worker`, `node-worker-pool`, `node-worker-express`, `node-lambda-invoke`): a k6 scenario in `tools/src/k6` or a stated reason; nothing extra per request in the front process
+- request path changed (`node-webserver/src`, `node-worker`, `node-worker-express`, `node-lambda-invoke`): a k6 scenario in `tools/src/k6` or a stated reason; nothing extra per request in the front process
 - changed option, default, header or message type is in the READMEs and the type's doc comment
 - kebab-case files, one function per file in `utils/`, types in `types/`, constants in `constants/`, no `any`/casts, flat conditions, no dead comments; new `workspace:*` dependency in `boundaries` of `.fallowrc.jsonc`; complexity within `.fallowrc.ci.jsonc`
 - no edit of `version`/`gitHead`, no unrelated `packages/**` edit (it publishes)

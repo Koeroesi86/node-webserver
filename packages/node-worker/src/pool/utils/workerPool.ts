@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type Worker from '@koeroesi86/node-worker';
+import type Worker from '../../index';
 import type { Channel } from './createChannel';
 import { WORKER_EVENT, WorkerMinUptime, WorkerRestartBackoff } from '../constants';
 import WorkerUnavailableError from './workerUnavailableError';
@@ -244,10 +244,10 @@ class WorkerPool implements WorkerBudgetMember {
 
   private onIdleTimeout = (worker: Worker) => {
     // a worker that is busy again is timed anew when it finishes, one that is gone already has nothing to stop
-    if (this.getLoad(worker) > 0 || this.registry.getEntry(worker) === undefined || this.stopping.has(worker)) return;
+    const entry = this.registry.getEntry(worker);
+    if (entry === undefined || this.getLoad(worker) > 0 || this.stopping.has(worker)) return;
 
     // the workers a path is kept warm with stay, and are looked at again later as the path can have more workers by then
-    const entry = this.registry.getEntry(worker);
     if (this.getWorkerCountForPath(entry.workerPath) <= (this.minimums.get(entry.workerPath)?.count ?? 0)) {
       entry.idleTimer?.refresh();
       return;

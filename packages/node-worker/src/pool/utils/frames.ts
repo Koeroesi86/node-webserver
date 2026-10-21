@@ -48,7 +48,7 @@ export function encodeMessage({ event, ...message }: WireMessage): Buffer[] {
   head.writeUInt32LE(metadataLength, 5);
   head.write(metadata, fixedLength);
 
-  return bodyLength > 0 ? [head, bodyBytes] : [head];
+  return bodyBytes !== undefined && bodyLength > 0 ? [head, bodyBytes] : [head];
 }
 
 /** Turns the chunks read from a stream into the messages that were encoded, whatever the way the stream split them. */

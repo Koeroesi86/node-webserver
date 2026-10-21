@@ -1,0 +1,4 @@
+{
+  "main": "../dist/pool/index.js",
+  "typings": "../dist/pool/index.d.ts"
+}
