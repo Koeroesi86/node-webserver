@@ -154,6 +154,7 @@ describe('workerInvoke', () => {
       [
         'workerInvoke',
         'constants/index',
+        'utils/answer-worker-failure',
         'utils/createChannel',
         'utils/create-hand-off-requests',
         'utils/create-handed-request',
