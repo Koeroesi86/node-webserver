@@ -184,6 +184,7 @@ describe('workerInvoke', () => {
 
   beforeEach(() => {
     received = [];
+    markers.forEach((name) => fsSync.rmSync(path.join(folder, name), { force: true }));
     // the channel is the fourth stdio and the IPC channel the fifth, as the pool starts workers
     child = spawn(process.execPath, [path.join(folder, 'workerInvoke.js'), path.join(folder, 'worker.js')], {
       stdio: ['pipe', 'pipe', 'pipe', 'overlapped', 'ipc'],
@@ -239,6 +240,14 @@ describe('workerInvoke', () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(condition()).toBe(true);
+  };
+  /** the files the worker writes to tell what happened; the folder is shared by the tests, so each starts without them */
+  const markers = ['ws-waited', 'ws-too-big', 'ws-closed', 'stopped', 'upload-error'];
+  /** the text of a marker once the worker wrote it: Windows shows the file before the worker has written to it, and an existing file is not the answer yet */
+  const readMarker = async (name: string) => {
+    const file = path.join(folder, name);
+    await until(() => fsSync.existsSync(file) && fsSync.readFileSync(file, 'utf8') !== '');
+    return fsSync.readFileSync(file, 'utf8');
   };
   const of = (requestId: string, type?: string) =>
     received.filter((message) => message.requestId === requestId && (type === undefined || message.type === type));
@@ -309,10 +318,7 @@ describe('workerInvoke', () => {
   it('tells a worker that a websocket message too big for the channel was not sent', async () => {
     sendUpgrade('a', '/ws-too-big');
 
-    // the file exists before the worker has written to it, which Windows shows
-    await until(() => fsSync.existsSync(path.join(folder, 'ws-too-big')) && fsSync.readFileSync(path.join(folder, 'ws-too-big'), 'utf8') !== '');
-
-    expect(fsSync.readFileSync(path.join(folder, 'ws-too-big'), 'utf8')).toBe('false');
+    expect(await readMarker('ws-too-big')).toBe('false');
     expect(of('a', WORKER_EVENT.WS_MESSAGE_SEND)).toHaveLength(0);
   });
 
@@ -394,16 +400,7 @@ describe('workerInvoke', () => {
 
     channel.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'a' });
 
-    const marker = path.join(folder, 'stopped');
-    const stopped = () =>
-      fs.access(marker).then(
-        () => true,
-        () => false
-      );
-    for (let waited = 0; waited < 3000 && !(await stopped()); waited += 10) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(await fs.readFile(marker, 'utf8')).toBe('1');
+    expect(await readMarker('stopped')).toBe('1');
     expect(of('a', WORKER_EVENT.RESPONSE_EMIT)).toHaveLength(1);
   });
 
@@ -471,9 +468,7 @@ describe('workerInvoke', () => {
 
       channel.send({ type: WORKER_EVENT.REQUEST_ABORT, requestId: 'a' });
 
-      const marker = path.join(folder, 'upload-error');
-      await until(() => fsSync.existsSync(marker));
-      expect(await fs.readFile(marker, 'utf8')).toBe('The request was aborted.');
+      expect(await readMarker('upload-error')).toBe('The request was aborted.');
     });
 
     it('survives an abort while it is not reading the body', async () => {
@@ -700,24 +695,19 @@ describe('workerInvoke', () => {
     it('lets a worker that waits for the client stop waiting when the connection closes', async () => {
       await upgrade('a', '/ws-waits');
       await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
-      const marker = path.join(folder, 'ws-waited');
 
       channel.send({ type: WORKER_EVENT.WS_CONNECTION_CLOSE, requestId: 'a', event: undefined });
-      await until(() => fsSync.existsSync(marker));
 
-      expect(fsSync.readFileSync(marker, 'utf8')).toBe('false');
+      expect(await readMarker('ws-waited')).toBe('false');
     });
 
     it('lets a worker that waits for the client go on once the client took the message', async () => {
       await upgrade('a', '/ws-waits');
       await until(() => of('a', WORKER_EVENT.WS_MESSAGE_SEND).length === 1);
-      const marker = path.join(folder, 'ws-waited');
-      fsSync.rmSync(marker, { force: true });
 
       acknowledge('a');
-      await until(() => fsSync.existsSync(marker));
 
-      expect(fsSync.readFileSync(marker, 'utf8')).toBe('true');
+      expect(await readMarker('ws-waited')).toBe('true');
     });
 
     it('sends the end of the connection that a worker asks for', async () => {
@@ -729,7 +719,6 @@ describe('workerInvoke', () => {
 
     it('calls the worker when the connection closes', async () => {
       await upgrade('a', '/ws-closes');
-      fsSync.rmSync(path.join(folder, 'ws-closed'), { force: true });
 
       channel.send({
         type: WORKER_EVENT.WS_CONNECTION_CLOSE,
@@ -745,9 +734,8 @@ describe('workerInvoke', () => {
           headers: {},
         },
       });
-      await until(() => fsSync.existsSync(path.join(folder, 'ws-closed')));
 
-      expect(fsSync.readFileSync(path.join(folder, 'ws-closed'), 'utf8')).toBe('/ws-closes');
+      expect(await readMarker('ws-closed')).toBe('/ws-closes');
     });
 
     it('does not call the worker for a message of a connection that was not upgraded', async () => {
