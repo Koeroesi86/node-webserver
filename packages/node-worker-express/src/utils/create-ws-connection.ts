@@ -1,3 +1,4 @@
+import { startUnrefInterval, startUnrefTimer } from '@koeroesi86/node-worker/pool';
 import type { Socket } from 'net';
 import { WebSocketCloseCode, WebSocketCloseTimeout, WebSocketOpcode, WebSocketSendBuffer, WebSocketWindow } from '../constants';
 import constructWsCloseFrame from './construct-ws-close-frame';
@@ -58,7 +59,7 @@ const createWsConnection = (socket: Socket, { limitMessage, pingInterval, idleTi
     socket.resume();
     write(constructWsCloseFrame(code, reason));
     socket.end();
-    closeTimer = setTimeout(() => socket.destroy(), WebSocketCloseTimeout).unref();
+    closeTimer = startUnrefTimer(() => socket.destroy(), WebSocketCloseTimeout);
   };
 
   const handleEvents = (chunk: Buffer) =>
@@ -123,7 +124,7 @@ const createWsConnection = (socket: Socket, { limitMessage, pingInterval, idleTi
     open: () => {
       opened = true;
       lastReceived = Date.now();
-      if (pingInterval > 0 || idleTimeout > 0) keepAliveTimer = setInterval(keepAlive, pingInterval || idleTimeout).unref();
+      if (pingInterval > 0 || idleTimeout > 0) keepAliveTimer = startUnrefInterval(keepAlive, pingInterval || idleTimeout);
     },
     receive,
     acknowledge,

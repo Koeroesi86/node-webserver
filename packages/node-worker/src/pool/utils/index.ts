@@ -41,6 +41,7 @@ export { default as receiveWsMessage } from './receive-ws-message';
 export { default as sendWsMessage } from './send-ws-message';
 export { default as spawnWorker } from './spawn-worker';
 export type { WorkerOptions, SpawnOptions } from './spawn-worker';
+export { default as startUnrefInterval } from './start-unref-interval';
 export { default as startUnrefTimer } from './start-unref-timer';
 export { default as startWorkerProcess } from './start-worker-process';
 export { default as toResponseMessage } from './to-response-message';

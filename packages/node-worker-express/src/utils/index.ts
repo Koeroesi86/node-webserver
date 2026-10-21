@@ -72,6 +72,7 @@ export { default as serveRequest } from './serve-request';
 export { default as serveStaticFile } from './serve-static-file';
 export { default as streamResponse } from './stream-response';
 export { default as takeSmallBody } from './take-small-body';
+export { default as toStringHeaders } from './to-string-headers';
 export { default as ttlCache } from './ttl-cache';
 export { default as warmPaths } from './warm-paths';
 export { default as webSocketConnections } from './web-socket-connections';
