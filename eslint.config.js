@@ -17,6 +17,12 @@ module.exports = [
     plugins: { '@typescript-eslint': tsPlugin, prettier: prettierPlugin },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-non-null-assertion': 'error',
+      'no-else-return': 'error',
+      // the existing violations are warnings that `pnpm lint` caps (`--max-warnings`), so a new one fails and a fix lowers the cap
+      '@typescript-eslint/consistent-type-assertions': ['warn', { assertionStyle: 'never' }],
+      'max-depth': ['warn', 1],
+      'no-restricted-syntax': ['warn', { selector: "Literal[raw='null']", message: 'Use undefined instead of null.' }],
       'prettier/prettier': [
         'error',
         {
@@ -27,6 +33,14 @@ module.exports = [
         },
         { usePrettierrc: false },
       ],
+    },
+  },
+  {
+    // mocks and fixtures need casts, and the null of a mocked node api
+    files: ['**/*.test.ts', '**/*.test-helper.ts', '**/test-helpers/**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-assertions': 'off',
+      'no-restricted-syntax': 'off',
     },
   },
   {

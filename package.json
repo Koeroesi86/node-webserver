@@ -14,7 +14,7 @@
     "build": "pnpm -r --if-present build",
     "generate-version": "pnpm --filter @koeroesi86/tools generate-version",
     "load-test": "pnpm build && node tools/dist/scripts/load-test.js",
-    "lint": "eslint --cache --cache-strategy content --cache-location .cache/eslint/ .",
+    "lint": "eslint --max-warnings 127 --cache --cache-strategy content --cache-location .cache/eslint/ .",
     "fallow": "fallow",
     "fallow:ci": "fallow --config .fallowrc.ci.jsonc",
     "docs:dev": "vitepress dev docs",
