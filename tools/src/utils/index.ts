@@ -22,6 +22,7 @@ export { describeRun } from './describe-run';
 export { describeUnevenlyServed } from './describe-unevenly-served';
 export { fetchPublishedRelease } from './fetch-published-release';
 export { findEntryProblems } from './find-entry-problems';
+export { findNameProblems } from './find-name-problems';
 export { formatChange } from './format-change';
 export { formatChannelBench } from './format-channel-bench';
 export { formatLineRanges } from './format-line-ranges';

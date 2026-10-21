@@ -5,7 +5,7 @@ const definition: ServiceDefinition = {
   name: 'nws',
   displayName: 'Node webserver',
   nodePath: '/usr/local/bin/node',
-  scriptPath: '/opt/nws/dist/scripts/manageService.js',
+  scriptPath: '/opt/nws/dist/scripts/manage-service.js',
   configPath: '/etc/nws/configuration.js',
   workingDirectory: '/etc/nws',
 };
@@ -16,7 +16,7 @@ describe('createLaunchdPlist', () => {
 
     expect(plist).toContain('<key>Label</key><string>com.koeroesi86.nws</string>');
     expect(plist).toContain(
-      '<array><string>/usr/local/bin/node</string><string>/opt/nws/dist/scripts/manageService.js</string><string>--run</string><string>--configuration</string><string>/etc/nws/configuration.js</string></array>'
+      '<array><string>/usr/local/bin/node</string><string>/opt/nws/dist/scripts/manage-service.js</string><string>--run</string><string>--configuration</string><string>/etc/nws/configuration.js</string></array>'
     );
     expect(plist).toContain('<key>WorkingDirectory</key><string>/etc/nws</string>');
     expect(plist).toContain('<key>RunAtLoad</key><true/>');

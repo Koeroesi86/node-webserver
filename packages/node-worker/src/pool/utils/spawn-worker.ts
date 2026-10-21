@@ -1,7 +1,7 @@
 import { Duplex } from 'stream';
 import Worker from '../../index';
-import createChannel from './createChannel';
-import type { Channel } from './createChannel';
+import createChannel from './create-channel';
+import type { Channel } from './create-channel';
 import type { WorkerInputEvent, WorkerOutputEvent } from '../types';
 
 export type WorkerOptions = ConstructorParameters<typeof Worker>[1] & object;

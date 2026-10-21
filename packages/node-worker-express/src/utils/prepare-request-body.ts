@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'http';
-import takeSmallBody from './takeSmallBody';
+import takeSmallBody from './take-small-body';
 
 /**
  * Decides how the body of a request reaches the worker: along with the request when it has all arrived and is small, as parts that follow otherwise.

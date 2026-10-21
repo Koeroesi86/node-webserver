@@ -90,6 +90,6 @@ export const DefaultOptions: MiddlewareOptions = {
   routes: [],
   fallthrough: true,
   env: {},
-  staticWorker: path.resolve(__dirname, '../staticWorker.js'),
+  staticWorker: path.resolve(__dirname, '../static-worker.js'),
   cwd: process.cwd(),
 };

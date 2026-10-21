@@ -1,5 +1,5 @@
-import WorkerPool from './workerPool';
-import type { WorkerLease } from './workerPool';
+import WorkerPool from './worker-pool';
+import type { WorkerLease } from './worker-pool';
 
 export const pathA = '/root/a/exampleWorker.js';
 export const pathB = '/root/b/exampleWorker.js';

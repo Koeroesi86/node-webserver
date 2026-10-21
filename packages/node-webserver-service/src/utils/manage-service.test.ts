@@ -33,7 +33,7 @@ describe('manageService', () => {
       name: 'nws',
       displayName: 'Node webserver',
       nodePath: process.execPath,
-      scriptPath: expect.stringMatching(/dist[\\/]scripts[\\/]manageService\.js$/),
+      scriptPath: expect.stringMatching(/dist[\\/]scripts[\\/]manage-service\.js$/),
       configPath,
       workingDirectory: folder,
       user: undefined,

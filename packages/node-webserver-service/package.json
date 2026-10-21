@@ -19,12 +19,12 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "nws-service": "./dist/scripts/manageService.js"
+    "nws-service": "./dist/scripts/manage-service.js"
   },
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "test": "jest",
-    "service": "node dist/scripts/manageService.js",
+    "service": "node dist/scripts/manage-service.js",
     "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/start.js\""
   },
   "dependencies": {

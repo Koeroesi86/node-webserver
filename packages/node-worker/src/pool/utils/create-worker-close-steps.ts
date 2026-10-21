@@ -1,7 +1,7 @@
 import type { LeaseState, WorkerEntry, WorkerRegistry } from './create-worker-registry';
 import type { WorkerUptime } from './watch-worker-uptime';
 import type createRestartBackoff from './create-restart-backoff';
-import WorkerStartError from './workerStartError';
+import WorkerStartError from './worker-start-error';
 
 /** a worker whose process ended, and what the steps find out about it on the way */
 export interface ClosedWorker<T extends object> {

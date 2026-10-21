@@ -1,5 +1,5 @@
-import WorkerAbandonedError from './workerAbandonedError';
-import WorkerBusyError from './workerBusyError';
+import WorkerAbandonedError from './worker-abandoned-error';
+import WorkerBusyError from './worker-busy-error';
 import WorkerAcquisitionQueue from './worker-acquisition-queue';
 
 interface Request {

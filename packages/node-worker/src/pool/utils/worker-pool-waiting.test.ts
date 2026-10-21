@@ -1,7 +1,7 @@
-import WorkerPool from './workerPool';
-import WorkerAbandonedError from './workerAbandonedError';
-import WorkerBusyError from './workerBusyError';
-import WorkerUnavailableError from './workerUnavailableError';
+import WorkerPool from './worker-pool';
+import WorkerAbandonedError from './worker-abandoned-error';
+import WorkerBusyError from './worker-busy-error';
+import WorkerUnavailableError from './worker-unavailable-error';
 import { pathA, pathB, createPool, acquireAll } from './worker-pool.test-helper';
 
 jest.mock('../../index', () => require('./fake-worker.test-helper').createFakeWorkerModule());

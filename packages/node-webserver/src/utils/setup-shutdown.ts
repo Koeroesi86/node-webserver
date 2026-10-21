@@ -1,5 +1,5 @@
 import type net from 'net';
-import addExitListeners from './exitHandler';
+import addExitListeners from './exit-handler';
 import createGracefulStop from './create-graceful-stop';
 import type { LoadedInstance, Logger, ServerState } from '../types';
 

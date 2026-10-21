@@ -17,7 +17,7 @@ export interface WorkerPoolParams {
   idleTimeout?: number;
   /** a limit shared with other pools, on top of `overallLimit` */
   budget?: WorkerBudget;
-  /** the executable and arguments that run a worker file. By default node runs the file through `workerInvoke.js`. */
+  /** the executable and arguments that run a worker file. By default node runs the file through `worker-invoke.js`. */
   createCommand?: (workerPath: string) => string[];
   /** how many requests one worker takes at the same time, the next ones wait in line for a request to end. 0 for no limit. */
   concurrency?: number;

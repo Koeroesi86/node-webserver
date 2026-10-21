@@ -1,6 +1,6 @@
 import type Worker from '../../index';
 import createWorkerRegistry from './create-worker-registry';
-import type { Channel } from './createChannel';
+import type { Channel } from './create-channel';
 import type { WorkerInputEvent } from '../types';
 import createWorkerLease from './create-worker-lease';
 

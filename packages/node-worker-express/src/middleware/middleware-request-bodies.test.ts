@@ -207,7 +207,7 @@ describe('workerMiddleware', () => {
       await send([Buffer.from('hello')], { requestPath: '/plain/file.txt' });
 
       expect(FakePool.last.acquire).toHaveBeenCalledWith(
-        expect.stringMatching(/staticWorker\.js$/),
+        expect.stringMatching(/static-worker\.js$/),
         expect.anything(),
         expect.anything(),
         expect.any(AbortSignal)

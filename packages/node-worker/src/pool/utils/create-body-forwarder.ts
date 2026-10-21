@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'http';
 import { RequestBodyWindow, WORKER_EVENT } from '../constants';
-import type { WorkerLease } from './workerPool';
+import type { WorkerLease } from './worker-pool';
 
 export interface BodyForwarderParams {
   request: IncomingMessage;

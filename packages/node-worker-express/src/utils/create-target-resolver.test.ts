@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import type { Request, Response } from 'express';
 import createTargetResolver from './create-target-resolver';
-import { uncachedProbe } from './createProbe';
+import { uncachedProbe } from './create-probe';
 
 describe('createTargetResolver', () => {
   let root: string;

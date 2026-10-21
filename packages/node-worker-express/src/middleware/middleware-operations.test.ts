@@ -63,7 +63,7 @@ describe('workerMiddleware', () => {
       const { latencyMs } = getServerMetrics().sources['workers:latency-per-path'] as { latencyMs: Record<string, { count: number }> };
       expect(Object.entries(latencyMs).map(([workerPath, { count }]) => [path.basename(workerPath), count])).toEqual([
         ['exampleWorker.js', 2],
-        ['staticWorker.js', 1],
+        ['static-worker.js', 1],
       ]);
     });
   });

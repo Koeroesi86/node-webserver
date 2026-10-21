@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import { RequestBodyWindow, WORKER_EVENT } from '../constants';
 import createBodyForwarder from './create-body-forwarder';
-import type { WorkerLease } from './workerPool';
+import type { WorkerLease } from './worker-pool';
 
 const setup = (limit?: number) => {
   const request = { pause: jest.fn(), resume: jest.fn() };

@@ -2,7 +2,7 @@ import type Worker from '../../index';
 import createWorkerReadiness from './create-worker-readiness';
 import type { WorkerEntry } from './create-worker-registry';
 import createWorkerTimers from './create-worker-timers';
-import WorkerStartError from './workerStartError';
+import WorkerStartError from './worker-start-error';
 
 const worker = { terminate: jest.fn() } as unknown as Worker;
 const entry = (readiness = createWorkerReadiness()): WorkerEntry => ({ workerPath: '/a.js', id: '1', lastUsed: 0, readiness });

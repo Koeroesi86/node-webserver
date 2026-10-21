@@ -6,7 +6,7 @@ const PACKAGE_ROOT = resolve(__dirname, '../..');
 export const DEFAULT_CONFIGURATION_PATH = resolve(PACKAGE_ROOT, 'configuration.example.js');
 
 /** the script the generated service definitions start, with --run */
-export const SERVICE_SCRIPT_PATH = resolve(PACKAGE_ROOT, 'dist/scripts/manageService.js');
+export const SERVICE_SCRIPT_PATH = resolve(PACKAGE_ROOT, 'dist/scripts/manage-service.js');
 
 export const SYSTEMD_FOLDER = '/etc/systemd/system';
 export const LAUNCHD_FOLDER = '/Library/LaunchDaemons';

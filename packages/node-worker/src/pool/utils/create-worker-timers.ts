@@ -1,7 +1,7 @@
 import type Worker from '../../index';
 import type { WorkerEntry } from './create-worker-registry';
 import startUnrefTimer from './start-unref-timer';
-import WorkerStartError from './workerStartError';
+import WorkerStartError from './worker-start-error';
 
 interface WorkerTimersParams {
   /** how long a worker may take to say it is ready, in milliseconds, 0 for no handshake */

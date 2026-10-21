@@ -1,5 +1,5 @@
 import Worker = require('./index');
-import WorkerClass from './Worker';
+import WorkerClass from './worker';
 import WaitingLineClass from './waiting-line';
 
 describe('entry', () => {

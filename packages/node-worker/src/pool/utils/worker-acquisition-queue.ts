@@ -1,6 +1,6 @@
 import { WaitingLine } from '../../index';
-import WorkerAbandonedError from './workerAbandonedError';
-import WorkerBusyError from './workerBusyError';
+import WorkerAbandonedError from './worker-abandoned-error';
+import WorkerBusyError from './worker-busy-error';
 
 interface QueuedRequest {
   workerPath: string;

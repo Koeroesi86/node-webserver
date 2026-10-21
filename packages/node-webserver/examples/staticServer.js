@@ -1,7 +1,7 @@
 const express = require('express');
 const { resolve } = require('path');
 const http = require('http');
-const parseArgv = require('../dist/utils/parseArgv').default;
+const parseArgv = require('../dist/utils/parse-argv').default;
 
 const { path, port } = parseArgv();
 

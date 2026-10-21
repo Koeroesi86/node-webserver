@@ -1,5 +1,5 @@
-import type { Probe } from './createProbe';
-import resolvePath from './resolvePath';
+import type { Probe } from './create-probe';
+import resolvePath from './resolve-path';
 
 interface WarmPathsParams {
   paths: string[];

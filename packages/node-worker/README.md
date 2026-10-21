@@ -71,7 +71,7 @@ It rejects with `WorkerBusyError` (the line is full, or the request waited for `
 | `budget` | a limit shared with other pools, made by `createWorkerBudget` |
 | `restartBackoff` | when a worker that crashed is started again |
 | `onExit`, `onStdout`, `onStderr` | what happens to the workers: their exit code, what they write |
-| `createCommand` | the executable and arguments that run a worker file, `node --expose-gc workerInvoke.js <file>` by default. The arguments are not split on spaces, so a path with spaces works. |
+| `createCommand` | the executable and arguments that run a worker file, `node --expose-gc worker-invoke.js <file>` by default. The arguments are not split on spaces, so a path with spaces works. |
 | `concurrency` | how many requests one worker takes at the same time, 0 for no limit. With 1 a worker answers one request at a time and the next ones wait in line, in order, until a worker is released or one can be started: it is a runtime like a lambda, not a server. |
 | `startTimeout` | how long a worker may take to say `READY`, 0 (default) does not wait for it. A worker that is not ready in time is killed, which counts as a crash of its path (so the backoff applies), and `lease.ready()` rejects with a `WorkerStartError`. |
 | `maxAge` | a worker older than this gets no more requests and is stopped as soon as it has none, never in the middle of a request. 0 for no limit. |
@@ -83,7 +83,7 @@ the lease is still to be released. `getStats()` has `workers`, `starting` (worke
 
 ### The side of the worker process
 
-`workerInvoke.js` is the runner of the worker files of node-worker-express: it loads the file and calls `startWorkerProcess(worker)`, which opens the channel (the fourth stdio of the process), serves the requests that come over it with
+`worker-invoke.js` is the runner of the worker files of node-worker-express: it loads the file and calls `startWorkerProcess(worker)`, which opens the channel (the fourth stdio of the process), serves the requests that come over it with
 `worker(event, callback)`, and sends `READY`. A runner of your own, which loads its file differently (an ES module, for example) or adapts the request, calls `startWorkerProcess` once it is ready and is given to the pool with `createCommand`:
 this is how the lambdas of node-lambda-invoke run. The event the worker gets has the `requestId`, and for a server that sets them the `rawHeaders` (names and values as the client wrote them), the `httpVersion` and the `deadline`;
 a response header can be an array for a header with several values.
