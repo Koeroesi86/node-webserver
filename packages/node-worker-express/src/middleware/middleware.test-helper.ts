@@ -34,11 +34,14 @@ export const setupMiddlewareTest = () => {
 
   const start = async (options = {}) => {
     const app = express();
-    app.use(workerMiddleware({ root: t.root, index: ['exampleWorker.js'], limitResponseTimeout: 200, ...options }));
+    const middleware = workerMiddleware({ root: t.root, index: ['exampleWorker.js'], limitResponseTimeout: 200, ...options });
+    app.use(middleware);
     app.use((error, request, response, next) => response.status(500).send(`${error.message}`));
     t.server = http.createServer(app);
     await new Promise<void>((resolve) => t.server.listen(0, resolve));
     t.baseUrl = `http://localhost:${(t.server.address() as { port: number }).port}`;
+
+    return middleware;
   };
 
   /** a lease whose worker reacts to the request through `react` */

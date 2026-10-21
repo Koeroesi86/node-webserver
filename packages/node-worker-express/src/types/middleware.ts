@@ -47,6 +47,13 @@ export interface MiddlewareOptions {
    * A middleware in front does not see the response, so there is no compression of it. 0 disables it, which is the default.
    */
   handOffRequests?: number;
+  /**
+   * how many directories the middleware lists and watches at the same time to answer a path that is not there without asking the file system, no other is listed until a listing has expired.
+   * 0 switches it off, which is for file systems that do not report changes (network drives, some container mounts). Defaults to 256.
+   */
+  limitWatchedDirectories?: number;
+  /** how many names all the listings together hold, which bounds their memory, a directory with more entries than 5000 is not listed. Defaults to 20000. */
+  limitWatchedEntries?: number;
   /** @deprecated nothing polls for a worker any more, requests that wait are woken when one is free. Has no effect. */
   idleCheckTimeout?: number;
   /**

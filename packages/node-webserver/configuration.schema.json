@@ -805,6 +805,14 @@
           "type": "integer",
           "minimum": 0
         },
+        "limitWatchedDirectories": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limitWatchedEntries": {
+          "type": "integer",
+          "minimum": 0
+        },
         "onStdout": {
           "$ref": "#/definitions/function"
         },

@@ -147,6 +147,18 @@ app.use(middleware({
 - A request that matches no route is looked for under `root` (`fallthrough: true`, the default). With `fallthrough: false` it is answered with 404 by the middleware, without a worker.
 - The patterns run in the server process for every request that gets to them, against what the client sent. They are trusted configuration: keep them simple, and avoid ones that backtrack a lot, like nested repetitions (`(a+)+`).
 
+## Paths that are not there
+
+A request for a path that does not exist is answered with 404 by the middleware, after asking the file system about the path and the folders above it. The answers are remembered for a second, which does not help when
+every request is for a new path, as in a scan of a site. So the middleware also lists a folder in which it found a second path missing within a second, and watches it (`fs.watch`): while the listing is kept, a name that is not in it is
+answered from memory. The listing is dropped when the watcher reports a change or an error, and is never kept for longer than a second, because a watcher can report late. A file that is added is found within that second at the latest.
+
+- Only "missing" comes from a listing. A name that is in it is asked from the file system as before, which also knows about permissions. Names are compared without case, so a case insensitive file system is not told a file is missing that it would find.
+- The memory is bounded: `limitWatchedDirectories` folders are watched at once (256 by default) and `limitWatchedEntries` names are held by all the listings together (20000 by default). When they are reached no other folder is listed
+  until a listing has expired, so a scan over many folders does not open a watcher for each of them. A folder with more than 5000 entries is not listed, it is read entry by entry and given up as soon as it is too large.
+- A folder that changes all the time is left alone for a second after each change, and one that cannot be watched keeps using the answers remembered for a second.
+- `limitWatchedDirectories: 0` switches it off, for file systems that do not report changes (network drives, some container mounts).
+
 ## Websockets
 
 The worker answers the upgrade request (`event.protocol === 'WS'`) with the handshake, a `101` with `Sec-WebSocket-Accept` (see `examples/public/websocket/worker.js`), and is called again for every message of the client and when the connection closes:

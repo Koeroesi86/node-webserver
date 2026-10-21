@@ -1,4 +1,5 @@
 import { WORKER_EVENT } from '@koeroesi86/node-worker/pool';
+import fsSync from 'fs';
 import fs from 'fs/promises';
 import http from 'http';
 import net from 'net';
@@ -374,20 +375,52 @@ describe('workerMiddleware', () => {
       const added = path.join(t.root, 'plain', 'added.html');
 
       expect((await fetch(`${t.baseUrl}/plain/added.html`)).status).toBe(404);
-      const asked = access.mock.calls.length;
+      const askedAboutAdded = () => access.mock.calls.filter(([fileName]) => fileName === added).length;
+      const asked = askedAboutAdded();
       await fs.writeFile(added, 'added');
 
       try {
         expect((await fetch(`${t.baseUrl}/plain/added.html`)).status).toBe(404);
-        expect(access.mock.calls.length).toBe(asked);
+        expect(askedAboutAdded()).toBe(asked);
 
         // the probe remembers its answers for a second
         jest.spyOn(Date, 'now').mockReturnValue(now + 1500);
         expect(await (await fetch(`${t.baseUrl}/plain/added.html`)).text()).toBe('added');
-        expect(access.mock.calls.length).toBeGreaterThan(asked);
+        expect(askedAboutAdded()).toBeGreaterThan(asked);
       } finally {
         await fs.rm(added);
       }
+    });
+
+    it('watches no folder with limitWatchedDirectories 0', async () => {
+      const watch = jest.spyOn(fsSync, 'watch');
+
+      await start({ limitWatchedDirectories: 0 });
+      await fetch(`${t.baseUrl}/plain/missing-1.html`);
+      await fetch(`${t.baseUrl}/plain/missing-2.html`);
+      expect(watch).not.toHaveBeenCalled();
+    });
+
+    it('lists the folder of paths that are missing', async () => {
+      const watch = jest.spyOn(fsSync, 'watch');
+
+      await start();
+      await fetch(`${t.baseUrl}/plain/missing-1.html`);
+      await fetch(`${t.baseUrl}/plain/missing-2.html`);
+      expect(watch).toHaveBeenCalledWith(path.join(t.root, 'plain'), expect.anything());
+    });
+
+    it('closes the watchers of the folders it listed when it is closed', async () => {
+      const watch = jest.spyOn(fsSync, 'watch');
+      const middleware = await start();
+      await fetch(`${t.baseUrl}/plain/missing-1.html`);
+      await fetch(`${t.baseUrl}/plain/missing-2.html`);
+      expect(watch).toHaveBeenCalledTimes(1);
+      const closeWatcher = jest.spyOn(watch.mock.results[0].value, 'close');
+
+      await middleware.close(1000);
+
+      expect(closeWatcher).toHaveBeenCalled();
     });
 
     it('reads and drops the body of a request to a missing path', async () => {
