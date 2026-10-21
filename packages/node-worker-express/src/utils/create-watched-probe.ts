@@ -29,6 +29,7 @@ export default function createWatchedProbe(
     maxEntries = 5000,
     cooldown = 1000,
     oversizedCooldown = 60000,
+    maxAge = 1000,
   }: {
     /** how many directories are listed and watched at the same time, the oldest listing goes first */
     maxDirectories?: number;
@@ -38,11 +39,13 @@ export default function createWatchedProbe(
     cooldown?: number;
     /** the same for a directory that is too large to list, which is costly to find out again */
     oversizedCooldown?: number;
+    /** how long a listing is kept at the longest, whatever the watcher reported */
+    maxAge?: number;
   } = {}
 ): Probe & { close: () => void } {
   // a watcher is there from the moment the directory is read, a listing once the read is done
   const watchers = new Map<string, fs.FSWatcher>();
-  const listings = new Map<string, Set<string>>();
+  const listings = new Map<string, { names: Set<string>; expires: number }>();
   const changed = new TtlCache<true>(cooldown, maxDirectories * 10);
   let closed = false;
   const oversized = new TtlCache<true>(oversizedCooldown, maxDirectories * 10);
@@ -62,7 +65,7 @@ export default function createWatchedProbe(
   const keep = (directory: string, watcher: fs.FSWatcher, names: string[]) => {
     if (watchers.get(directory) !== watcher) return;
     if (names.length <= maxEntries) {
-      listings.set(directory, new Set(names.map(normalize)));
+      listings.set(directory, { names: new Set(names.map(normalize)), expires: Date.now() + maxAge });
       return;
     }
     drop(directory);
@@ -95,8 +98,16 @@ export default function createWatchedProbe(
   };
 
   const isMissingInListing = (fileName: string) => {
-    const names = listings.get(path.dirname(fileName));
-    return names !== undefined && !names.has(normalize(path.basename(fileName)));
+    const directory = path.dirname(fileName);
+    const listing = listings.get(directory);
+    if (listing === undefined) return false;
+    // a watcher can report late (macOS), so a listing is not trusted for longer than the probe below would trust its own answer
+    if (listing.expires <= Date.now()) {
+      drop(directory);
+      return false;
+    }
+
+    return !listing.names.has(normalize(path.basename(fileName)));
   };
 
   const answer = <V>(ask: (fileName: string) => Promise<V>, missing: V) => {

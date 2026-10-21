@@ -109,6 +109,22 @@ describe('createWatchedProbe', () => {
     probe.close();
   });
 
+  it('asks the probe below again once a listing is older than its maximum age, whatever the watcher reported', async () => {
+    const { base, exists } = countingBase();
+    const probe = createWatchedProbe(base, { maxAge: 1000 });
+    await probe.exists(path.join(directory, 'missing.txt'));
+    await untilListed(probe, exists);
+    exists.mockClear();
+
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + 1500);
+    await probe.exists(path.join(directory, 'other-missing.txt'));
+    clock.mockRestore();
+
+    expect(exists).toHaveBeenCalledTimes(1);
+    probe.close();
+  });
+
   it('does not list a directory with more entries than allowed', async () => {
     const { base, exists } = countingBase();
     const probe = createWatchedProbe(base, { maxEntries: 0 });
