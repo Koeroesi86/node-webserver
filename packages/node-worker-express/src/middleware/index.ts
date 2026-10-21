@@ -1,34 +1,17 @@
-import { Protocols, WorkerPool } from '@koeroesi86/node-worker/pool';
-import { randomBytes } from 'crypto';
+import { WorkerPool } from '@koeroesi86/node-worker/pool';
 import path from 'path';
-import url from 'url';
-import { DefaultOptions, StaticOptionsEnv } from '../constants';
-import isWebSocket from '../utils/isWebSocket';
+import { DefaultOptions } from '../constants';
 import createSlotCounter from '../utils/create-slot-counter';
-import hasBody from '../utils/hasBody';
-import type { Request, RequestHandler, Response } from 'express';
-import type { ParsedUrlQuery } from 'querystring';
 import { MiddlewareOptions, WorkerMiddleware } from '../types';
 import createProbe from '../utils/createProbe';
-import normalizeStaticOptions from '../utils/normalize-static-options';
 import createRouteTable from '../utils/create-route-table';
 import createPathLatency from '../utils/create-path-latency';
-import { registerMetricsSource, trackRequest } from '../utils/metrics';
-import buildRequestEvent from '../utils/build-request-event';
-import prepareRequestBody from '../utils/prepare-request-body';
-import serveRequest from '../utils/serve-request';
-import writeTextResponse from '../utils/write-text-response';
+import { registerMetricsSource } from '../utils/metrics';
 import createTargetResolver from '../utils/create-target-resolver';
 import createLeaseAcquirer from '../utils/create-lease-acquirer';
-import handleRequestError from '../utils/handle-request-error';
-import runInSlot from '../utils/run-in-slot';
+import createRequestHandler from '../utils/create-request-handler';
+import createStaticWorkerOptions from '../utils/create-static-worker-options';
 import warmPaths from '../utils/warm-paths';
-
-// ids only have to differ inside this process, which is cheaper to make than a random uuid
-const requestIdPrefix = randomBytes(4).toString('hex');
-let requestCount = 0;
-const noop = () => {};
-const createRequestId = () => `${requestIdPrefix}-${(requestCount += 1).toString(36)}`;
 
 const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
   const config = {
@@ -56,9 +39,8 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     env: { ...process.env, ...config.env },
     cwd: config.cwd,
   });
-  // validated before anything is started, the worker reads them from its environment
-  const staticOptions = config.static && JSON.stringify(normalizeStaticOptions(config.static));
-  const staticWorkerOptions = { cwd: process.cwd(), ...(staticOptions && { env: { ...process.env, [StaticOptionsEnv]: staticOptions } }) };
+  // validated before anything is started
+  const staticWorkerOptions = createStaticWorkerOptions(config.static);
   if (config.warmStaticWorker) {
     workerPool.warm(config.staticWorker, staticWorkerOptions);
   }
@@ -92,55 +74,15 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     getLimitPerPath,
   });
 
-  const serve = async (
-    request: Request,
-    response: Response,
-    tracked: ReturnType<typeof trackRequest>,
-    { query, pathname }: { query: ParsedUrlQuery; pathname: string }
-  ) => {
-    const pathFragments = pathname.split(/\//gi).filter(Boolean);
-    const target = await resolveTarget(request, response, pathname, pathFragments);
-    if (!target) return;
-
-    const { indexPath, isWorker, pathParameters } = target;
-    const protocol = isWebSocket(request) ? Protocols.websocket : Protocols.http;
-    const { inlineBody, streamsBody } = await prepareRequestBody(
-      request,
-      protocol === Protocols.http && hasBody(request) && isWorker,
-      config.inlineRequestBody
-    );
-
-    if (inlineBody !== undefined && config.limitRequestBody && inlineBody.length > config.limitRequestBody) {
-      writeTextResponse(response, 413, 'Request body too large.');
-      return;
-    }
-
-    const event = buildRequestEvent({ request, protocol, pathname, pathFragments, query, rootPath, pathParameters, streamsBody });
-
-    // a websocket slot is taken before the worker, so connections above the limit do not queue for one
-    const served = await runInSlot(
-      () => (protocol === Protocols.websocket ? webSocketSlots.take(indexPath) : noop),
-      () => {
-        // by worker file like the pool, so every static file counts in the static worker's (a missing path answered above only in the totals)
-        tracked.path = pathLatency.get(isWorker ? indexPath : config.staticWorker);
-        return acquireLease(response, indexPath, isWorker);
-      },
-      (lease, releaseSlot) =>
-        serveRequest({ request, response, lease, requestId: createRequestId(), event, inlineBody, streamsBody, releaseSlot, options: config })
-    );
-    if (!served) writeTextResponse(response, 503, 'Too many connections.', { 'Retry-After': 1 });
-  };
-
-  const handler: RequestHandler = async (request, response, next) => {
-    const { query, pathname } = url.parse(request.url, true);
-    const tracked = trackRequest(response);
-
-    try {
-      await serve(request, response, tracked, { query, pathname });
-    } catch (e) {
-      handleRequestError(e, response, next);
-    }
-  };
+  const handler = createRequestHandler({
+    options: config,
+    rootPath,
+    staticWorker: config.staticWorker,
+    resolveTarget,
+    acquireLease,
+    pathLatency,
+    webSocketSlots,
+  });
 
   return Object.assign(handler, {
     close: (timeout?: number) => {

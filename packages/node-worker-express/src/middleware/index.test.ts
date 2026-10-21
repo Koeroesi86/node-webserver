@@ -1,110 +1,18 @@
-import { RequestBodyWindow, WORKER_EVENT, WorkerAbandonedError, WorkerBusyError, WorkerUnavailableError } from '@koeroesi86/node-worker/pool';
-import express from 'express';
+import { WORKER_EVENT } from '@koeroesi86/node-worker/pool';
 import fs from 'fs/promises';
 import http from 'http';
 import net from 'net';
-import os from 'os';
 import path from 'path';
-import crypto from 'crypto';
-import { WebSocketWindow } from '../constants';
-import { isRequestHandedOff, requestHandOffDoneEvent } from '../utils/is-handed-off';
 import { getServerMetrics } from '../utils/metrics';
-import { clientFrame } from '../utils/ws-client-frame.test-helper';
 import workerMiddleware from './index';
+import { setupMiddlewareTest, type Handlers } from './middleware.test-helper';
 
-type Handlers = { onMessage: (message: unknown) => void; onExit: (code: number | null) => void };
-
-jest.mock('@koeroesi86/node-worker/pool', () => {
-  class FakePool {
-    static last: FakePool;
-    acquire = jest.fn();
-    warm = jest.fn();
-    dispose = jest.fn(async () => {});
-    keepWarm = jest.fn();
-    getStats = () => ({ workers: 2, active: 1, waiting: 0, paths: {} });
-
-    constructor(readonly params: { onStdout?: () => void; onStderr?: () => void; maxQueue?: number; acquireTimeout?: number }) {
-      FakePool.last = this;
-    }
-  }
-
-  return { ...jest.requireActual('@koeroesi86/node-worker/pool'), WorkerPool: FakePool };
-});
+jest.mock('@koeroesi86/node-worker/pool', () => require('./fake-pool.test-helper').createFakePoolModule());
 
 const FakePool = jest.requireMock('@koeroesi86/node-worker/pool').WorkerPool;
 
 describe('workerMiddleware', () => {
-  let root: string;
-  let server: http.Server;
-  let baseUrl: string;
-
-  beforeAll(async () => {
-    root = await fs.mkdtemp(path.join(os.tmpdir(), 'middleware-'));
-    await fs.writeFile(path.join(root, 'exampleWorker.js'), '');
-    await fs.mkdir(path.join(root, 'plain'));
-    await fs.writeFile(path.join(root, 'plain', 'file.txt'), 'plain');
-  });
-
-  afterAll(() => fs.rm(root, { recursive: true, force: true }));
-
-  afterEach(() => new Promise((resolve) => (server ? server.close(resolve) : resolve(undefined))));
-
-  const until = async (condition: () => boolean) => {
-    for (let waited = 0; !condition() && waited < 3000; waited += 5) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    expect(condition()).toBe(true);
-  };
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
-
-  const start = async (options = {}) => {
-    const app = express();
-    app.use(workerMiddleware({ root, index: ['exampleWorker.js'], limitResponseTimeout: 200, ...options }));
-    app.use((error, request, response, next) => response.status(500).send(`${error.message}`));
-    server = http.createServer(app);
-    await new Promise<void>((resolve) => server.listen(0, resolve));
-    baseUrl = `http://localhost:${(server.address() as { port: number }).port}`;
-  };
-
-  /** a lease whose worker reacts to the request through `react` */
-  const createLease = (react: (handlers: Handlers, requestId: string) => void) => {
-    let handlers: Handlers;
-    const stream = { on: jest.fn(), off: jest.fn() };
-    const lease = {
-      worker: { instance: { stdout: stream, stderr: stream } },
-      send: jest.fn(
-        (message: { type: string; requestId: string; event?: { headers: Record<string, string> } }) =>
-          message.type === WORKER_EVENT.REQUEST && setImmediate(() => react(handlers, message.requestId))
-      ),
-      subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
-        handlers = { onMessage, onExit };
-      }),
-      release: jest.fn(),
-    };
-
-    return lease;
-  };
-
-  /** every request gets this lease */
-  const mockLease = (react: (handlers: Handlers, requestId: string) => void) => {
-    const lease = createLease(react);
-    FakePool.last.acquire.mockResolvedValue(lease);
-
-    return lease;
-  };
-
-  /** every request gets a lease of its own, as requests that run at the same time do, the leases are listed as they are handed out */
-  const mockLeases = (react: (handlers: Handlers, requestId: string) => void) => {
-    const leases: Array<ReturnType<typeof createLease>> = [];
-    FakePool.last.acquire.mockImplementation(async () => {
-      const lease = createLease(react);
-      leases.push(lease);
-
-      return lease;
-    });
-
-    return leases;
-  };
+  const { t, until, settle, start, mockLease, mockLeases } = setupMiddlewareTest();
 
   it('answers with what the worker responds with and frees the worker', async () => {
     await start();
@@ -116,7 +24,7 @@ describe('workerMiddleware', () => {
       })
     );
 
-    const response = await fetch(`${baseUrl}/`);
+    const response = await fetch(`${t.baseUrl}/`);
 
     expect(response.status).toBe(201);
     expect(await response.text()).toBe('hello');
@@ -128,7 +36,7 @@ describe('workerMiddleware', () => {
     await start();
     const lease = mockLease((handlers) => handlers.onExit(1));
 
-    const response = await fetch(`${baseUrl}/`);
+    const response = await fetch(`${t.baseUrl}/`);
 
     expect(response.status).toBe(502);
     expect(lease.release).toHaveBeenCalled();
@@ -138,7 +46,7 @@ describe('workerMiddleware', () => {
     await start({ limitResponseTimeout: 50 });
     const lease = mockLease(() => {});
 
-    const response = await fetch(`${baseUrl}/`);
+    const response = await fetch(`${t.baseUrl}/`);
 
     expect(response.status).toBe(504);
     expect(lease.release).toHaveBeenCalled();
@@ -150,14 +58,14 @@ describe('workerMiddleware', () => {
       setTimeout(() => handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('late') } }), 150)
     );
 
-    expect(await (await fetch(`${baseUrl}/`)).text()).toBe('late');
+    expect(await (await fetch(`${t.baseUrl}/`)).text()).toBe('late');
   });
 
   it('fails the request when no worker can be provided', async () => {
     await start();
     FakePool.last.acquire.mockRejectedValue(new Error('No worker became available'));
 
-    const response = await fetch(`${baseUrl}/`);
+    const response = await fetch(`${t.baseUrl}/`);
 
     expect(response.status).toBe(500);
     expect(await response.text()).toContain('No worker became available');
@@ -169,9 +77,9 @@ describe('workerMiddleware', () => {
       handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
     );
 
-    await fetch(`${baseUrl}/`);
+    await fetch(`${t.baseUrl}/`);
 
-    expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(root, 'exampleWorker.js'), expect.anything(), 7, expect.any(AbortSignal));
+    expect(FakePool.last.acquire).toHaveBeenCalledWith(path.join(t.root, 'exampleWorker.js'), expect.anything(), 7, expect.any(AbortSignal));
   });
 
   describe('messages to the worker', () => {
@@ -181,7 +89,7 @@ describe('workerMiddleware', () => {
         handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('hello') } })
       );
 
-      await (await fetch(`${baseUrl}/`)).text();
+      await (await fetch(`${t.baseUrl}/`)).text();
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(lease.send.mock.calls.map(([message]) => message.type)).toEqual([WORKER_EVENT.REQUEST]);
@@ -197,7 +105,7 @@ describe('workerMiddleware', () => {
       const bytes = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
       respondWith(bytes);
 
-      const response = await fetch(`${baseUrl}/`);
+      const response = await fetch(`${t.baseUrl}/`);
 
       expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
       expect(response.headers.get('content-length')).toBe('256');
@@ -207,7 +115,7 @@ describe('workerMiddleware', () => {
       await start();
       respondWith(undefined);
 
-      const response = await fetch(`${baseUrl}/`);
+      const response = await fetch(`${t.baseUrl}/`);
 
       expect(response.status).toBe(200);
       expect(await response.text()).toBe('');
@@ -224,7 +132,7 @@ describe('workerMiddleware', () => {
       await start();
       respondWith({ 'Content-Type': 'text/plain' });
 
-      const response = await fetch(`${baseUrl}/`);
+      const response = await fetch(`${t.baseUrl}/`);
 
       expect(response.headers.get('content-length')).toBe('5');
       expect(response.headers.get('transfer-encoding')).toBeNull();
@@ -234,14 +142,14 @@ describe('workerMiddleware', () => {
       await start();
       respondWith({ [name]: 5 });
 
-      expect((await fetch(`${baseUrl}/`)).headers.get('content-length')).toBe('5');
+      expect((await fetch(`${t.baseUrl}/`)).headers.get('content-length')).toBe('5');
     });
 
     it('leaves a chunked answer of the worker alone', async () => {
       await start();
       respondWith({ 'Transfer-Encoding': 'chunked' });
 
-      const response = await fetch(`${baseUrl}/`);
+      const response = await fetch(`${t.baseUrl}/`);
 
       expect(response.headers.get('content-length')).toBeNull();
       expect(await response.text()).toBe('hello');
@@ -255,7 +163,7 @@ describe('workerMiddleware', () => {
         handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
       );
 
-      await fetch(`${baseUrl}/`);
+      await fetch(`${t.baseUrl}/`);
 
       const options = FakePool.last.acquire.mock.calls[0][1];
       expect(typeof options).toBe('function');
@@ -299,7 +207,7 @@ describe('workerMiddleware', () => {
     });
 
     it('refuses options of the static worker that are not valid before it starts anything', () => {
-      expect(() => workerMiddleware({ root, static: { cacheControl: [{ value: 'x' }] } })).toThrow('A cache rule needs');
+      expect(() => workerMiddleware({ root: t.root, static: { cacheControl: [{ value: 'x' }] } })).toThrow('A cache rule needs');
     });
 
     it('asks for the static worker with the same options when a file is requested, so the started one is used', async () => {
@@ -308,7 +216,7 @@ describe('workerMiddleware', () => {
         handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
       );
 
-      await fetch(`${baseUrl}/plain/file.txt`);
+      await fetch(`${t.baseUrl}/plain/file.txt`);
 
       expect(FakePool.last.acquire.mock.calls[0][1]).toBe(FakePool.last.warm.mock.calls[0][1]);
     });
@@ -320,7 +228,7 @@ describe('workerMiddleware', () => {
 
       await until(() => FakePool.last.keepWarm.mock.calls.length > 0);
       const [workerPath, options, count] = FakePool.last.keepWarm.mock.calls[0];
-      expect(workerPath).toBe(path.join(root, 'exampleWorker.js'));
+      expect(workerPath).toBe(path.join(t.root, 'exampleWorker.js'));
       expect(options()).toMatchObject({ cwd: '/somewhere' });
       expect(count).toBe(1);
     });
@@ -344,617 +252,6 @@ describe('workerMiddleware', () => {
     });
   });
 
-  describe('streamed responses', () => {
-    /** every byte value, as text decoding would damage the ones above 127 */
-    const bytes = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
-    const part = (requestId: string, body: Buffer | null) => ({
-      type: WORKER_EVENT.RESPONSE_EMIT,
-      requestId,
-      event: {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/octet-stream' },
-        emit: true,
-        body,
-      },
-    });
-
-    it('writes the bytes of every part to the client and acknowledges them once they are written', async () => {
-      await start();
-      const lease = mockLease((handlers, requestId) => {
-        handlers.onMessage(part(requestId, bytes));
-        handlers.onMessage(part(requestId, bytes));
-        handlers.onMessage(part(requestId, null));
-      });
-
-      const response = await fetch(`${baseUrl}/`);
-
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.concat([bytes, bytes]));
-      const acknowledgements = lease.send.mock.calls.filter(([message]) => message.type === WORKER_EVENT.RESPONSE_ACKNOWLEDGE);
-      expect(acknowledgements).toHaveLength(3);
-    });
-
-    it('tells the worker to stop when the client goes away during the response', async () => {
-      await start();
-      const lease = mockLease((handlers, requestId) => handlers.onMessage(part(requestId, bytes)));
-
-      await new Promise<void>((resolve, reject) => {
-        const clientRequest = http.get(`${baseUrl}/`, (response) =>
-          response.once('data', () => {
-            response.destroy();
-            resolve();
-          })
-        );
-        clientRequest.on('error', reject);
-      });
-      // the server notices that the client left a moment later
-      for (let waited = 0; !lease.send.mock.calls.some(([message]) => message.type === WORKER_EVENT.REQUEST_ABORT) && waited < 3000; waited += 5) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-
-      expect(lease.send).toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
-      expect(lease.release).toHaveBeenCalled();
-    });
-
-    it('does not tell the worker to stop after a complete response', async () => {
-      await start();
-      const lease = mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('done') } })
-      );
-
-      await (await fetch(`${baseUrl}/`)).text();
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      expect(lease.send).not.toHaveBeenCalledWith(expect.objectContaining({ type: WORKER_EVENT.REQUEST_ABORT }));
-    });
-
-    it('ends a response early when the worker stops sending parts', async () => {
-      await start({ limitResponseTimeout: 50 });
-      const lease = mockLease((handlers, requestId) => handlers.onMessage(part(requestId, bytes)));
-
-      const response = await fetch(`${baseUrl}/`);
-
-      await expect(response.arrayBuffer()).rejects.toThrow();
-      expect(lease.release).toHaveBeenCalled();
-    });
-
-    it('keeps a response going while parts keep coming, even if it takes longer than the timeout', async () => {
-      // the parts come in a fifth of the timeout, which a slow machine can be late for, and all of them together take longer than it
-      await start({ limitResponseTimeout: 150 });
-      mockLease((handlers, requestId) => {
-        const send = (index: number) => {
-          handlers.onMessage(part(requestId, index < 8 ? bytes : null));
-          if (index < 8) setTimeout(() => send(index + 1), 30);
-        };
-        send(0);
-      });
-
-      const response = await fetch(`${baseUrl}/`);
-
-      expect((await response.arrayBuffer()).byteLength).toBe(bytes.length * 8);
-    });
-  });
-
-  describe('handing the connection to the worker', () => {
-    const body = Buffer.from('a body that the worker writes itself');
-    const head = (requestId: string, headers: Record<string, string> = { 'Content-Length': String(body.length) }) => ({
-      type: WORKER_EVENT.RESPONSE_HANDOFF,
-      requestId,
-      event: { statusCode: 200, headers: { 'Content-Type': 'application/octet-stream', ...headers } },
-    });
-    const end = (requestId: string) => ({ type: WORKER_EVENT.RESPONSE_EMIT, requestId, event: { statusCode: 200, emit: true, body: null } });
-    const sentTypes = (lease: { send: jest.Mock }) => lease.send.mock.calls.map(([message]) => message.type);
-
-    /** a worker that asks for the connection, writes the body to it once it has it, and then tells that it is done */
-    const handingOver = (headers?: Record<string, string>) => {
-      let handlers: Handlers;
-      const lease = mockLease((current, requestId) => {
-        handlers = current;
-        handlers.onMessage(head(requestId, headers));
-      });
-      const handOff = jest.fn(
-        (message: { requestId: string }, socket: net.Socket) =>
-          new Promise<void>((resolve) =>
-            socket.write(body, () => {
-              resolve();
-              setImmediate(() => handlers.onMessage(end(message.requestId)));
-            })
-          )
-      );
-
-      return Object.assign(lease, { handOff });
-    };
-
-    it('hands the connection over for a big response, which closes after the body, and frees the worker when it is done', async () => {
-      await start({ handOffResponses: body.length, limitResponseTimeout: 300 });
-      const lease = handingOver();
-
-      const response = await fetch(`${baseUrl}/`);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get('connection')).toBe('close');
-      expect(response.headers.get('content-length')).toBe(String(body.length));
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(body);
-      expect(lease.handOff).toHaveBeenCalledWith({ type: WORKER_EVENT.RESPONSE_HANDOFF, requestId: expect.any(String), timeout: 300 }, expect.any(net.Socket));
-      await until(() => lease.release.mock.calls.length > 0);
-      expect(sentTypes(lease)).toEqual([WORKER_EVENT.REQUEST, WORKER_EVENT.RESPONSE_ACKNOWLEDGE]);
-    });
-
-    it('keeps a response below the size and lets the worker stream it', async () => {
-      await start({ handOffResponses: body.length + 1 });
-      const lease = handingOver();
-
-      const request = fetch(`${baseUrl}/`);
-      await until(() => sentTypes(lease).includes(WORKER_EVENT.RESPONSE_HANDOFF_REFUSE));
-
-      expect(lease.handOff).not.toHaveBeenCalled();
-      lease.subscribe.mock.calls[0][1](end(lease.subscribe.mock.calls[0][0]));
-      expect((await request).headers.get('connection')).not.toBe('close');
-    });
-
-    it('keeps a response without a length', async () => {
-      await start({ handOffResponses: 1 });
-      const lease = handingOver({});
-
-      fetch(`${baseUrl}/`).catch(() => undefined);
-      await until(() => sentTypes(lease).includes(WORKER_EVENT.RESPONSE_HANDOFF_REFUSE));
-
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('keeps a response to HEAD', async () => {
-      await start({ handOffResponses: 1 });
-      const lease = handingOver();
-
-      fetch(`${baseUrl}/`, { method: 'HEAD' }).catch(() => undefined);
-      await until(() => sentTypes(lease).includes(WORKER_EVENT.RESPONSE_HANDOFF_REFUSE));
-
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('keeps a response that a middleware in front encodes, which then passes through it with the head that was written', async () => {
-      const app = express();
-      app.use((request, response, next) => {
-        const { writeHead } = response;
-        // what the compression does when it takes a response
-        Object.assign(response, {
-          writeHead: (...args: unknown[]) => {
-            response.setHeader('Content-Encoding', 'identity');
-            response.removeHeader('Content-Length');
-            return Reflect.apply(writeHead, response, args);
-          },
-        });
-        next();
-      });
-      app.use(workerMiddleware({ root, index: ['exampleWorker.js'], handOffResponses: 1 }));
-      server = http.createServer(app);
-      await new Promise<void>((resolve) => server.listen(0, resolve));
-      const lease = handingOver();
-      const { send } = lease;
-      // the refusal is answered with the body passing through the server
-      Object.assign(lease, {
-        send: jest.fn((message: { type: string; requestId: string }) => {
-          send(message as never);
-          if (message.type !== WORKER_EVENT.RESPONSE_HANDOFF_REFUSE) return;
-          const onMessage = lease.subscribe.mock.calls[0][1];
-          onMessage({ type: WORKER_EVENT.RESPONSE_EMIT, requestId: message.requestId, event: { statusCode: 200, emit: true, body } });
-          onMessage(end(message.requestId));
-        }),
-      });
-
-      const response = await fetch(`http://localhost:${(server.address() as net.AddressInfo).port}/`);
-
-      expect(response.headers.get('content-encoding')).toBe('identity');
-      expect(Buffer.from(await response.arrayBuffer())).toEqual(body);
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('ends the response and frees the worker when the connection could not be handed over', async () => {
-      await start({ handOffResponses: 1 });
-      const lease = handingOver();
-      lease.handOff.mockRejectedValueOnce(new Error('closed'));
-
-      await expect(fetch(`${baseUrl}/`).then((response) => response.arrayBuffer())).rejects.toThrow();
-
-      await until(() => lease.release.mock.calls.length > 0);
-      expect(sentTypes(lease)).toContain(WORKER_EVENT.REQUEST_ABORT);
-    });
-
-    it('frees the worker when it exits while it writes the body', async () => {
-      await start({ handOffResponses: 1 });
-      let handlers: Handlers;
-      const lease = Object.assign(
-        mockLease((current, requestId) => {
-          handlers = current;
-          handlers.onMessage(head(requestId));
-        }),
-        { handOff: jest.fn(() => Promise.resolve()) }
-      );
-
-      fetch(`${baseUrl}/`).catch(() => undefined);
-      await until(() => lease.handOff.mock.calls.length > 0);
-      await settle();
-      expect(lease.release).not.toHaveBeenCalled();
-
-      handlers.onExit(1);
-
-      expect(lease.release).toHaveBeenCalled();
-    });
-  });
-
-  describe('handing the connection of a request to the worker', () => {
-    const upload = Buffer.alloc(200 * 1024, 'u');
-    const done = (requestId: string, statusCode = 201) => ({
-      type: WORKER_EVENT.REQUEST_HANDOFF_DONE,
-      requestId,
-      event: { statusCode, headers: { 'Content-Length': '2' } },
-    });
-    const sentTypes = (lease: { send: jest.Mock }) => lease.send.mock.calls.map(([message]) => message.type);
-    const post = (body: BodyInit, headers: Record<string, string> = {}) =>
-      fetch(`${baseUrl}/`, { method: 'POST', body, headers, ...(body instanceof ReadableStream && { duplex: 'half' }) });
-
-    /** a worker that is given the connection, answers on it and says that it is done */
-    const takingOver = () => {
-      const lease = mockLease(() => {});
-      const handOff = jest.fn(
-        (message: { requestId: string; prefix?: string }, socket: net.Socket) =>
-          new Promise<void>((resolve) => {
-            let missing = upload.length - Buffer.from(message.prefix ?? '', 'base64').length;
-            const answer = () =>
-              socket.write('HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok', () => {
-                resolve();
-                setImmediate(() => lease.subscribe.mock.calls[0][1](done(message.requestId)));
-              });
-            // like the real worker, read the rest of the body before answering: the server destroys the socket once this resolves, and closing it with unread bytes resets the
-            // connection on windows, so the client loses the answer. The parser of the server listens no more, it is not the one reading the body now.
-            socket.removeAllListeners('data');
-            socket.on('data', (chunk) => {
-              missing -= chunk.length;
-              if (missing <= 0) answer();
-            });
-            // the server stopped libuv from reading before the handoff; start it again and tell node, or its own restart on the first chunk fails with EALREADY
-            const handle = Reflect.get(socket, '_handle');
-            Reflect.apply(Reflect.get(handle, 'readStart'), handle, []);
-            Reflect.set(handle, 'reading', true);
-            socket.resume();
-            if (missing <= 0) answer();
-          })
-      );
-
-      return Object.assign(lease, { handOff });
-    };
-
-    it('hands the connection over for a big body, with the request and what had arrived of the body, which the worker answers on', async () => {
-      await start({ handOffRequests: 100 * 1024, inlineRequestBody: 0, limitResponseTimeout: 300 });
-      const lease = takingOver();
-
-      const response = await post(upload);
-
-      expect(response.status).toBe(201);
-      expect(await response.text()).toBe('ok');
-      const [[message, socket]] = lease.handOff.mock.calls;
-      expect(message).toEqual({
-        type: WORKER_EVENT.REQUEST_HANDOFF,
-        requestId: expect.any(String),
-        event: expect.objectContaining({
-          httpMethod: 'POST',
-          path: '/',
-          hasBody: true,
-          headers: expect.objectContaining({ 'content-length': String(upload.length) }),
-        }),
-        prefix: expect.any(String),
-        length: upload.length,
-        timeout: 300,
-      });
-      expect(socket).toBeInstanceOf(net.Socket);
-      const prefix = Buffer.from(message.prefix, 'base64');
-      expect(prefix.length).toBeLessThanOrEqual(upload.length);
-      expect(prefix.equals(upload.subarray(0, prefix.length))).toBe(true);
-      await until(() => lease.release.mock.calls.length > 0);
-      expect(sentTypes(lease)).toEqual([]);
-    });
-
-    it('streams a body below the size through the server', async () => {
-      await start({ handOffRequests: upload.length + 1, inlineRequestBody: 0 });
-      const lease = takingOver();
-
-      post(upload).catch(() => undefined);
-      await until(() => sentTypes(lease).includes(WORKER_EVENT.REQUEST));
-
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('streams the body when it is not switched on', async () => {
-      await start({ inlineRequestBody: 0 });
-      const lease = takingOver();
-
-      post(upload).catch(() => undefined);
-      await until(() => sentTypes(lease).includes(WORKER_EVENT.REQUEST));
-
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('streams a chunked body, whose length is not known', async () => {
-      await start({ handOffRequests: 1, inlineRequestBody: 0 });
-      const lease = takingOver();
-      const chunks = new ReadableStream({
-        start(controller) {
-          controller.enqueue(upload);
-          controller.close();
-        },
-      });
-
-      post(chunks).catch(() => undefined);
-      await until(() => sentTypes(lease).includes(WORKER_EVENT.REQUEST));
-
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('keeps a body that is announced bigger than the limit here, to be answered with 413', async () => {
-      await start({ handOffRequests: 1, inlineRequestBody: 0, limitRequestBody: upload.length - 1 });
-      const lease = takingOver();
-
-      const response = await post(upload);
-
-      expect(response.status).toBe(413);
-      expect(lease.handOff).not.toHaveBeenCalled();
-    });
-
-    it('hands over a body that is as big as the limit', async () => {
-      await start({ handOffRequests: 1, inlineRequestBody: 0, limitRequestBody: upload.length });
-      const lease = takingOver();
-
-      expect((await post(upload)).status).toBe(201);
-      expect(lease.handOff).toHaveBeenCalled();
-    });
-
-    it('answers 502 and frees the worker when the connection could not be handed over', async () => {
-      await start({ handOffRequests: 1, inlineRequestBody: 0 });
-      const lease = takingOver();
-      lease.handOff.mockRejectedValueOnce(new Error('closed'));
-
-      expect((await post(upload)).status).toBe(502);
-
-      await until(() => lease.release.mock.calls.length > 0);
-    });
-
-    it('frees the worker when it exits while it has the connection', async () => {
-      await start({ handOffRequests: 1, inlineRequestBody: 0 });
-      const lease = Object.assign(
-        mockLease(() => {}),
-        { handOff: jest.fn(() => Promise.resolve()) }
-      );
-
-      post(upload).catch(() => undefined);
-      await until(() => lease.handOff.mock.calls.length > 0);
-      await settle();
-      expect(lease.release).not.toHaveBeenCalled();
-
-      lease.subscribe.mock.calls[0][2](1);
-
-      expect(lease.release).toHaveBeenCalled();
-    });
-
-    it('sets the status the worker wrote on the response and tells whoever listens, once the worker is done', async () => {
-      await start({ handOffRequests: 1, inlineRequestBody: 0 });
-      const lease = takingOver();
-      const finished = jest.fn();
-      server.on('request', (request, response) =>
-        response.once(requestHandOffDoneEvent, () => finished(response.statusCode, response.getHeader('content-length'), isRequestHandedOff(response)))
-      );
-
-      await post(upload);
-
-      await until(() => finished.mock.calls.length > 0);
-      expect(finished).toHaveBeenCalledWith(201, '2', true);
-      expect(lease.release).toHaveBeenCalled();
-    });
-  });
-
-  describe('streamed request bodies', () => {
-    type Message = { type: string; requestId: string; event?: { body?: Buffer | null; hasBody?: boolean } };
-
-    /** a lease whose worker is told every message that was sent to it, `answer` decides how it reacts */
-    const mockUploadLease = (answer: (message: Message, handlers: Handlers) => void) => {
-      let handlers: Handlers;
-      const stream = { on: jest.fn(), off: jest.fn() };
-      const lease = {
-        worker: { instance: { stdout: stream, stderr: stream } },
-        send: jest.fn((message: Message) => setImmediate(() => answer(message, handlers))),
-        subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
-          handlers = { onMessage, onExit };
-        }),
-        release: jest.fn(),
-      };
-      FakePool.last.acquire.mockResolvedValue(lease);
-
-      return lease;
-    };
-
-    const messagesOf = (lease: ReturnType<typeof mockUploadLease>, type: string) =>
-      lease.send.mock.calls.map(([message]) => message).filter((message) => message.type === type);
-    const bytesOf = (lease: ReturnType<typeof mockUploadLease>) =>
-      Buffer.concat(
-        messagesOf(lease, WORKER_EVENT.REQUEST_BODY)
-          .filter(({ event }) => event.body !== null)
-          .map(({ event }) => event.body)
-      );
-    const acknowledge = (handlers: Handlers, requestId: string) => handlers.onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
-    const respond = (handlers: Handlers, requestId: string, statusCode = 200, body = 'done') =>
-      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode, headers: {}, body: Buffer.from(body) } });
-
-    /** acknowledges every part of the body and answers when it ended */
-    const answerWhenEnded = (message: Message, handlers: Handlers) => {
-      if (message.type !== WORKER_EVENT.REQUEST_BODY) return;
-      if (message.event.body === null) respond(handlers, message.requestId);
-      else acknowledge(handlers, message.requestId);
-    };
-
-    const send = (chunks: Buffer[], { method = 'POST', requestPath = '/' } = {}) =>
-      new Promise<{ status: number; text: string }>((resolve, reject) => {
-        const request = http.request(`${baseUrl}${requestPath}`, { method }, (response) => {
-          const parts: Buffer[] = [];
-          response.on('data', (part) => parts.push(part));
-          response.on('end', () => resolve({ status: response.statusCode, text: Buffer.concat(parts).toString() }));
-        });
-        request.on('error', reject);
-        chunks.forEach((chunk) => request.write(chunk));
-        request.end();
-      });
-
-    it('hands the body to the worker in parts that make up the body, and ends them', async () => {
-      await start();
-      const lease = mockUploadLease(answerWhenEnded);
-      const body = crypto.randomBytes(300000);
-
-      const response = await send([body]);
-
-      expect(response).toEqual({ status: 200, text: 'done' });
-      const parts = messagesOf(lease, WORKER_EVENT.REQUEST_BODY);
-      expect(parts.length).toBeGreaterThan(2);
-      expect(parts[parts.length - 1].event.body).toBeNull();
-      expect(bytesOf(lease).equals(body)).toBe(true);
-    });
-
-    it('sends the request without its body and says that the body follows', async () => {
-      // streamed, as even a small body that arrived with the request would go along with it otherwise
-      await start({ inlineRequestBody: 0 });
-      const lease = mockUploadLease(answerWhenEnded);
-
-      await send([Buffer.from('hello')]);
-
-      const [request] = messagesOf(lease, WORKER_EVENT.REQUEST);
-      expect(request.event).toMatchObject({ hasBody: true });
-      expect(request.event).not.toHaveProperty('body');
-    });
-
-    it('calls the worker before the body has arrived, and passes on what comes later', async () => {
-      await start();
-      const lease = mockUploadLease(answerWhenEnded);
-      const request = http.request(`${baseUrl}/`, { method: 'POST' });
-      request.on('error', () => {});
-      const answered = new Promise((resolve) => request.on('response', resolve));
-
-      request.write('first ');
-      await until(() => bytesOf(lease).toString() === 'first ');
-      expect(messagesOf(lease, WORKER_EVENT.REQUEST)).toHaveLength(1);
-      expect(messagesOf(lease, WORKER_EVENT.REQUEST_BODY).every(({ event }) => event.body !== null)).toBe(true);
-
-      request.end('second');
-      await answered;
-      expect(bytesOf(lease).toString()).toBe('first second');
-    });
-
-    it('holds the body back while the worker has not taken the parts it was sent', async () => {
-      await start();
-      const lease = mockUploadLease(() => {});
-      const request = http.request(`${baseUrl}/`, { method: 'POST' });
-      request.on('error', () => {});
-
-      // many times the window
-      Array.from({ length: 40 }).forEach(() => request.write(Buffer.alloc(65536)));
-      // the window is sent, and then it is held back: give what is not allowed to follow the time to arrive
-      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length >= RequestBodyWindow);
-      await settle();
-      const sentWithoutAcknowledgement = messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length;
-      expect(sentWithoutAcknowledgement).toBe(RequestBodyWindow);
-
-      const [requestId, onMessage] = lease.subscribe.mock.calls[0];
-      onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
-      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_BODY).length === sentWithoutAcknowledgement + 1);
-      await settle();
-      expect(messagesOf(lease, WORKER_EVENT.REQUEST_BODY)).toHaveLength(sentWithoutAcknowledgement + 1);
-      request.destroy();
-    });
-
-    it('does not stream requests that have no body', async () => {
-      await start();
-      const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
-
-      await send([], { method: 'GET' });
-
-      expect(messagesOf(lease, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('hasBody');
-    });
-
-    it('does not take the worker away when the body has been read, while it works on the answer', async () => {
-      await start({ limitResponseTimeout: 2000, inlineRequestBody: 0 });
-      const lease = mockUploadLease((message, handlers) => {
-        if (message.type !== WORKER_EVENT.REQUEST_BODY) return;
-        if (message.event.body === null) setTimeout(() => respond(handlers, message.requestId, 200, 'late answer'), 200);
-        else acknowledge(handlers, message.requestId);
-      });
-
-      const response = await send([Buffer.from('hello')]);
-
-      expect(response).toEqual({ status: 200, text: 'late answer' });
-      expect(messagesOf(lease, WORKER_EVENT.REQUEST_ABORT)).toHaveLength(0);
-    });
-
-    it('tells the worker when the client goes away during the upload', async () => {
-      await start();
-      const lease = mockUploadLease(answerWhenEnded);
-      const request = http.request(`${baseUrl}/`, { method: 'POST' });
-      request.on('error', () => {});
-
-      request.write('part of it');
-      await until(() => bytesOf(lease).length > 0);
-      request.destroy();
-
-      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_ABORT).length > 0);
-      expect(lease.release).toHaveBeenCalled();
-    });
-
-    it('answers 413 and tells the worker when the body exceeds the limit for the body', async () => {
-      await start({ limitRequestBody: 100000 });
-      const lease = mockUploadLease(answerWhenEnded);
-
-      const response = await send([Buffer.alloc(500000)]).catch(() => ({ status: 413, text: '' }));
-
-      expect(response.status).toBe(413);
-      await until(() => messagesOf(lease, WORKER_EVENT.REQUEST_ABORT).length > 0);
-    });
-
-    it('lets a body that is within the limit for the body through', async () => {
-      await start({ limitRequestBody: 100000 });
-      mockUploadLease(answerWhenEnded);
-
-      expect((await send([Buffer.alloc(99999)])).status).toBe(200);
-    });
-
-    it('reads and drops the rest of a body that the worker did not wait for', async () => {
-      await start();
-      // answers while the upload is held back, as the worker has not taken the parts it was sent
-      let parts = 0;
-      mockUploadLease((message, handlers) => {
-        if (message.type === WORKER_EVENT.REQUEST_BODY && (parts += 1) === RequestBodyWindow) respond(handlers, message.requestId, 413, 'too large');
-      });
-
-      const connections: net.Socket[] = [];
-      server.on('connection', (socket) => connections.push(socket));
-
-      const response = await send([Buffer.alloc(20 * 1024 * 1024)]);
-
-      expect(response).toEqual({ status: 413, text: 'too large' });
-      // the whole upload is taken from the connection, which otherwise could not be used for the next request
-      await until(() => connections[0].bytesRead >= 20 * 1024 * 1024);
-      await settle();
-    });
-
-    it('does not stream the body of a request that the static worker answers', async () => {
-      await start();
-      const lease = mockUploadLease((message, handlers) => message.type === WORKER_EVENT.REQUEST && respond(handlers, message.requestId));
-
-      await send([Buffer.from('hello')], { requestPath: '/plain/file.txt' });
-
-      expect(FakePool.last.acquire).toHaveBeenCalledWith(
-        expect.stringMatching(/staticWorker\.js$/),
-        expect.anything(),
-        expect.anything(),
-        expect.any(AbortSignal)
-      );
-      expect(messagesOf(lease, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('hasBody');
-    });
-  });
-
   describe('request ids', () => {
     it('gives every request an id of its own, also for requests that run at the same time', async () => {
       await start();
@@ -962,7 +259,7 @@ describe('workerMiddleware', () => {
         handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
       );
 
-      await Promise.all(Array.from({ length: 20 }, () => fetch(`${baseUrl}/`)));
+      await Promise.all(Array.from({ length: 20 }, () => fetch(`${t.baseUrl}/`)));
 
       const ids = leases.flatMap(({ send }) => send.mock.calls.map(([message]) => message.requestId));
       expect(ids).toHaveLength(20);
@@ -987,17 +284,17 @@ describe('workerMiddleware', () => {
       const stat = jest.spyOn(fs, 'stat');
       const now = Date.now();
 
-      await fetch(`${baseUrl}/some/page`);
+      await fetch(`${t.baseUrl}/some/page`);
       const asked = access.mock.calls.length + stat.mock.calls.length;
       expect(asked).toBeGreaterThan(0);
 
       // the file system answers of the resolving itself are remembered for a second, the way to the path for five
       jest.spyOn(Date, 'now').mockReturnValue(now + 2000);
-      await fetch(`${baseUrl}/some/page`);
+      await fetch(`${t.baseUrl}/some/page`);
       expect(access.mock.calls.length + stat.mock.calls.length).toBe(asked);
 
       jest.spyOn(Date, 'now').mockReturnValue(now + 6000);
-      await fetch(`${baseUrl}/some/page`);
+      await fetch(`${t.baseUrl}/some/page`);
       expect(access.mock.calls.length + stat.mock.calls.length).toBeGreaterThan(asked);
     });
 
@@ -1005,10 +302,10 @@ describe('workerMiddleware', () => {
       await start();
       answerAll();
       const access = jest.spyOn(fs, 'access');
-      await fetch(`${baseUrl}/scan/0`);
+      await fetch(`${t.baseUrl}/scan/0`);
       const afterFirst = access.mock.calls.length;
 
-      await Promise.all(Array.from({ length: 30 }, (_, index) => fetch(`${baseUrl}/scan/${index + 1}`)));
+      await Promise.all(Array.from({ length: 30 }, (_, index) => fetch(`${t.baseUrl}/scan/${index + 1}`)));
 
       // the question about the new path, for each of them
       expect(access.mock.calls.length - afterFirst).toBe(30);
@@ -1018,7 +315,7 @@ describe('workerMiddleware', () => {
       await start();
       answer();
 
-      await fetch(`${baseUrl}/plain/file.txt`);
+      await fetch(`${t.baseUrl}/plain/file.txt`);
 
       expect(FakePool.last.acquire).toHaveBeenCalledWith(
         expect.stringMatching(/staticWorker\.js$/),
@@ -1037,7 +334,7 @@ describe('workerMiddleware', () => {
     it('answers a missing path that no worker answers with the 404 of the static worker, without a worker', async () => {
       await start();
 
-      const response = await fetch(`${baseUrl}/plain/missing.html`);
+      const response = await fetch(`${t.baseUrl}/plain/missing.html`);
 
       expect(response.status).toBe(404);
       expect(response.headers.get('content-type')).toBe('text/plain');
@@ -1049,7 +346,7 @@ describe('workerMiddleware', () => {
     it('answers a missing directory as well', async () => {
       await start();
 
-      const response = await fetch(`${baseUrl}/plain/missing/`);
+      const response = await fetch(`${t.baseUrl}/plain/missing/`);
 
       expect(response.status).toBe(404);
       expect(FakePool.last.acquire).not.toHaveBeenCalled();
@@ -1061,7 +358,7 @@ describe('workerMiddleware', () => {
         handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('app') } })
       );
 
-      const response = await fetch(`${baseUrl}/plain/missing.html`);
+      const response = await fetch(`${t.baseUrl}/plain/missing.html`);
 
       expect(await response.text()).toBe('app');
       expect(FakePool.last.acquire).toHaveBeenCalledWith('/static-worker.js', expect.anything(), expect.anything(), expect.any(AbortSignal));
@@ -1074,19 +371,19 @@ describe('workerMiddleware', () => {
       );
       const access = jest.spyOn(fs, 'access');
       const now = Date.now();
-      const added = path.join(root, 'plain', 'added.html');
+      const added = path.join(t.root, 'plain', 'added.html');
 
-      expect((await fetch(`${baseUrl}/plain/added.html`)).status).toBe(404);
+      expect((await fetch(`${t.baseUrl}/plain/added.html`)).status).toBe(404);
       const asked = access.mock.calls.length;
       await fs.writeFile(added, 'added');
 
       try {
-        expect((await fetch(`${baseUrl}/plain/added.html`)).status).toBe(404);
+        expect((await fetch(`${t.baseUrl}/plain/added.html`)).status).toBe(404);
         expect(access.mock.calls.length).toBe(asked);
 
         // the probe remembers its answers for a second
         jest.spyOn(Date, 'now').mockReturnValue(now + 1500);
-        expect(await (await fetch(`${baseUrl}/plain/added.html`)).text()).toBe('added');
+        expect(await (await fetch(`${t.baseUrl}/plain/added.html`)).text()).toBe('added');
         expect(access.mock.calls.length).toBeGreaterThan(asked);
       } finally {
         await fs.rm(added);
@@ -1096,10 +393,10 @@ describe('workerMiddleware', () => {
     it('reads and drops the body of a request to a missing path', async () => {
       await start();
       const connections: net.Socket[] = [];
-      server.on('connection', (socket) => connections.push(socket));
+      t.server.on('connection', (socket) => connections.push(socket));
 
       const status = await new Promise<number>((resolve, reject) => {
-        const request = http.request(`${baseUrl}/plain/missing.html`, { method: 'POST' }, (response) => {
+        const request = http.request(`${t.baseUrl}/plain/missing.html`, { method: 'POST' }, (response) => {
           response.resume();
           response.on('end', () => resolve(response.statusCode));
         });
@@ -1124,7 +421,7 @@ describe('workerMiddleware', () => {
     ];
     const acquired = () => FakePool.last.acquire.mock.calls.map(([workerPath]: [string]) => workerPath);
 
-    beforeAll(() => fs.writeFile(path.join(root, 'routed.js'), ''));
+    beforeAll(() => fs.writeFile(path.join(t.root, 'routed.js'), ''));
 
     afterEach(() => {
       jest.restoreAllMocks();
@@ -1136,10 +433,10 @@ describe('workerMiddleware', () => {
       const access = jest.spyOn(fs, 'access');
       const stat = jest.spyOn(fs, 'stat');
 
-      expect((await fetch(`${baseUrl}/exact`)).status).toBe(200);
-      expect((await fetch(`${baseUrl}/items/12?full=1`)).status).toBe(200);
+      expect((await fetch(`${t.baseUrl}/exact`)).status).toBe(200);
+      expect((await fetch(`${t.baseUrl}/items/12?full=1`)).status).toBe(200);
 
-      expect(acquired()).toEqual([path.join(root, 'routed.js'), path.join(root, 'routed.js')]);
+      expect(acquired()).toEqual([path.join(t.root, 'routed.js'), path.join(t.root, 'routed.js')]);
       expect(access).not.toHaveBeenCalled();
       expect(stat).not.toHaveBeenCalled();
     });
@@ -1148,8 +445,8 @@ describe('workerMiddleware', () => {
       await start({ routes });
       const lease = answer();
 
-      await fetch(`${baseUrl}/items/12?full=1`);
-      await fetch(`${baseUrl}/exact`);
+      await fetch(`${t.baseUrl}/items/12?full=1`);
+      await fetch(`${t.baseUrl}/exact`);
 
       const [first, second] = lease.send.mock.calls.map(([message]) => message.event);
       expect(first).toMatchObject({ path: '/items/12', pathParameters: { id: '12' }, queryStringParameters: { full: '1' } });
@@ -1160,16 +457,16 @@ describe('workerMiddleware', () => {
       await start({ routes });
       answer();
 
-      await fetch(`${baseUrl}/items/twelve`);
+      await fetch(`${t.baseUrl}/items/twelve`);
 
-      expect(acquired()).toEqual([path.join(root, 'exampleWorker.js')]);
+      expect(acquired()).toEqual([path.join(t.root, 'exampleWorker.js')]);
     });
 
     it('answers 404 itself when no route matches and it may not look under the root', async () => {
       await start({ routes, fallthrough: false });
       answer();
 
-      const response = await fetch(`${baseUrl}/items/twelve`);
+      const response = await fetch(`${t.baseUrl}/items/twelve`);
 
       expect(response.status).toBe(404);
       expect(await response.text()).toBe('Not found.');
@@ -1183,7 +480,7 @@ describe('workerMiddleware', () => {
 
       // a url would have the `..` resolved before it is sent
       const status = await new Promise((resolve) =>
-        http.get({ host: 'localhost', port: new URL(baseUrl).port, path: '/items/../exact' }, (response) => resolve(response.statusCode))
+        http.get({ host: 'localhost', port: new URL(t.baseUrl).port, path: '/items/../exact' }, (response) => resolve(response.statusCode))
       );
 
       expect(status).toBe(403);
@@ -1191,778 +488,12 @@ describe('workerMiddleware', () => {
     });
 
     it('refuses routes that are not valid when it is created', () => {
-      expect(() => workerMiddleware({ root, routes: [{ path: '/missing', worker: 'missing.js' }] })).toThrow(/is not a file/);
-    });
-  });
-
-  describe('bodies for the static worker', () => {
-    it('reads and drops them', async () => {
-      await start();
-      mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 404, headers: {}, body: Buffer.from('missing') } })
-      );
-      const connections: net.Socket[] = [];
-      server.on('connection', (socket) => connections.push(socket));
-
-      // a client that sends all of it, as a browser does, where fetch gives up its upload when the answer arrives
-      const status = await new Promise<number>((resolve, reject) => {
-        const request = http.request(`${baseUrl}/plain/file.txt`, { method: 'POST' }, (response) => {
-          response.resume();
-          response.on('end', () => resolve(response.statusCode));
-        });
-        request.on('error', reject);
-        request.end(Buffer.alloc(20 * 1024 * 1024));
-      });
-
-      expect(status).toBe(404);
-      // the whole upload is taken from the connection, which otherwise could not be used for the next request
-      for (let waited = 0; connections[0].bytesRead < 20 * 1024 * 1024 && waited < 3000; waited += 10) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-      expect(connections[0].bytesRead).toBeGreaterThanOrEqual(20 * 1024 * 1024);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
-  });
-
-  describe('metrics', () => {
-    it('answers the question of a worker for the metrics of the server', async () => {
-      await start();
-      const lease = mockLease((handlers, requestId) => {
-        handlers.onMessage({ type: WORKER_EVENT.METRICS_REQUEST, requestId });
-        setTimeout(() => handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } }), 20);
-      });
-
-      await fetch(`${baseUrl}/`);
-
-      const answers = lease.send.mock.calls.map(([message]) => message).filter((message) => message.type === WORKER_EVENT.METRICS);
-      expect(answers).toHaveLength(1);
-      expect(answers[0].event).toMatchObject({
-        uptimeSeconds: expect.any(Number),
-        memory: { rss: expect.any(Number) },
-        requests: { total: expect.any(Number) },
-      });
-    });
-
-    it('lists the worker pool of the middleware among the sources, and counts the requests', async () => {
-      await start();
-      mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 404, headers: {}, body: Buffer.from('') } })
-      );
-      const before = getServerMetrics().requests;
-
-      await fetch(`${baseUrl}/`);
-      await new Promise((resolve) => setImmediate(resolve));
-
-      const { sources, requests } = getServerMetrics();
-      expect(sources[`workers:${root}`]).toMatchObject({ workers: 2, active: 1, waiting: 0, paths: {} });
-      expect(requests.total - before.total).toBe(1);
-      expect(requests.status['4xx'] - before.status['4xx']).toBe(1);
-      expect(requests.latencyMs.count).toBeGreaterThan(0);
-    });
-
-    it('counts how long requests took per worker file, the static files under the static worker', async () => {
-      await start({ name: 'latency-per-path' });
-      mockLeases((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('') } })
-      );
-
-      await fetch(`${baseUrl}/`);
-      await fetch(`${baseUrl}/`);
-      await fetch(`${baseUrl}/plain/file.txt`);
-      // answered without a worker, so it has no worker file to count under
-      await fetch(`${baseUrl}/plain/missing`);
-      await new Promise((resolve) => setImmediate(resolve));
-
-      const { latencyMs } = getServerMetrics().sources['workers:latency-per-path'] as { latencyMs: Record<string, { count: number }> };
-      expect(Object.entries(latencyMs).map(([workerPath, { count }]) => [path.basename(workerPath), count])).toEqual([
-        ['exampleWorker.js', 2],
-        ['staticWorker.js', 1],
-      ]);
-    });
-  });
-
-  describe('output of the workers', () => {
-    it('leaves handing the output of the workers to the pool, once for each worker, not for every request', async () => {
-      const onStdout = jest.fn();
-      const onStderr = jest.fn();
-      await start({ onStdout, onStderr });
-      const lease = mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
-      );
-
-      await fetch(`${baseUrl}/`);
-      await fetch(`${baseUrl}/`);
-
-      expect(FakePool.last.params).toMatchObject({ onStdout, onStderr });
-      expect(lease.worker.instance.stdout.on).not.toHaveBeenCalled();
-      expect(lease.worker.instance.stderr.on).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('workers that keep failing', () => {
-    it('answers 503 with the time to wait, without telling where the worker is', async () => {
-      await start();
-      FakePool.last.acquire.mockRejectedValue(new WorkerUnavailableError('/srv/secret/worker.js', 2500));
-
-      const response = await fetch(`${baseUrl}/`);
-
-      expect(response.status).toBe(503);
-      expect(response.headers.get('retry-after')).toBe('3');
-      expect(await response.text()).toBe('Service unavailable.');
-    });
-
-    it('answers 503 as well when the request waited for a worker for too long, or too many wait already', async () => {
-      await start();
-      FakePool.last.acquire.mockRejectedValue(
-        new WorkerBusyError('/srv/secret/worker.js', 'No worker became available for /srv/secret/worker.js within 5000ms.')
-      );
-
-      const response = await fetch(`${baseUrl}/`);
-
-      expect(response.status).toBe(503);
-      expect(response.headers.get('retry-after')).toBe('1');
-      expect(await response.text()).toBe('Service unavailable.');
-    });
-
-    it('asks to wait at least a second', async () => {
-      await start();
-      FakePool.last.acquire.mockRejectedValue(new WorkerUnavailableError('/srv/worker.js', 100));
-
-      expect((await fetch(`${baseUrl}/`)).headers.get('retry-after')).toBe('1');
-    });
-  });
-
-  describe('the line for a worker', () => {
-    it('is 1000 requests long by default', async () => {
-      await start();
-
-      expect(FakePool.last.params.maxQueue).toBe(1000);
-    });
-
-    it('is as long as the limit for the queue says', async () => {
-      await start({ limitQueue: 5 });
-
-      expect(FakePool.last.params.maxQueue).toBe(5);
-    });
-
-    it('is as long as it is, with a limit of 0', async () => {
-      await start({ limitQueue: 0 });
-
-      expect(FakePool.last.params.maxQueue).toBe(0);
-    });
-
-    it('aborts the wait when the client goes away, and answers nothing', async () => {
-      await start();
-      let signal: AbortSignal | undefined;
-      FakePool.last.acquire.mockImplementation(
-        (_path: string, _options: object, _limit: number, abortSignal: AbortSignal) =>
-          new Promise((_resolve, reject) => {
-            signal = abortSignal;
-            abortSignal.addEventListener('abort', () => reject(new WorkerAbandonedError('/srv/worker.js')));
-          })
-      );
-      const writeHead = jest.spyOn(http.ServerResponse.prototype, 'writeHead');
-      const request = http.get(`${baseUrl}/`);
-      request.on('error', () => undefined);
-      await until(() => signal !== undefined);
-
-      expect(signal.aborted).toBe(false);
-      request.destroy();
-      await until(() => signal.aborted);
-      await settle();
-
-      expect(writeHead).not.toHaveBeenCalled();
-      writeHead.mockRestore();
-    });
-
-    it('does not abort the wait of a request that got its worker', async () => {
-      await start();
-      let signal: AbortSignal | undefined;
-      FakePool.last.acquire.mockImplementation(async (_path: string, _options: object, _limit: number, abortSignal: AbortSignal) => {
-        signal = abortSignal;
-
-        return createLease((handlers, requestId) =>
-          handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
-        );
-      });
-
-      await (await fetch(`${baseUrl}/`)).text();
-      await settle();
-
-      expect(signal.aborted).toBe(false);
-    });
-
-    it('lets a request wait for as long as the request timeout says', async () => {
-      await start({ limitRequestTimeout: 1234 });
-
-      expect(FakePool.last.params.acquireTimeout).toBe(1234);
-    });
-  });
-
-  describe('the time a response may take', () => {
-    afterEach(() => {
-      jest.restoreAllMocks();
-    });
-
-    const part = (requestId: string, body: Buffer | null) => ({
-      type: WORKER_EVENT.RESPONSE_EMIT,
-      requestId,
-      event: { statusCode: 200, headers: {}, emit: true, body },
-    });
-
-    it('is watched by one timer for the whole response, however many parts come in', async () => {
-      await start({ limitResponseTimeout: 777 });
-      mockLease((handlers, requestId) => {
-        Array.from({ length: 50 }).forEach(() => handlers.onMessage(part(requestId, Buffer.from('part'))));
-        handlers.onMessage(part(requestId, null));
-      });
-      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
-
-      const response = await fetch(`${baseUrl}/`);
-      await response.arrayBuffer();
-
-      // one for the response, a second at most when it looked again
-      expect(setTimeoutSpy.mock.calls.filter(([, delay]) => delay === 777).length).toBeLessThanOrEqual(2);
-    });
-
-    it('runs out when nothing moves for as long as the limit, also after parts came in', async () => {
-      await start({ limitResponseTimeout: 150 });
-      mockLease((handlers, requestId) => handlers.onMessage(part(requestId, Buffer.from('first part'))));
-
-      const response = await fetch(`${baseUrl}/`);
-
-      // the headers are out, so the connection is cut instead of answered with 504
-      await expect(response.arrayBuffer()).rejects.toThrow();
-    });
-
-    it('goes on while parts keep coming, for longer than the limit', async () => {
-      // a part comes in a fifth of the limit, and all of them together take longer than it
-      await start({ limitResponseTimeout: 150 });
-      mockLease((handlers, requestId) => {
-        const parts = [1, 2, 3, 4, 5, 6, 7, 8].map((number) => () => handlers.onMessage(part(requestId, Buffer.from(`part ${number} `))));
-        parts.forEach((send, index) => setTimeout(send, index * 30));
-        setTimeout(() => handlers.onMessage(part(requestId, null)), parts.length * 30);
-      });
-
-      const response = await fetch(`${baseUrl}/`);
-
-      expect(await response.text()).toBe('part 1 part 2 part 3 part 4 part 5 part 6 part 7 part 8 ');
-    });
-  });
-
-  describe('bodies that arrive with the request', () => {
-    type Sent = { type: string; requestId: string; event?: { hasBody?: boolean; body?: Buffer | null } };
-
-    /** answers the request as soon as it is there, and the parts of a body as they come */
-    const answerAtOnce = (message: Sent, handlers: Handlers) => {
-      if (message.type === WORKER_EVENT.REQUEST) respond(handlers, message.requestId);
-      if (message.type === WORKER_EVENT.REQUEST_BODY) acknowledge(handlers, message.requestId);
-    };
-    const respond = (handlers: Handlers, requestId: string) =>
-      handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } });
-    const acknowledge = (handlers: Handlers, requestId: string) => handlers.onMessage({ type: WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE, requestId });
-
-    interface Lease {
-      send: jest.Mock<unknown, [Sent]>;
-      subscribe: jest.Mock;
-      release: jest.Mock;
-    }
-
-    const mockLeaseAnswering = (answer: (message: Sent, handlers: Handlers) => void = answerAtOnce) => {
-      const created: Lease[] = [];
-      FakePool.last.acquire.mockImplementation(async () => {
-        let handlers: Handlers;
-        const stream = { on: jest.fn(), off: jest.fn() };
-        const lease = {
-          worker: { instance: { stdout: stream, stderr: stream } },
-          send: jest.fn((message: Sent) => setImmediate(() => answer(message, handlers))),
-          subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
-            handlers = { onMessage, onExit };
-          }),
-          release: jest.fn(),
-        };
-        created.push(lease);
-
-        return lease;
-      });
-
-      return created;
-    };
-
-    const messagesOf = (leases: Lease[], type: string): Sent[] =>
-      leases.flatMap(({ send }) => send.mock.calls.map(([message]) => message)).filter((message) => message.type === type);
-
-    /** sends a request over a socket of its own, in the writes that are given: whatever is in one write arrives together, which fetch does not let one decide */
-    const rawRequest = (head: string, writes: Array<Buffer | string>, beforeNextWrite?: () => Promise<unknown>) =>
-      new Promise<string>((resolve, reject) => {
-        const socket = net.connect(Number(new URL(baseUrl).port), '127.0.0.1');
-        const received: Buffer[] = [];
-        socket.on('data', (chunk) => received.push(chunk));
-        socket.on('end', () => resolve(Buffer.concat(received).toString()));
-        socket.on('error', reject);
-        socket.on('connect', async () => {
-          const requestHead = `${head}\r\nHost: web.localhost\r\nConnection: close\r\n\r\n`;
-          // without a pause the head and the first part of the body are a single write, two writes in a row can arrive apart
-          const [first, ...rest] = writes;
-          const parts =
-            beforeNextWrite || first === undefined ? [requestHead, ...writes] : [Buffer.concat([Buffer.from(requestHead), Buffer.from(first)]), ...rest];
-          for (const part of parts) {
-            socket.write(part);
-            await beforeNextWrite?.();
-          }
-        });
-      });
-
-    /** the head and the body in a single write, so they arrive together */
-    const postTogether = (body: Buffer | string, path = '/') => {
-      const bytes = Buffer.from(body);
-
-      return rawRequest(`POST ${path} HTTP/1.1\r\nContent-Length: ${bytes.length}`, [bytes]);
-    };
-
-    /** the head in a write of its own, the body in the next one, which is only written once the request has been handed on to a worker: no pause can guarantee that */
-    const postApart = (body: string, leases: Lease[]) =>
-      rawRequest(`POST / HTTP/1.1\r\nContent-Length: ${Buffer.byteLength(body)}`, [body], async () => {
-        while (messagesOf(leases, WORKER_EVENT.REQUEST).length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
-      });
-
-    it('goes along with the request when it is small, with no parts after it', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-
-      const response = await postTogether('hello world');
-
-      expect(response).toContain('200 OK');
-      const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
-      expect(request.event.body.toString()).toBe('hello world');
-      expect(request.event).not.toHaveProperty('hasBody');
-      // the bytes travel as they are, not as base64 in the metadata
-      expect(request.event).not.toHaveProperty('inlineBody');
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
-    });
-
-    it('keeps every byte', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-      const bytes = Buffer.from(Array.from({ length: 256 }, (_, value) => value));
-
-      await postTogether(bytes);
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.body).toEqual(bytes);
-    });
-
-    it('is empty for a request of no bytes, which needs no parts either', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-
-      await postTogether('');
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.body).toEqual(Buffer.alloc(0));
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
-    });
-
-    it('also holds for the requests after the first one, which find their way in the cache', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-
-      await postTogether('first');
-      await postTogether('second');
-      await postTogether('third');
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST).map(({ event }) => event.body.toString())).toEqual(['first', 'second', 'third']);
-    });
-
-    it('is also how a small body with chunks of its own, sent in one write, arrives', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-
-      await rawRequest('POST / HTTP/1.1\r\nTransfer-Encoding: chunked', ['5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n']);
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.body.toString()).toBe('hello world');
-    });
-
-    it('is streamed instead when the body comes after the request', async () => {
-      await start();
-      // the worker answers once it has the whole body, as the rest of a body is dropped when the response is done
-      const leases = mockLeaseAnswering((message, handlers) => {
-        if (message.type === WORKER_EVENT.REQUEST_BODY && message.event.body === null) respond(handlers, message.requestId);
-        if (message.type === WORKER_EVENT.REQUEST_BODY && message.event.body !== null) acknowledge(handlers, message.requestId);
-      });
-
-      await postApart('a body that was sent later', leases);
-
-      const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
-      expect(request.event).toMatchObject({ hasBody: true });
-      expect(request.event).not.toHaveProperty('body');
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY).length).toBeGreaterThan(0);
-    });
-
-    it('is streamed whole, never in two ways, when it is bigger than the limit for inline bodies', async () => {
-      await start({ inlineRequestBody: 100 });
-      const leases = mockLeaseAnswering();
-
-      await postTogether(Buffer.alloc(101, 1));
-
-      const [request] = messagesOf(leases, WORKER_EVENT.REQUEST);
-      expect(request.event).toMatchObject({ hasBody: true });
-      expect(request.event).not.toHaveProperty('body');
-      const sent = Buffer.concat(
-        messagesOf(leases, WORKER_EVENT.REQUEST_BODY)
-          .filter(({ event }) => event.body !== null)
-          .map(({ event }) => event.body)
-      );
-      expect(sent).toEqual(Buffer.alloc(101, 1));
-    });
-
-    it('goes along with the request when it is exactly as big as the limit', async () => {
-      await start({ inlineRequestBody: 100 });
-      const leases = mockLeaseAnswering();
-
-      await postTogether(Buffer.alloc(100, 1));
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event.body).toHaveLength(100);
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST_BODY)).toHaveLength(0);
-    });
-
-    it('is always streamed with a limit of 0', async () => {
-      await start({ inlineRequestBody: 0 });
-      const leases = mockLeaseAnswering();
-
-      await postTogether('small');
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).toMatchObject({ hasBody: true });
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('body');
-    });
-
-    it('is refused with 413 before a worker is asked for when it is bigger than the limit for bodies', async () => {
-      await start({ limitRequestBody: 50 });
-      mockLeaseAnswering();
-
-      const response = await postTogether(Buffer.alloc(60, 1));
-
-      expect(response).toContain('413');
-      expect(FakePool.last.acquire).not.toHaveBeenCalled();
-    });
-
-    it('is let through when it is exactly as big as the limit for bodies', async () => {
-      await start({ limitRequestBody: 50 });
-      mockLeaseAnswering();
-
-      expect(await postTogether(Buffer.alloc(50, 1))).toContain('200 OK');
-    });
-
-    it('is not there for requests without a body', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-
-      await rawRequest('GET / HTTP/1.1', []);
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('body');
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('hasBody');
-    });
-
-    it('is not there for what the static worker answers', async () => {
-      await start();
-      const leases = mockLeaseAnswering();
-
-      await postTogether('ignored', '/plain/file.txt');
-
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST)[0].event).not.toHaveProperty('body');
-    });
-
-    it('lets the worker take its time to answer, without telling it that the client left', async () => {
-      await start({ limitResponseTimeout: 2000 });
-      const leases = mockLeaseAnswering((message, handlers) => {
-        if (message.type === WORKER_EVENT.REQUEST) setTimeout(() => respond(handlers, message.requestId), 150);
-      });
-
-      const response = await postTogether('hello');
-
-      expect(response).toContain('200 OK');
-      expect(messagesOf(leases, WORKER_EVENT.REQUEST_ABORT)).toHaveLength(0);
-    });
-  });
-  describe('websockets', () => {
-    type Message = { type: string; requestId: string; event?: { body?: Buffer | string; headers?: Record<string, string> } };
-
-    const upgraded = (handlers: Handlers, requestId: string) =>
-      handlers.onMessage({
-        type: WORKER_EVENT.RESPONSE,
-        requestId,
-        event: { statusCode: 101, headers: { Upgrade: 'websocket', Connection: 'Upgrade' }, body: Buffer.from('') },
-      });
-
-    /** a lease whose worker accepts the upgrade, or answers it with `upgrade`. `answer` reacts to the other messages. */
-    const mockSocketLease = (answer: (message: Message, handlers: Handlers) => void = () => {}, upgrade = upgraded) => {
-      let handlers: Handlers;
-      const stream = { on: jest.fn(), off: jest.fn() };
-      const lease = {
-        worker: { instance: { stdout: stream, stderr: stream } },
-        send: jest.fn((message: Message) =>
-          setImmediate(() => {
-            if (message.type === WORKER_EVENT.REQUEST) upgrade(handlers, message.requestId);
-            answer(message, handlers);
-          })
-        ),
-        subscribe: jest.fn((requestId: string, onMessage: Handlers['onMessage'], onExit: Handlers['onExit']) => {
-          handlers = { onMessage, onExit };
-        }),
-        release: jest.fn(),
-      };
-      FakePool.last.acquire.mockResolvedValue(lease);
-
-      return lease;
-    };
-
-    const messagesOf = (lease: ReturnType<typeof mockSocketLease>, type: string) =>
-      lease.send.mock.calls.map(([message]) => message).filter((message) => message.type === type);
-
-    const clients: net.Socket[] = [];
-    let serverSockets: net.Socket[];
-
-    beforeEach(() => {
-      serverSockets = [];
-    });
-
-    afterEach(() => clients.splice(0).forEach((client) => client.destroy()));
-
-    /** opens a websocket connection with the headers of an upgrade, and waits for the answer of the server */
-    const connect = async (requestPath = '/') => {
-      server.on('connection', (socket) => serverSockets.push(socket));
-      const client = net.connect(Number(new URL(baseUrl).port), '127.0.0.1');
-      clients.push(client);
-      const received: Buffer[] = [];
-      client.on('data', (chunk) => received.push(chunk));
-      client.on('error', () => {});
-      const closed = new Promise<void>((resolve) => client.on('close', () => resolve()));
-      const ended = new Promise<void>((resolve) => client.on('end', () => resolve()));
-      client.write(
-        `GET ${requestPath} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${crypto
-          .randomBytes(16)
-          .toString('base64')}\r\nSec-WebSocket-Version: 13\r\n\r\n`
-      );
-      await until(() => Buffer.concat(received).includes('\r\n\r\n'));
-      const head = Buffer.concat(received).toString();
-      received.splice(0);
-
-      return { client, closed, ended, head, received: () => Buffer.concat(received), write: (bytes: Buffer) => client.write(bytes) };
-    };
-
-    it('answers with what the worker answers, and passes the messages of the client on once the upgrade was accepted', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { head, write } = await connect();
-      write(Buffer.concat([clientFrame('hello'), clientFrame(Buffer.from([1, 2, 3]), { opcode: 0x2 })]));
-      await until(() => messagesOf(lease, WORKER_EVENT.WS_MESSAGE_RECEIVE).length === 2);
-
-      expect(head).toContain('101 Switching Protocols');
-      expect(messagesOf(lease, WORKER_EVENT.WS_MESSAGE_RECEIVE).map(({ event }) => event)).toEqual([{ body: 'hello' }, { body: Buffer.from([1, 2, 3]) }]);
-    });
-
-    it('passes a message that comes in pieces on once, and a small one like any other', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { write } = await connect();
-      const frame = clientFrame('x'.repeat(300));
-      write(frame.subarray(0, 5));
-      write(frame.subarray(5, 100));
-      write(frame.subarray(100));
-      write(clientFrame('hi'));
-      await until(() => messagesOf(lease, WORKER_EVENT.WS_MESSAGE_RECEIVE).length === 2);
-
-      expect(messagesOf(lease, WORKER_EVENT.WS_MESSAGE_RECEIVE).map(({ event }) => event.body)).toEqual(['x'.repeat(300), 'hi']);
-    });
-
-    it('holds the client back while the worker has not taken the messages it was sent', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { write } = await connect();
-      write(Buffer.concat(Array.from({ length: WebSocketWindow.messages }, (_, index) => clientFrame(`m${index}`))));
-      await until(() => serverSockets[0].isPaused());
-      const [{ requestId }] = messagesOf(lease, WORKER_EVENT.REQUEST);
-      lease.subscribe.mock.calls[0][1]({ type: WORKER_EVENT.WS_MESSAGE_ACKNOWLEDGE, requestId });
-
-      expect(serverSockets[0].isPaused()).toBe(false);
-    });
-
-    it('writes the messages of the worker to the client, and acknowledges them once they are written', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { received } = await connect();
-      const [, onMessage] = lease.subscribe.mock.calls[0];
-      const [{ requestId }] = messagesOf(lease, WORKER_EVENT.REQUEST);
-      onMessage({ type: WORKER_EVENT.WS_MESSAGE_SEND, requestId, event: { body: 'text' } });
-      onMessage({ type: WORKER_EVENT.WS_MESSAGE_SEND, requestId, event: { body: Buffer.from([7]) } });
-      await until(() => received().length === 9);
-
-      expect([...received()]).toEqual([0x81, 4, ...Buffer.from('text'), 0x82, 1, 7]);
-      await until(() => messagesOf(lease, WORKER_EVENT.RESPONSE_ACKNOWLEDGE).length === 2);
-    });
-
-    it('sends the messages of the same turn in one write', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { received } = await connect();
-      const [, onMessage] = lease.subscribe.mock.calls[0];
-      const [{ requestId }] = messagesOf(lease, WORKER_EVENT.REQUEST);
-      Array.from({ length: 5 }, (_, index) => onMessage({ type: WORKER_EVENT.WS_MESSAGE_SEND, requestId, event: { body: `m${index}` } }));
-
-      // held back until the turn is over, then written together
-      expect(serverSockets[0].writableCorked).toBe(1);
-      await until(() => received().length === 20);
-      expect(serverSockets[0].writableCorked).toBe(0);
-    });
-
-    it('closes the connection when the worker says so', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { received, ended } = await connect();
-      const [, onMessage] = lease.subscribe.mock.calls[0];
-      const [{ requestId }] = messagesOf(lease, WORKER_EVENT.REQUEST);
-      onMessage({ type: WORKER_EVENT.WS_MESSAGE_SEND, requestId, event: { close: { code: 4000, reason: 'done' } } });
-      await ended;
-
-      expect(received().readUInt16BE(2)).toBe(4000);
-      expect(received().subarray(4).toString()).toBe('done');
-    });
-
-    it('tells the worker and frees it when the client goes away', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { client } = await connect();
-      client.destroy();
-      await until(() => lease.release.mock.calls.length > 0);
-
-      expect(messagesOf(lease, WORKER_EVENT.WS_CONNECTION_CLOSE)).toHaveLength(1);
-    });
-
-    it('does not tell the worker about a closing connection for a plain request', async () => {
-      await start();
-      const lease = mockLease((handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
-      );
-
-      await fetch(`${baseUrl}/`);
-      server.closeAllConnections();
-      await settle();
-
-      expect(lease.send.mock.calls.filter(([message]) => message.type === WORKER_EVENT.WS_CONNECTION_CLOSE)).toHaveLength(0);
-    });
-
-    it('closes a client that breaks the protocol, and frees the worker when it is gone', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { write, received, ended, client } = await connect();
-      write(clientFrame('unmasked', { masked: false }));
-      await ended;
-      client.destroy();
-
-      expect(received().readUInt16BE(2)).toBe(1002);
-      await until(() => lease.release.mock.calls.length > 0);
-      expect(messagesOf(lease, WORKER_EVENT.WS_MESSAGE_RECEIVE)).toHaveLength(0);
-    });
-
-    it('closes a client that sends a message above the limit', async () => {
-      await start({ limitWebSocketMessage: 10 });
-      mockSocketLease();
-
-      const { write, received, ended } = await connect();
-      write(clientFrame('x'.repeat(11)));
-      await ended;
-
-      expect(received().readUInt16BE(2)).toBe(1009);
-    });
-
-    it('answers 503 for the connections above the limit of a worker, and takes the next one when one is gone', async () => {
-      await start({ limitWebSocketConnections: 1 });
-      const lease = mockSocketLease();
-
-      const first = await connect();
-      const second = await connect();
-      first.client.destroy();
-      await until(() => lease.release.mock.calls.length > 0);
-      const third = await connect();
-
-      expect(first.head).toContain('101');
-      expect(second.head).toContain('503');
-      expect(second.head).toContain('Retry-After');
-      expect(third.head).toContain('101');
-    });
-
-    it('does not count the connections of another worker', async () => {
-      await start({ limitWebSocketConnections: 1 });
-      mockSocketLease();
-      await fs.mkdir(path.join(root, 'other'), { recursive: true });
-      await fs.writeFile(path.join(root, 'other', 'exampleWorker.js'), '');
-
-      const first = await connect('/');
-      const second = await connect('/other');
-
-      expect(first.head).toContain('101');
-      expect(second.head).toContain('101');
-    });
-
-    it('gives the slot back when no worker could be had', async () => {
-      await start({ limitWebSocketConnections: 1 });
-      mockSocketLease();
-      FakePool.last.acquire.mockRejectedValueOnce(new WorkerBusyError('/x', 'busy'));
-
-      const first = await connect();
-      const second = await connect();
-
-      expect(first.head).toContain('503');
-      expect(second.head).toContain('101');
-    });
-
-    it('frees the worker and the slot at once when the upgrade is refused', async () => {
-      await start({ limitWebSocketConnections: 1 });
-      const lease = mockSocketLease(undefined, (handlers, requestId) =>
-        handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 400, headers: {}, body: Buffer.from('no') } })
-      );
-
-      const { head } = await connect();
-      await until(() => lease.release.mock.calls.length > 0);
-
-      expect(head).toContain('400');
-    });
-
-    it('ignores a second answer to the upgrade instead of failing', async () => {
-      await start();
-      const lease = mockSocketLease();
-
-      const { client } = await connect();
-      const [, onMessage] = lease.subscribe.mock.calls[0];
-      const [{ requestId }] = messagesOf(lease, WORKER_EVENT.REQUEST);
-      onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 101, headers: {}, body: Buffer.from('') } });
-      await settle();
-
-      expect(client.destroyed).toBe(false);
-    });
-
-    it('does not close the connection for being quiet when the keep alive timeout of the server passes', async () => {
-      await start();
-      server.keepAliveTimeout = 5000;
-      const setTimeoutOfSocket = jest.spyOn(net.Socket.prototype, 'setTimeout');
-      mockSocketLease();
-
-      await connect();
-      await until(() => setTimeoutOfSocket.mock.calls.at(-1)?.[0] === 0);
-
-      expect(serverSockets[0].timeout).toBe(0);
-      setTimeoutOfSocket.mockRestore();
+      expect(() => workerMiddleware({ root: t.root, routes: [{ path: '/missing', worker: 'missing.js' }] })).toThrow(/is not a file/);
     });
   });
 
   it('stops its workers and leaves the metrics when it is closed', async () => {
-    const middleware = workerMiddleware({ root, name: 'closed.localhost' });
+    const middleware = workerMiddleware({ root: t.root, name: 'closed.localhost' });
     const pool = FakePool.last;
 
     expect(getServerMetrics().sources['workers:closed.localhost']).toBeDefined();
