@@ -42,6 +42,12 @@ exports.handler = (event, context, callback) => {
   if (event.path === '/env') return callback(null, { statusCode: 200, body: JSON.stringify(process.env) });
   if (event.path.startsWith('/slow')) return setTimeout(respond, 100);
   if (event.path === '/hold') return setTimeout(respond, 400);
+  // answers once the test has written the release file, so that how long the lambda is held does not depend on the speed of the machine (10 seconds at most)
+  if (event.path === '/block') {
+    const release = process.env.PID_FILE + '.release';
+    const wait = (waited) => (require('fs').existsSync(release) || waited >= 10000 ? respond() : setTimeout(() => wait(waited + 10), 10));
+    return wait(0);
+  }
   // answers once the number of lambdas in the path (/gather/8) has got a request, so that no lambda is free for another request before that (3 seconds at most)
   if (event.path.startsWith('/gather/')) {
     const { appendFileSync, readFileSync } = require('fs');
@@ -628,7 +634,10 @@ describe('httpMiddleware', () => {
     it('lets a request leave the line when its client goes away', async () => {
       await start({ limit: 1 });
       const { getLambdaStats } = require(path.join(build, 'index.js'));
-      const holding = fetch(`${baseUrl}/hold`);
+      const releaseFile = `${pidFile}.release`;
+      await fs.rm(releaseFile, { force: true });
+      // the lambda stays taken until the file is written, however long the client takes to leave
+      const holding = fetch(`${baseUrl}/block`);
       const leaving = new AbortController();
       const gone = fetch(`${baseUrl}/after`, { signal: leaving.signal }).catch(() => undefined);
       for (let waited = 0; getLambdaStats().waiting < 1 && waited < 3000; waited += 10) {
@@ -643,6 +652,7 @@ describe('httpMiddleware', () => {
       }
 
       expect(getLambdaStats()).toMatchObject({ waiting: 0, abandoned: 1 });
+      await fs.writeFile(releaseFile, '');
       expect((await holding).status).toBe(200);
       // the lambda was not taken by the request that left
       expect(await (await fetch(`${baseUrl}/next`)).text()).toBe('echo /next');
