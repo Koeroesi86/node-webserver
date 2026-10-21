@@ -1,6 +1,6 @@
 # Node Worker Express [![Publish](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml/badge.svg)](https://github.com/Koeroesi86/node-webserver/actions/workflows/publish.yml)
 
-Express JS library for [@koeroesi86/node-worker](https://www.npmjs.com/package/@koeroesi86/node-worker), on the pool of worker processes of [@koeroesi86/node-worker-pool](../node-worker-pool)
+Express JS library for [@koeroesi86/node-worker](https://www.npmjs.com/package/@koeroesi86/node-worker), on the pool of worker processes of [@koeroesi86/node-worker/pool](../node-worker#the-pool-of-worker-processes)
 
 Usage:
 ```javascript

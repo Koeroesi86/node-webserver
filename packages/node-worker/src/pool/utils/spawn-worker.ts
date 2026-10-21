@@ -1,5 +1,5 @@
 import { Duplex } from 'stream';
-import Worker from '@koeroesi86/node-worker';
+import Worker from '../../index';
 import createChannel from './createChannel';
 import type { Channel } from './createChannel';
 import type { WorkerInputEvent, WorkerOutputEvent } from '../types';

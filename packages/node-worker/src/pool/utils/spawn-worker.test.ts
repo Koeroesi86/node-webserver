@@ -2,7 +2,7 @@ import spawnWorker from './spawn-worker';
 import { encodeMessage } from './frames';
 import type { WorkerOutputEvent } from '../types';
 
-jest.mock('@koeroesi86/node-worker', () => {
+jest.mock('../../index', () => {
   const { EventEmitter } = require('events');
   const { Duplex } = require('stream');
 
@@ -29,7 +29,7 @@ jest.mock('@koeroesi86/node-worker', () => {
   return { __esModule: true, default: FakeWorker };
 });
 
-const FakeWorker = jest.requireMock('@koeroesi86/node-worker').default;
+const FakeWorker = jest.requireMock('../../index').default;
 
 describe('spawnWorker', () => {
   beforeEach(() => {

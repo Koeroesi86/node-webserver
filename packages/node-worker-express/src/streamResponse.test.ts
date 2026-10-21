@@ -1,4 +1,4 @@
-import type { ResponseCallback, ResponseEvent } from '@koeroesi86/node-worker-pool';
+import type { ResponseCallback, ResponseEvent } from '@koeroesi86/node-worker/pool';
 import net from 'net';
 import { Readable } from 'stream';
 import streamResponse from './streamResponse';

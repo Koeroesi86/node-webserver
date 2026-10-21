@@ -1,4 +1,4 @@
-import type { ResponseEvent } from '../types';
+import type { RequestEvent, ResponseEvent } from '../types';
 
 export enum WORKER_EVENT {
   /** the worker process loaded its file and takes requests, sent once. A pool that waits for it (`startTimeout`) hands the worker out only after that. */
@@ -68,4 +68,16 @@ export const InternalServerError: ResponseEvent = {
   headers: { 'Content-Type': 'text/plain' },
   body: 'Internal Server Error',
   isBase64Encoded: false,
+};
+
+/** what a worker is told about a connection that closed without the request it was made with, so that it can read the fields of any event */
+export const NoRequest: RequestEvent = {
+  httpMethod: '',
+  protocol: '',
+  path: '',
+  pathFragments: [],
+  queryStringParameters: {},
+  headers: {},
+  remoteAddress: '',
+  rootPath: '',
 };

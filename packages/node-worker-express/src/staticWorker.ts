@@ -1,4 +1,4 @@
-import type { InvokableWorker } from '@koeroesi86/node-worker-pool';
+import type { InvokableWorker } from '@koeroesi86/node-worker/pool';
 import path from 'path';
 import fs from 'fs/promises';
 import { StaticOptionsEnv } from './constants';

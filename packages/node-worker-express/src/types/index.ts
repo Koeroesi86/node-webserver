@@ -27,4 +27,4 @@ export type {
   WorkerRequestEvent,
   WSFrameEvent,
   WSMessage,
-} from '@koeroesi86/node-worker-pool';
+} from '@koeroesi86/node-worker/pool';

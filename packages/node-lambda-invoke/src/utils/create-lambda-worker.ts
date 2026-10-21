@@ -1,4 +1,4 @@
-import type { InvokableWorker } from '@koeroesi86/node-worker-pool';
+import type { InvokableWorker } from '@koeroesi86/node-worker/pool';
 import { DEFAULT_TIMEOUT } from '../constants';
 import createContext from './create-context';
 import createLambdaEvent from './create-lambda-event';

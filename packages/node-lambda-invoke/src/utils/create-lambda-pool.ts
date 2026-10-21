@@ -1,6 +1,6 @@
 import { rm } from 'fs/promises';
 import { resolve } from 'path';
-import { createWorkerBudget, WorkerPool } from '@koeroesi86/node-worker-pool';
+import { createWorkerBudget, WorkerPool } from '@koeroesi86/node-worker/pool';
 import { DRAIN_AFTER, STOP_GRACE } from '../constants';
 import type { Logger } from '../types';
 import createLambdaEnvironment from './create-lambda-environment';

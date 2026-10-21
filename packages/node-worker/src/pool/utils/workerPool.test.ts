@@ -8,7 +8,7 @@ import WorkerUnavailableError from './workerUnavailableError';
 import createWorkerBudget from './create-worker-budget';
 import type { WorkerLease } from './workerPool';
 
-jest.mock('@koeroesi86/node-worker', () => {
+jest.mock('../../index', () => {
   const { EventEmitter } = require('events');
   const { Duplex } = require('stream');
   const { encodeMessage, FrameDecoder } = require('./frames');
@@ -56,10 +56,10 @@ jest.mock('@koeroesi86/node-worker', () => {
   }
 
   // the waiting line is the real one: the pool is built on it
-  return { __esModule: true, default: FakeWorker, WaitingLine: jest.requireActual('@koeroesi86/node-worker').WaitingLine };
+  return { __esModule: true, default: FakeWorker, WaitingLine: jest.requireActual('../../index').WaitingLine };
 });
 
-const FakeWorker = jest.requireMock('@koeroesi86/node-worker').default;
+const FakeWorker = jest.requireMock('../../index').default;
 
 const pathA = '/root/a/exampleWorker.js';
 const pathB = '/root/b/exampleWorker.js';

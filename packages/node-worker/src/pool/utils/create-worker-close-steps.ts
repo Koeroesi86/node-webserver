@@ -16,7 +16,7 @@ export interface ClosedWorker<T extends object> {
 export type CloseStep<T extends object> = (closed: ClosedWorker<T>) => void;
 
 interface CloseStepsParams<T extends object> {
-  registry: WorkerRegistry<T, unknown>;
+  registry: Pick<WorkerRegistry<T, unknown>, 'remove'>;
   restartBackoff: ReturnType<typeof createRestartBackoff>;
   /** the workers that the pool stops itself, which is no crash */
   isStopping: (worker: T) => boolean;

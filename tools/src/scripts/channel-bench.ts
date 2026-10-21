@@ -4,7 +4,7 @@ import type { ChannelMode } from '../types/channel-bench';
 
 // Measures the channel between the server and a worker on its own, with no HTTP in the way: messages with and without bodies to a child that echoes them.
 //   node channel-bench.js [ipc|socket|both, both] [scale of the number of messages, 1]
-// `ipc` is the IPC of node that carried the messages before the socket pair (#66), with the body as base64 in the JSON. Needs `pnpm build`, the socket pair is the createChannel of node-worker-pool.
+// `ipc` is the IPC of node that carried the messages before the socket pair (#66), with the body as base64 in the JSON. Needs `pnpm build`, the socket pair is the createChannel of the pool of node-worker.
 // For numbers that can be compared pin the processes the way the load test does, for example `taskset -c 0-2 node tools/dist/scripts/channel-bench.js`.
 // The markdown table goes to stdout.
 

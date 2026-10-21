@@ -39,7 +39,7 @@ Such packages get a new version and their commit written to `gitHead`. All the o
 
 `node tools/dist/scripts/channel-bench.js [ipc|socket|both] [scale]` (needs `pnpm build`) measures the channel between the server and a worker without HTTP, which the load test cannot do: the number does not depend on Express, the runner or k6.
 A child process echoes every message, the parent keeps a number of them in flight (1 or 64, 16 and 4 for the bigger bodies) and measures messages per second, megabytes of body per second, its own CPU time per message and the latency, for requests without a body and with bodies of 4 KiB, 64 KiB and 1 MiB.
-`socket` is the `createChannel` of `node-worker-pool`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
+`socket` is the `createChannel` of the pool of `node-worker`, the socket pair that workers get as their fourth stdio. `ipc` is what it replaced in #66, the IPC of node with the JSON of a request and its body as base64. `scale` multiplies the number of messages (the default is 1, a run is about a minute).
 Pin it like the load test to compare runs, for example `taskset -c 0-2 node tools/dist/scripts/channel-bench.js`; on 3 cores the socket was 2-10 times faster with a body from 4 KiB and not faster without one.
 
 ## Coverage report

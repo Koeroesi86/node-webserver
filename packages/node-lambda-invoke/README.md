@@ -48,7 +48,7 @@ http
 `close()` on the middleware stops its lambdas, the idle ones at once and the busy ones once they answered, for a middleware that is not used any more. A request that still comes gets a lambda that stops after it.
 `handle(request, response, pathParameters)` on the middleware does the same as calling it, and gives the lambda the `pathParameters` of the event, for a server that chooses between several middlewares by the path and has more to tell about it than the lambda (the named groups of a route).
 Every middleware has the pool, and so the limit, of its own lambda and handler, which is how `@koeroesi86/node-webserver` gives each route of a lambda server its own limit.
-The lambdas are workers of the pool of [`@koeroesi86/node-worker-pool`](../node-worker-pool): a lambda process answers one request at a time, the body of a request is streamed to it while it arrives, and the request and the response travel over the framed channel of the pool, as bytes.
+The lambdas are workers of the pool of [`@koeroesi86/node-worker/pool`](../node-worker#the-pool-of-worker-processes): a lambda process answers one request at a time, the body of a request is streamed to it while it arrives, and the request and the response travel over the framed channel of the pool, as bytes.
 
 ## Running locally
 

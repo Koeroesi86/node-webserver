@@ -1,6 +1,6 @@
 import { resolve } from 'path';
 import { pathToFileURL } from 'url';
-import { startWorkerProcess } from '@koeroesi86/node-worker-pool';
+import { startWorkerProcess } from '@koeroesi86/node-worker/pool';
 import { ENV_HANDLER, ENV_MAX_LIFETIME, ENV_PATH, LIFESPAN } from '../constants';
 import createLambdaWorker from '../utils/create-lambda-worker';
 import findHandler from '../utils/find-handler';

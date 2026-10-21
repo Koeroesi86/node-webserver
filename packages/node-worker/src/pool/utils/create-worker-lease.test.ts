@@ -1,4 +1,4 @@
-import type Worker from '@koeroesi86/node-worker';
+import type Worker from '../../index';
 import createWorkerRegistry from './create-worker-registry';
 import type { Channel } from './createChannel';
 import type { WorkerInputEvent } from '../types';

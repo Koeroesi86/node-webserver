@@ -1,6 +1,6 @@
 import { IncomingMessage } from 'http';
 import { Socket } from 'net';
-import type { WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
+import type { WorkerRequestEvent } from '@koeroesi86/node-worker/pool';
 import createLambdaEvent from './create-lambda-event';
 import createWorkerRequestEvent from './create-worker-request-event';
 import parseQueryString from './parse-query-string';

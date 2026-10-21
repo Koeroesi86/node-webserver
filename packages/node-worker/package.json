@@ -1,7 +1,7 @@
 {
   "name": "@koeroesi86/node-worker",
   "version": "1.0.0",
-  "description": "NodeJS implementation of WebWorkers",
+  "description": "NodeJS implementation of WebWorkers, and a pool of worker processes on it",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
   "scripts": {
@@ -33,6 +33,7 @@
     "typescript": "^6.0.3"
   },
   "files": [
-    "dist"
+    "dist",
+    "pool"
   ]
 }

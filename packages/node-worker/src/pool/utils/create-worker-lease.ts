@@ -1,5 +1,5 @@
 import type { Socket } from 'node:net';
-import type Worker from '@koeroesi86/node-worker';
+import type Worker from '../../index';
 import type { Channel } from './createChannel';
 import type { LeaseState, WorkerRegistry } from './create-worker-registry';
 import type { HandOffMessage, WorkerInputEvent, WorkerOutputEvent } from '../types';

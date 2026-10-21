@@ -1,9 +1,9 @@
 import { existsSync } from 'fs';
 import { basename } from 'path';
-import type { WorkerPoolParams } from '@koeroesi86/node-worker-pool';
+import type { WorkerPoolParams } from '@koeroesi86/node-worker/pool';
 import createLambdaPool from './create-lambda-pool';
 
-jest.mock('@koeroesi86/node-worker-pool', () => {
+jest.mock('@koeroesi86/node-worker/pool', () => {
   class FakePool {
     static last: { params: WorkerPoolParams };
     constructor(readonly params: WorkerPoolParams) {
@@ -14,7 +14,7 @@ jest.mock('@koeroesi86/node-worker-pool', () => {
   return { WorkerPool: FakePool, createWorkerBudget: jest.fn(() => ({ budget: true })) };
 });
 
-const FakePool = jest.requireMock('@koeroesi86/node-worker-pool').WorkerPool;
+const FakePool = jest.requireMock('@koeroesi86/node-worker/pool').WorkerPool;
 
 const create = (fields: Partial<Parameters<typeof createLambdaPool>[0]> = {}) => {
   const logger = jest.fn();
@@ -57,7 +57,7 @@ describe('createLambdaPool', () => {
     create();
     create();
 
-    expect(jest.requireMock('@koeroesi86/node-worker-pool').createWorkerBudget).toHaveBeenCalledTimes(1);
+    expect(jest.requireMock('@koeroesi86/node-worker/pool').createWorkerBudget).toHaveBeenCalledTimes(1);
     expect(FakePool.last.params.budget).toEqual({ budget: true });
   });
 

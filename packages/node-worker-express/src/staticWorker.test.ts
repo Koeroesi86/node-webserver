@@ -1,4 +1,4 @@
-import type { HandOffEvent, InvokableWorker, ResponseEvent, WorkerRequestEvent } from '@koeroesi86/node-worker-pool';
+import type { HandOffEvent, InvokableWorker, ResponseEvent, WorkerRequestEvent } from '@koeroesi86/node-worker/pool';
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import os from 'os';

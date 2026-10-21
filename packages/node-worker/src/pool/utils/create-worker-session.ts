@@ -1,6 +1,6 @@
 import net from 'net';
 import type { Duplex } from 'stream';
-import { InternalServerError, Protocols, WORKER_EVENT } from '../constants';
+import { InternalServerError, NoRequest, Protocols, WORKER_EVENT } from '../constants';
 import type {
   HandOffEvent,
   InvokableWorker,
@@ -131,7 +131,7 @@ export default function createWorkerSession(worker: InvokableWorker, socket: Dup
     closeWsConnection(contexts, requestId);
     invokeWorker(
       worker,
-      createWorkerEvent({ ...request, closed: true }, requestId, createEmptyBody(), () => metrics.request(requestId)),
+      createWorkerEvent({ ...(request ?? NoRequest), closed: true }, requestId, createEmptyBody(), () => metrics.request(requestId)),
       (responseEvent: ResponseEvent | HandOffEvent) => {
         // the connection is gone, there is nothing to hand over
         if ('handOff' in responseEvent) return;

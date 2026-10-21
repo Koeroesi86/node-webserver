@@ -7,7 +7,7 @@ interface WorkerEviction<T> {
   /** the workers per path */
   getGroups: () => T[][];
   /** what the pool knows about the worker */
-  getEntry: (worker: T) => { lastUsed: number };
+  getEntry: (worker: T) => { lastUsed: number } | undefined;
   getLoad: (worker: T) => number;
   /** takes the worker out of the workers of its path, which forgets a path that has no worker left */
   unlist: (worker: T) => void;
@@ -36,7 +36,7 @@ const createWorkerEviction = <T>({ getGroups, getEntry, getLoad, unlist, stop }:
         getGroups().flatMap((current) =>
           current
             .filter((worker) => getLoad(worker) === 0)
-            .map((worker) => ({ spare: current.length > 1, lastUsed: getEntry(worker).lastUsed, stop: () => evict(worker, 'forRoom') }))
+            .map((worker) => ({ spare: current.length > 1, lastUsed: getEntry(worker)?.lastUsed ?? 0, stop: () => evict(worker, 'forRoom') }))
         )
       ),
     getStats: () => ({ ...evicted }),

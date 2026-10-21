@@ -1,6 +1,6 @@
 import { monitorEventLoopDelay, performance } from 'perf_hooks';
 import type { ServerResponse } from 'http';
-import type { LatencyHistogram, ServerMetrics, StatusClass } from '@koeroesi86/node-worker-pool';
+import type { LatencyHistogram, ServerMetrics, StatusClass } from '@koeroesi86/node-worker/pool';
 import createLatencyHistogram from './create-latency-histogram';
 
 const sources = new Map<string, () => unknown>();

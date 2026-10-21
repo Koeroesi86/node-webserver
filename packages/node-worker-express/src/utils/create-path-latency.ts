@@ -1,4 +1,4 @@
-import type { LatencyHistogram } from '@koeroesi86/node-worker-pool';
+import type { LatencyHistogram } from '@koeroesi86/node-worker/pool';
 import { LatencyOtherPaths, LatencyPathLimit } from '../constants';
 import createLatencyHistogram from './create-latency-histogram';
 

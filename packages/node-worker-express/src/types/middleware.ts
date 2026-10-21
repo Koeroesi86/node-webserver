@@ -1,6 +1,6 @@
 import type { Request, RequestHandler, Response } from 'express';
 import type { StaticOptions, WorkerRoute } from './routes';
-import type { WorkerBudget } from '@koeroesi86/node-worker-pool';
+import type { WorkerBudget } from '@koeroesi86/node-worker/pool';
 
 export interface MiddlewareOptions {
   root: string;

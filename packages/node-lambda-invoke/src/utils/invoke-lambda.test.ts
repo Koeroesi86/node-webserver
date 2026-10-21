@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import { PassThrough } from 'stream';
-import { WORKER_EVENT } from '@koeroesi86/node-worker-pool';
-import type { RequestEvent, WorkerLease, WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
+import { WORKER_EVENT } from '@koeroesi86/node-worker/pool';
+import type { RequestEvent, WorkerLease, WorkerOutputEvent } from '@koeroesi86/node-worker/pool';
 import invokeLambda from './invoke-lambda';
 
 const event = (fields: Partial<RequestEvent> = {}): RequestEvent => ({

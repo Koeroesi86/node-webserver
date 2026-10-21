@@ -1,4 +1,4 @@
-import { Protocols, WORKER_EVENT, createBodyForwarder, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker-pool';
+import { Protocols, WORKER_EVENT, createBodyForwarder, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker/pool';
 import type { Request, Response } from 'express';
 import type { MiddlewareOptions } from '../types';
 import attachWebSocket from './attach-web-socket';

@@ -1,4 +1,4 @@
-import { Protocols, WORKER_EVENT, type RequestEvent, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker-pool';
+import { Protocols, WORKER_EVENT, type RequestEvent, type WorkerLease, type WorkerOutputEvent } from '@koeroesi86/node-worker/pool';
 import { EventEmitter } from 'events';
 import type { Request, Response } from 'express';
 import serveRequest from './serve-request';

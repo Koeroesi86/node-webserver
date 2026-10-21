@@ -1,4 +1,4 @@
-import type { WorkerPool } from '@koeroesi86/node-worker-pool';
+import type { WorkerPool } from '@koeroesi86/node-worker/pool';
 import type { LambdaStatsSource } from '../types';
 
 /** the pool of a lambda as the stats of a server see it: the workers are the lambdas, a request that runs on one makes it busy */

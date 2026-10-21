@@ -1,4 +1,4 @@
-import { WORKER_EVENT, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker-pool';
+import { WORKER_EVENT, type RequestEvent, type WorkerLease } from '@koeroesi86/node-worker/pool';
 import type { Request } from 'express';
 import type { MiddlewareOptions } from '../types';
 import createWsConnection from './create-ws-connection';

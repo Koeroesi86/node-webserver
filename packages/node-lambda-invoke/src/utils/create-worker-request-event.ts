@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'http';
-import type { RequestEvent } from '@koeroesi86/node-worker-pool';
+import type { RequestEvent } from '@koeroesi86/node-worker/pool';
 import parseQueryString from './parse-query-string';
 
 interface WorkerRequestEventParams {
