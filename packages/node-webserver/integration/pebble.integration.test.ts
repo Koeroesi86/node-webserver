@@ -77,13 +77,15 @@ describePebble('an https server that gets its certificate from Pebble', () => {
     fs.rmSync(folder, { recursive: true, force: true });
   });
 
+  // the server tries a failed order again only after an hour, so a failure is the end of the wait and shows what the server said
   const issued = async () => {
     const deadline = Date.now() + 45000;
     let certificate = await handshake(httpsPort, root);
-    while (!certificate && Date.now() < deadline) {
+    while (!certificate && Date.now() < deadline && !output.includes('was not issued')) {
       await new Promise((resolve) => setTimeout(resolve, 250));
       certificate = await handshake(httpsPort, root);
     }
+    if (!certificate) throw new Error(`The server got no certificate:\n${output}`);
 
     return certificate;
   };
@@ -91,7 +93,7 @@ describePebble('an https server that gets its certificate from Pebble', () => {
   it('gets a certificate for its name that a client trusting the roots of Pebble accepts', async () => {
     const certificate = await issued();
 
-    expect({ names: certificate?.subjectaltname, output: certificate ? '' : output }).toEqual({ names: `DNS:${hostname}`, output: '' });
+    expect(certificate.subjectaltname).toBe(`DNS:${hostname}`);
   });
 
   it('keeps the certificate and the key where the configuration says, and the key private', async () => {
