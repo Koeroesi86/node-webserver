@@ -126,7 +126,8 @@ jobs:
       - name: Start Pebble
         timeout-minutes: 5
         run: |
-          docker run -d --name challtestsrv --network host "${CHALLTESTSRV_IMAGE}" -defaultIPv6 "" -defaultIPv4 127.0.0.1
+          # only its name server is wanted: its own http challenge server would hold the port 5002 that the server under test answers the challenge on
+          docker run -d --name challtestsrv --network host "${CHALLTESTSRV_IMAGE}" -defaultIPv6 "" -defaultIPv4 127.0.0.1 -http01 "" -https01 "" -tlsalpn01 "" -doh ""
           docker run -d --name pebble --network host -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_VA_ALWAYS_VALID=0 "${PEBBLE_IMAGE}" \
             -config test/config/pebble-config.json -strict -dnsserver 127.0.0.1:8053
           docker cp pebble:/test/certs/pebble.minica.pem "${RUNNER_TEMP}/pebble.minica.pem"
