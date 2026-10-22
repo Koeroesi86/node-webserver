@@ -245,11 +245,12 @@ describe('setupVirtualHosts', () => {
     });
 
     it('answers the others with the page of unknownHostPage, with 421', async () => {
-      const page = path.join(os.tmpdir(), `unknown-${process.pid}.html`);
+      const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'unknown-host-'));
+      const page = path.join(folder, 'unknown.html');
       fs.writeFileSync(page, '<p>no such site</p>');
       const app = express().use(setupVirtualHosts([], { ...ports, unknownHostPage: page }, createMockLogger()).http);
       const reply = await get(app, 'unknown.localhost');
-      fs.rmSync(page);
+      fs.rmSync(folder, { recursive: true, force: true });
 
       expect(reply.status).toBe(421);
       expect(reply.body.toString()).toBe('<p>no such site</p>');
