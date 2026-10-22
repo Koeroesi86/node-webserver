@@ -72,19 +72,16 @@ function runRoutes(
  * one handler for many virtual hosts. A host without wildcards is found in a map, so the cost of a request does not grow with the number of hosts,
  * and only the hosts with wildcards are tested one by one. The hosts that match are run in the order of the configuration,
  * and a handler that calls `next` passes the request on to the next one, as it did when every host was a `vhost` middleware of its own.
+ * The `fallback` is the last one: it gets the requests that no host answered, and those without a usable `Host` header.
  */
-function virtualHostRouter(hosts: VirtualHost[]): RequestHandler {
+function virtualHostRouter(hosts: VirtualHost[], fallback?: RequestHandler): RequestHandler {
   const routes = buildRouteGroups(hosts);
+  const last: Route[] = fallback ? [{ order: Infinity, handler: fallback }] : [];
 
   return (request, response, next) => {
     const hostname = getHostname(request.headers.host);
 
-    if (!hostname) {
-      next();
-      return;
-    }
-
-    runRoutes(selectRoutes(hostname, routes), request, response, next);
+    runRoutes([...(hostname ? selectRoutes(hostname, routes) : []), ...last], request, response, next);
   };
 }
 

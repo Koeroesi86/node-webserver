@@ -1,6 +1,9 @@
 import findDuplicateProblems from './find-duplicate-problems';
 
-const entry = (hostname: string, protocol = 'http') => ({ instance: { hostname, protocol }, label: `${protocol}://${hostname}` });
+const entry = (hostname: string, protocol = 'http', defaultHost?: boolean) => ({
+  instance: { hostname, protocol, defaultHost },
+  label: `${protocol}://${hostname}`,
+});
 
 describe('findDuplicateProblems', () => {
   it('finds nothing for hosts that differ, or the same host over the other protocol', () => {
@@ -20,6 +23,14 @@ describe('findDuplicateProblems', () => {
 
     expect(findDuplicateProblems([stats, entry('stats.localhost', 'https')], { statsDomain: 'stats.localhost' })).toEqual([
       { severity: 'warning', server: stats.label, setting: 'hostname', message: expect.stringContaining('statsDomain') },
+    ]);
+  });
+
+  it('names the server that is the default host of a protocol first, and lets each protocol have one', () => {
+    const [first, second] = [entry('a.localhost', 'http', true), entry('b.localhost', 'http', true)];
+
+    expect(findDuplicateProblems([first, second, entry('a.localhost', 'https', true)], { statsDomain: false })).toEqual([
+      { severity: 'error', server: second.label, setting: 'defaultHost', message: `is already set on ${first.label} for the http port` },
     ]);
   });
 });

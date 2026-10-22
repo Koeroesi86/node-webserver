@@ -40,7 +40,7 @@ Every server has `hostname` (a wildcard like `*.example.com` is allowed), `proto
 | `lambda` | `lambdaOptions`: `lambda`, `handler`, `routes`, `limit`, timeouts, `env` |
 | `child` | `childOptions`, `proxyOptions`, `serverOptions` |
 | `proxy` | `proxyOptions`: `target` or `dynamic`, `changeOrigin`, `forwardedHeaders` |
-| any | `compression` |
+| any | `compression`, `defaultHost` (answer the requests of its protocol that no server takes) |
 | `https` | `redirectHttp` (redirect the http requests for the host to https), `hsts` (`Strict-Transport-Security`), `acme` (get and renew the certificate from Let's Encrypt, instead of `key` and `cert`) |
 
 The reference for each option is in the [README of the server](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md), and the types are in `packages/node-webserver/src/types/`.

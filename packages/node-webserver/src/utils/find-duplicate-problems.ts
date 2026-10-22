@@ -9,6 +9,7 @@ export interface ServerEntry {
 /** servers of one host name and protocol, the later ones would never be asked, and a host that the stats endpoint answers before the servers do */
 const findDuplicateProblems = (entries: ServerEntry[], { statsDomain }: Pick<Configuration, 'statsDomain'>): ConfigurationProblem[] => {
   const first = new Map<string, string>();
+  const defaults = new Map<string, string>();
   const key = ({ protocol, hostname }: ServerConfig) => `${protocol}://${String(hostname).toLowerCase()}`;
 
   return entries.flatMap(({ instance, label }): ConfigurationProblem[] => {
@@ -19,7 +20,19 @@ const findDuplicateProblems = (entries: ServerEntry[], { statsDomain }: Pick<Con
         ? [{ severity: 'warning', server: label, setting: 'hostname', message: 'is the statsDomain, which the stats endpoint answers before the servers' }]
         : [];
 
-    return [...(earlier ? [{ severity: 'error' as const, server: label, setting: 'hostname', message: `is already served by ${earlier}` }] : []), ...shadowed];
+    const earlierDefault = instance.defaultHost ? defaults.get(instance.protocol) : undefined;
+    if (instance.defaultHost) {
+      defaults.set(instance.protocol, earlierDefault ?? label);
+    }
+    const second: ConfigurationProblem[] = earlierDefault
+      ? [{ severity: 'error', server: label, setting: 'defaultHost', message: `is already set on ${earlierDefault} for the ${instance.protocol} port` }]
+      : [];
+
+    return [
+      ...second,
+      ...(earlier ? [{ severity: 'error' as const, server: label, setting: 'hostname', message: `is already served by ${earlier}` }] : []),
+      ...shadowed,
+    ];
   });
 };
 

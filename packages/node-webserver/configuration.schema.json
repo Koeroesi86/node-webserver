@@ -251,6 +251,10 @@
           "description": "for an https server: get its certificate from an ACME server such as Let's Encrypt, and renew it",
           "$ref": "#/definitions/acme"
         },
+        "defaultHost": {
+          "description": "answer the requests of its protocol that no server takes, like default_server of nginx; at most one server per protocol",
+          "type": "boolean"
+        },
         "redirectHttp": {
           "description": "for an https server: answer the plain http requests for its host name with a redirect to https",
           "oneOf": [
