@@ -37,6 +37,8 @@ export interface ServerConfig {
   hostname: string;
   protocol: string;
   type?: ServerType;
+  /** answer the requests of its protocol that no server takes (a host name that matches none, or no `Host` header) as well, like `default_server` of nginx. At most one server per protocol. Off by default. */
+  defaultHost?: boolean;
   /** the file of the private key. With `acme` it is where the key is written, and it defaults to a file in `acme.storagePath`. */
   key?: string;
   /** the file of the certificate (with its chain). With `acme` it is where the certificate is written, and it defaults to a file in `acme.storagePath`. */

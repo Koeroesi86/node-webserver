@@ -204,6 +204,34 @@ describe('setupVirtualHosts', () => {
     });
   });
 
+  describe('default host', () => {
+    it('answers the requests of a host name that no server has', async () => {
+      const { httpApp } = setup([instance({ hostname: 'other.localhost' }), instance({ defaultHost: true })]);
+
+      expect((await get(httpApp, 'unknown.localhost')).status).toBe(200);
+    });
+
+    it('answers nothing for the others without one', async () => {
+      const { httpApp } = setup([instance({})]);
+
+      expect((await get(httpApp, 'unknown.localhost')).status).toBe(404);
+    });
+
+    it('is per protocol', async () => {
+      const { httpApp, httpsApp } = setup([instance({ protocol: 'https', defaultHost: true })]);
+
+      expect((await get(httpsApp, 'unknown.localhost')).status).toBe(200);
+      expect((await get(httpApp, 'unknown.localhost')).status).toBe(404);
+    });
+
+    it('comes after the redirect to https of the servers that asked for it', async () => {
+      const { httpApp } = setup([instance({ defaultHost: true }), instance({ hostname: 'secure.localhost', protocol: 'https', redirectHttp: true })]);
+
+      expect((await get(httpApp, 'secure.localhost')).status).toBe(308);
+      expect((await get(httpApp, 'unknown.localhost')).status).toBe(200);
+    });
+  });
+
   describe('hsts', () => {
     it('sets the header on the responses of an https server that asked for it', async () => {
       const { httpsApp } = setup([instance({ protocol: 'https', hsts: { maxAge: 60 } })]);

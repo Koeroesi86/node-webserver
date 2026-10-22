@@ -71,6 +71,27 @@ describe('virtualHostRouter', () => {
     expect(await get(routerApp([host('a.localhost')]), 'other.localhost')).toBe('fallback');
   });
 
+  describe('fallback', () => {
+    const fallbackApp = (hosts: VirtualHost[]) =>
+      withFallback(express().use(virtualHostRouter(hosts, (request, response) => response.end(`default ${response.getHeader('x-calls') ?? ''}`))));
+
+    it('gets the requests of a host that matches none', async () => {
+      expect(await get(fallbackApp([host('a.localhost')]), 'other.localhost')).toBe('default ');
+    });
+
+    it('gets the requests without a usable host header', async () => {
+      expect(await get(fallbackApp([host('a.localhost')]), '')).toBe('default ');
+    });
+
+    it('gets the requests that the matching hosts passed on, after them', async () => {
+      expect(await get(fallbackApp([host('a.localhost', true)]), 'a.localhost')).toBe('default a.localhost,');
+    });
+
+    it('does not get the requests a host answered', async () => {
+      expect(await get(fallbackApp([host('a.localhost')]), 'a.localhost')).toBe('a.localhost,');
+    });
+  });
+
   it('runs the hosts that match in the order of the configuration, exact and wildcard alike', async () => {
     const app = routerApp([host('*.localhost', true), host('a.localhost', true), host('*.localhost', true), host('a.localhost')]);
 

@@ -21,15 +21,18 @@ function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configur
 
   // one router per protocol instead of a vhost middleware per host, so that finding the host does not walk the list
   const forProtocol = (protocol: string, after: VirtualHost[] = []) =>
-    virtualHostRouter([
-      ...hosts
-        .filter(({ instance }) => instance.protocol === protocol)
-        .map(({ instance, runtime, handler }) => {
-          runtime.url = getURL(protocol, instance.hostname, ports[protocol]);
-          return { hostname: instance.hostname, handler };
-        }),
-      ...after,
-    ]);
+    virtualHostRouter(
+      [
+        ...hosts
+          .filter(({ instance }) => instance.protocol === protocol)
+          .map(({ instance, runtime, handler }) => {
+            runtime.url = getURL(protocol, instance.hostname, ports[protocol]);
+            return { hostname: instance.hostname, handler };
+          }),
+        ...after,
+      ],
+      hosts.find(({ instance }) => instance.protocol === protocol && instance.defaultHost)?.handler
+    );
 
   // after the http servers, so that one of the same name that was written out answers first
   const redirects = hosts
