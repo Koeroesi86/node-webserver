@@ -246,6 +246,12 @@ const startFakeAcmeServer = async (folder: string, challengePort: () => number, 
 
   const server = https.createServer({ key: fs.readFileSync(tls.key), cert: fs.readFileSync(tls.cert) }, (request, response) => {
     requests.push(`${request.method} ${request.url}`);
+    // RFC 8555 6.1, which Pebble enforces
+    if (!request.headers['user-agent']) {
+      response.writeHead(400, { 'Content-Type': 'application/problem+json' });
+      response.end(problem('malformed', 'All requests MUST include a User-Agent header'));
+      return;
+    }
     if (request.method === 'POST') {
       post(request, response).catch(fail(response));
       return;

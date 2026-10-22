@@ -1,5 +1,5 @@
 import https from 'https';
-import { ACME_REQUEST_TIMEOUT } from '../constants';
+import { ACME_REQUEST_TIMEOUT, ACME_USER_AGENT } from '../constants';
 import type { AcmeRequestOptions, AcmeResponse } from '../types';
 
 /** `fetch` of node cannot trust another authority for one request, which a private ACME server needs, so the request is made with `https` */
@@ -7,7 +7,7 @@ const acmeRequest = (url: string, { method = 'GET', headers, body, ca }: AcmeReq
   new Promise((resolve, reject) => {
     const request = https.request(
       url,
-      { method, ca, headers: { ...headers, ...(body !== undefined && { 'Content-Length': Buffer.byteLength(body) }) } },
+      { method, ca, headers: { 'User-Agent': ACME_USER_AGENT, ...headers, ...(body !== undefined && { 'Content-Length': Buffer.byteLength(body) }) } },
       (response) => {
         const chunks: Buffer[] = [];
         response.on('data', (chunk: Buffer) => chunks.push(chunk));

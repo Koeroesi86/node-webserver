@@ -78,5 +78,8 @@ export const ACME_DEFAULT_DIRECTORY = 'https://acme-v02.api.letsencrypt.org/dire
 /** how often the certificates of the `acme` servers are looked at, in milliseconds. A failed order is tried again at the next look. */
 export const ACME_CHECK_INTERVAL = 60 * 60 * 1000;
 
+/** RFC 8555 6.1 asks for a User-Agent in every request, and Pebble answers 400 without one */
+export const ACME_USER_AGENT = '@koeroesi86/node-webserver';
+
 /** how long a request to the ACME server may take, in milliseconds */
 export const ACME_REQUEST_TIMEOUT = 30000;
