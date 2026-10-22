@@ -120,7 +120,10 @@ export const startServer = async (env: Record<string, string> = {}): Promise<Run
     throw new Error(`The server did not start (exit code ${exitCode}):\n${output}`);
   };
 
-  while (!(await isListening(port))) {
+  // the https port is bound by its own server, so the http port accepting connections does not mean this one does
+  const isStarted = async () => (await Promise.all([port, httpsPort].map(isListening))).every(Boolean);
+
+  while (!(await isStarted())) {
     await assertStarting();
     await new Promise((done) => setTimeout(done, 100));
   }
