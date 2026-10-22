@@ -374,6 +374,40 @@ Nothing sends a client from the http port to the https one unless the https serv
   Start with a short `maxAge` while trying it out.
 - Both are for `https` servers only, the configuration check fails for an `http` server that sets them.
 
+#### Certificates from Let's Encrypt
+
+`acme` on an `https` server gets its certificate from an ACME server (Let's Encrypt unless `directory` says another), keeps it on disk and renews it:
+
+```javascript
+{
+  hostname: 'secure.example.com',
+  protocol: 'https',
+  redirectHttp: true,
+  hsts: true,
+  acme: {
+    email: 'admin@example.com',
+    storagePath: '/var/lib/node-webserver/acme', // the account key and the certificates, must be writable
+    // directory: 'https://acme-staging-v02.api.letsencrypt.org/directory', // try it on the staging directory first
+    // renewBeforeDays: 30, // by default once a third of the lifetime of the certificate is left
+  },
+  type: 'worker',
+  options: { root: '/path/to/files' },
+}
+```
+
+- Setting `acme` means you agree to the terms of service of the certificate authority, which the server tells it when it makes the account (`email` is where the authority writes to).
+- `key` and `cert` are not needed. The key and the certificate (with its chain) are written to `<storagePath>/<hostname>/privkey.pem` and `fullchain.pem`, or to the files `key` and `cert` name.
+  The account key is `account-<hash of the directory>.pem` in `storagePath`. Keep the folder: it is what the server finds its certificates in after a restart, and the authority limits how many it issues for a name per week.
+- The server looks at the certificates when it has started and then every hour. A server without a certificate gets one, a server whose certificate has a third of its lifetime left (`renewBeforeDays` days, if set) gets a new one with a new key
+  (P-256). A certificate is replaced as a reload does it, see [Reloading the servers](#reloading-the-servers): new connections get the new certificate, the open ones keep theirs. Until the first certificate is issued the handshakes for the name fail, as they do for a name without one.
+  An order that fails (the authority cannot reach the server, a limit) is logged and tried again an hour later, and the certificate that is there stays in use.
+- The authority proves the host name with the `http-01` challenge, which it sends to **port 80** of the host name: `portHttp` has to be that port, or the port 80 of the machine has to lead to it. The challenge is answered on the http port before the virtual hosts,
+  so it works while `redirectHttp` is on. A name needs to resolve to the server and to be one the authority issues for (not `localhost`, not a private address).
+- A host name with a wildcard (`*.example.com`) needs the `dns-01` challenge and a DNS provider, which this does not do: the configuration check fails for it, and it can still use certificate files that certbot or similar make.
+- `directory` has to be an https URL. For a private ACME server such as [Pebble](https://github.com/letsencrypt/pebble), `directoryCa` is the file with the certificate its directory is checked against.
+- The client is part of the server (the `https` and `crypto` modules of node, no ACME package): the account and the orders of RFC 8555 with `http-01` and ES256 keys. The work happens at start and on the hourly timer, none of it on the path of a request except the check of the http
+  path for the challenge.
+
 TLS ends in the front process, on the thread that serves every other request too, so a handshake slows all of them down a little, plain HTTP included. What keeps that small:
 
 - **Use an ECDSA (P-256) certificate** where the clients allow it (every current browser does). Its handshakes are cheaper for the server than with RSA 2048: about 40% more of them per second,

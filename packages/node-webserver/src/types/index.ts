@@ -1,3 +1,4 @@
+export * from './acme';
 export * from './logger';
 export * from './proxy';
 export * from './lambda';

@@ -16,6 +16,14 @@ describe('findSchemaProblems', () => {
     expect(find(server({ protocol: 'https', redirectHttp: { status: 302 } }))).not.toEqual([]);
   });
 
+  it('wants the email and the storage of acme, and names a setting of it that does not exist', () => {
+    expect(find(server({ protocol: 'https', acme: { email: 'a@example.com', storagePath: '/var/lib/nws', renewBeforeDays: 20 } }))).toEqual([]);
+    expect(find(server({ protocol: 'https', acme: { email: 'a@example.com', agree: true } }))).toEqual([
+      'acme.storagePath is required',
+      'acme.agree is not a setting',
+    ]);
+  });
+
   it('names a setting that does not exist', () => {
     expect(find(server({ proxyOption: {} }))).toEqual(['proxyOption is not a setting']);
   });

@@ -1,5 +1,5 @@
 import createInstanceHandler from './create-instance-handler';
-import { loadInstanceModule, readFingerprint, reportProblems, setupSecureContexts, validateServers } from '../utils';
+import { applyAcmeFiles, loadInstanceModule, readFingerprint, reportProblems, setupSecureContexts, validateServers } from '../utils';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { CompressionBudget, Configuration, LoadedInstance, Logger } from '../types';
@@ -13,7 +13,7 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
   const running = previous.find((loaded) => loaded.source === source);
 
   if (typeof source !== 'string') {
-    return [running ?? { source, instance: source, runtime: {}, files: [] }];
+    return [running ?? { source, instance: applyAcmeFiles(source), runtime: {}, files: [] }];
   }
 
   if (running && readFingerprint(running.files) === running.fingerprint) {
@@ -22,7 +22,7 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
 
   const loaded = loadInstanceModule(source);
 
-  return loaded ? [{ source, ...loaded, runtime: {}, fingerprint: readFingerprint(loaded.files) }] : [];
+  return loaded ? [{ source, ...loaded, instance: applyAcmeFiles(loaded.instance), runtime: {}, fingerprint: readFingerprint(loaded.files) }] : [];
 };
 
 interface Shared {

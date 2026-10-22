@@ -21,8 +21,9 @@ function sslCADecode(source?: string): string[] {
 }
 
 function setupSecureContexts(hosts: ServerState[] = []) {
-  hosts.forEach(({ instance: { key, cert, ca }, runtime }) => {
-    if (key && cert) {
+  hosts.forEach(({ instance: { key, cert, ca, acme }, runtime }) => {
+    // the files of an acme server are there once its certificate was issued, until then its handshakes fail
+    if (key && cert && (!acme || (fs.existsSync(key) && fs.existsSync(cert)))) {
       runtime.secureContext = tls.createSecureContext({
         key: fs.readFileSync(key, 'utf8'),
         cert: fs.readFileSync(cert, 'utf8'),
