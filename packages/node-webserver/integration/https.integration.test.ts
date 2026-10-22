@@ -83,7 +83,7 @@ describe('the https port with http2 on', () => {
     const unknown = await getHttp2('/', { authority: 'nobody.localhost' });
 
     expect(known.status).toBe(200);
-    expect(unknown.status).toBe(404);
+    expect(unknown.status).toBe(421);
   });
 
   it('keeps the connection open when a request is refused', async () => {

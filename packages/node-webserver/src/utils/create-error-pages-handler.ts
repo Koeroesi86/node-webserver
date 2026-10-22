@@ -3,9 +3,8 @@ import path from 'path';
 import type { RequestHandler } from 'express';
 import asString from './as-string';
 import lowerCaseHeaders from './lower-case-headers';
+import { PAGE_TYPES } from '../constants';
 import type { HeaderMap } from '../types';
-
-const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.json': 'application/json' };
 
 /** what describes the body that was not sent, so it goes with it */
 const BODY_HEADERS = ['content-type', 'content-length', 'content-encoding', 'content-range', 'transfer-encoding', 'etag', 'last-modified'];
@@ -20,7 +19,7 @@ const createErrorPagesHandler = (errorPages: Record<string, string>): RequestHan
   const pages = new Map(
     Object.entries(errorPages).map(([status, file]) => [
       Number(status),
-      { body: readFileSync(file), type: TYPES[path.extname(file).toLowerCase()] ?? 'text/plain; charset=utf-8' },
+      { body: readFileSync(file), type: PAGE_TYPES[path.extname(file).toLowerCase()] ?? 'text/plain; charset=utf-8' },
     ])
   );
 

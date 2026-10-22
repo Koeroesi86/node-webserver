@@ -14,7 +14,7 @@ const exists = (path: string, kind: PathEntry['kind']) => {
 };
 
 /** the entries that are set to a path where there is no file, or no folder */
-const findMissingPaths = (server: string, entries: PathEntry[]): ConfigurationProblem[] =>
+const findMissingPaths = (server: string | undefined, entries: PathEntry[]): ConfigurationProblem[] =>
   entries
     .filter(({ path, kind }) => path !== undefined && !exists(path, kind))
     .map(({ setting, path, kind }) => ({ severity: 'error', server, setting, message: `is not ${kind === 'file' ? 'a file' : 'a folder'}: ${path}` }));

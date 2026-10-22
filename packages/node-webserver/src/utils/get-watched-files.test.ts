@@ -24,6 +24,10 @@ describe('getWatchedFiles', () => {
     expect(getWatchedFiles([], [paged])).toEqual(['/pages/404.html', '/pages/503.html']);
   });
 
+  it('includes the page for unknown hosts, so that a changed page loads the servers again', () => {
+    expect(getWatchedFiles([], [], '/pages/unknown.html')).toEqual(['/pages/unknown.html']);
+  });
+
   it('leaves out what a server does not have', () => {
     const plain = loaded({ hostname: 'plain.localhost', protocol: 'http' });
     const withoutAuthority = loaded({ hostname: 'secure.localhost', protocol: 'https', key: '/certs/key.pem', cert: '/certs/cert.pem' });

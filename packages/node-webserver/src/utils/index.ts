@@ -20,6 +20,7 @@ export { default as createFileSink } from './create-file-sink';
 export { default as createGracefulStop } from './create-graceful-stop';
 export { default as createAcmeChallengeHandler } from './create-acme-challenge-handler';
 export { default as createAcmeRenewer } from './create-acme-renewer';
+export { default as createMisdirectedHandler } from './create-misdirected-handler';
 export { default as createErrorPagesHandler } from './create-error-pages-handler';
 export { default as createHstsHandler } from './create-hsts-handler';
 export { default as createHttp2App } from './create-http2-app';

@@ -35,7 +35,13 @@ describe('virtualHostRouter', () => {
   const withFallback = (app: Express) => app.use((request, response) => response.status(404).end(`${response.getHeader('x-calls') ?? ''}fallback`));
 
   /** the routing the server had before: a vhost middleware for every host, in the order of the configuration */
-  const vHostApp = (hosts: VirtualHost[]) => withFallback(hosts.reduce((app, { hostname, handler }) => app.use(vHost(hostname, handler)), express()));
+  const vHostApp = (hosts: VirtualHost[]) =>
+    hosts
+      .reduce((app, { hostname, handler }) => app.use(vHost(hostname, handler)), express())
+      // a request that no host touched is the one the router answers with 421, as no host wrote its name to the header
+      .use((request, response) =>
+        response.getHeader('x-calls') ? response.status(404).end(`${response.getHeader('x-calls')}fallback`) : response.status(421).end('Misdirected Request')
+      );
   const routerApp = (hosts: VirtualHost[]) => withFallback(express().use(virtualHostRouter(hosts)));
 
   const get = async (app: Express, hostHeader: string) => {
@@ -67,8 +73,16 @@ describe('virtualHostRouter', () => {
     expect(await get(app, 'WEB.localhost:8080')).toBe('Web.Localhost,');
   });
 
-  it('passes a request for an unknown host on', async () => {
-    expect(await get(routerApp([host('a.localhost')]), 'other.localhost')).toBe('fallback');
+  it('answers a request for a host that none takes with 421', async () => {
+    expect(await get(routerApp([host('a.localhost')]), 'other.localhost')).toBe('Misdirected Request');
+  });
+
+  it('answers a request without a usable host header with 421', async () => {
+    expect(await get(routerApp([host('a.localhost')]), '')).toBe('Misdirected Request');
+  });
+
+  it('passes a request that the matching host passed on, as it did', async () => {
+    expect(await get(routerApp([host('a.localhost', true)]), 'a.localhost')).toBe('a.localhost,fallback');
   });
 
   describe('fallback', () => {

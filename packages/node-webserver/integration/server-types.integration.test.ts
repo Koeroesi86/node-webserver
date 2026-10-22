@@ -18,7 +18,7 @@ describe('the server', () => {
   it('answers 404 for a host that has no server', async () => {
     const reply = await server.get('nobody.localhost');
 
-    expect(reply.status).toBe(404);
+    expect(reply.status).toBe(421);
   });
 
   describe('of the type worker', () => {

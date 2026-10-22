@@ -1,5 +1,8 @@
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import zlib from 'zlib';
 import { middleware } from '@koeroesi86/node-worker-express';
 import { createInstanceHandler } from '../server';
@@ -116,14 +119,14 @@ describe('setupVirtualHosts', () => {
   it('keeps an http server off the app of the https port', async () => {
     const { httpsApp } = setup([instance({})]);
 
-    expect((await get(httpsApp, 'web.localhost')).status).toBe(404);
+    expect((await get(httpsApp, 'web.localhost')).status).toBe(421);
   });
 
   it('puts an https server on the app of the https port, with its compression', async () => {
     const { httpApp, httpsApp } = setup([instance({ protocol: 'https', compression: true })]);
 
     expect((await get(httpsApp, 'web.localhost', 'gzip')).headers['content-encoding']).toBe('gzip');
-    expect((await get(httpApp, 'web.localhost')).status).toBe(404);
+    expect((await get(httpApp, 'web.localhost')).status).toBe(421);
   });
 
   it('passes a request on to the server of its host name, past the servers of other host names', async () => {
@@ -187,7 +190,7 @@ describe('setupVirtualHosts', () => {
     it('leaves the http requests of the others alone', async () => {
       const { httpApp } = setup([secure({ redirectHttp: undefined })]);
 
-      expect((await get(httpApp, 'web.localhost')).status).toBe(404);
+      expect((await get(httpApp, 'web.localhost')).status).toBe(421);
     });
 
     it('redirects every name a wildcard matches, on the name that was asked for', async () => {
@@ -238,14 +241,27 @@ describe('setupVirtualHosts', () => {
     it('answers nothing for the others without one', async () => {
       const { httpApp } = setup([instance({})]);
 
-      expect((await get(httpApp, 'unknown.localhost')).status).toBe(404);
+      expect((await get(httpApp, 'unknown.localhost')).status).toBe(421);
+    });
+
+    it('answers the others with the page of unknownHostPage, with 421', async () => {
+      const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'unknown-host-'));
+      const page = path.join(folder, 'unknown.html');
+      fs.writeFileSync(page, '<p>no such site</p>');
+      const app = express().use(setupVirtualHosts([], { ...ports, unknownHostPage: page }, createMockLogger()).http);
+      const reply = await get(app, 'unknown.localhost');
+      fs.rmSync(folder, { recursive: true, force: true });
+
+      expect(reply.status).toBe(421);
+      expect(reply.body.toString()).toBe('<p>no such site</p>');
+      expect(reply.headers['content-type']).toBe('text/html; charset=utf-8');
     });
 
     it('is per protocol', async () => {
       const { httpApp, httpsApp } = setup([instance({ protocol: 'https', defaultHost: true })]);
 
       expect((await get(httpsApp, 'unknown.localhost')).status).toBe(200);
-      expect((await get(httpApp, 'unknown.localhost')).status).toBe(404);
+      expect((await get(httpApp, 'unknown.localhost')).status).toBe(421);
     });
 
     it('comes after the redirect to https of the servers that asked for it', async () => {

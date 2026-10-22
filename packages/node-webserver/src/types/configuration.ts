@@ -40,6 +40,11 @@ export interface Configuration {
   statsRefreshInterval: number;
   /** server definitions, or paths to modules exporting one */
   servers: Array<string | ServerConfig>;
+  /**
+   * a file that answers the requests for a host that no server takes, with `421`, instead of the plain text. Its type comes from the extension, as for `errorPages`.
+   * Without effect where a server has `defaultHost`. It is read when the server starts and on reload, a changed file loads the servers again.
+   */
+  unknownHostPage?: string;
   /** load the servers given as paths again when their files, or the certificates they point to, change. Defaults to true. */
   watchServers?: boolean;
   /**

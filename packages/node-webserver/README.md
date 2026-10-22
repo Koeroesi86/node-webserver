@@ -427,7 +427,7 @@ Nothing sends a client from the http port to the https one unless the https serv
 
 `defaultHost: true` on a server makes it answer the requests of its protocol that no server takes, like `default_server` of nginx: a host name that matches no server (no exact name, no wildcard), a request without a `Host` header,
 and a request that the matching servers passed on. It is tried last, after the redirects to https, and the host name of the server itself still works as before. There is at most one per protocol (the configuration check fails for a second one),
-and the http and https ports each have their own. Without one, such a request gets the `404` of Express, as before. The lookup costs nothing for the requests a server takes.
+and the http and https ports each have their own. Without one, a request for a host name that no server takes, or without a `Host` header, gets a plain `421 Misdirected Request` (`text/plain`, written by the front process). `errorPages` do not apply, as no server holds them: `unknownHostPage` at the top level of the configuration, a file, answers these requests with its content instead (type by the extension, as for `errorPages`; read when the server starts and on reload, a changed file loads the servers again, and the check fails for a file that is not there). A request that a matching server passed on still gets the `404` of Express. The lookup costs nothing for the requests a server takes.
 
 #### Certificates from Let's Encrypt
 

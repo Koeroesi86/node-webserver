@@ -112,6 +112,10 @@
       "description": "load the servers given as paths again when their files change",
       "type": "boolean"
     },
+    "unknownHostPage": {
+      "description": "a file that answers the requests for a host that no server takes, with 421, instead of a plain text",
+      "type": "string"
+    },
     "shutdownTimeout": {
       "description": "how long the requests in flight are waited for when the process is stopped, in milliseconds",
       "type": "integer",

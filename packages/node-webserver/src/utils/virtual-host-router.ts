@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import getHostname from './get-hostname';
 import getHostPattern from './get-host-pattern';
+import createMisdirectedHandler from './create-misdirected-handler';
 import type { VirtualHost } from '../types/virtual-host';
 
 interface Route {
@@ -73,15 +74,22 @@ function runRoutes(
  * and only the hosts with wildcards are tested one by one. The hosts that match are run in the order of the configuration,
  * and a handler that calls `next` passes the request on to the next one, as it did when every host was a `vhost` middleware of its own.
  * The `fallback` is the last one: it gets the requests that no host answered, and those without a usable `Host` header.
+ * Without a fallback, a request that no host takes is answered by `misdirected` (a plain `421`), while one that a host passed on goes on with `next`.
  */
-function virtualHostRouter(hosts: VirtualHost[], fallback?: RequestHandler): RequestHandler {
+function virtualHostRouter(hosts: VirtualHost[], fallback?: RequestHandler, misdirected: RequestHandler = createMisdirectedHandler()): RequestHandler {
   const routes = buildRouteGroups(hosts);
   const last: Route[] = fallback ? [{ order: Infinity, handler: fallback }] : [];
 
   return (request, response, next) => {
     const hostname = getHostname(request.headers.host);
+    const matches = hostname ? selectRoutes(hostname, routes) : [];
 
-    runRoutes([...(hostname ? selectRoutes(hostname, routes) : []), ...last], request, response, next);
+    if (matches.length === 0 && last.length === 0) {
+      misdirected(request, response, next);
+      return;
+    }
+
+    runRoutes([...matches, ...last], request, response, next);
   };
 }
 

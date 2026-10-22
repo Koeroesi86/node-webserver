@@ -3,6 +3,7 @@ import createHttpsRedirect from './create-https-redirect';
 import getURL from './get-url';
 import virtualHostRouter from './virtual-host-router';
 import getDate from './get-date';
+import createMisdirectedHandler from './create-misdirected-handler';
 import type { Configuration, Logger, ServerState } from '../types';
 import type { VirtualHost } from '../types/virtual-host';
 
@@ -12,7 +13,8 @@ interface StartedHost extends ServerState {
 
 /** the handler of the http server and the one of the https server, which pass every request to the server of its host name */
 function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configuration>, logger: Logger): Record<'http' | 'https', RequestHandler> {
-  const { portHttp, portHttps } = Configuration;
+  const { portHttp, portHttps, unknownHostPage } = Configuration;
+  const misdirected = createMisdirectedHandler(unknownHostPage);
   const ports: Record<string, number | undefined> = { http: portHttp, https: portHttps };
 
   hosts
@@ -31,7 +33,8 @@ function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configur
           }),
         ...after,
       ],
-      hosts.find(({ instance }) => instance.protocol === protocol && instance.defaultHost)?.handler
+      hosts.find(({ instance }) => instance.protocol === protocol && instance.defaultHost)?.handler,
+      misdirected
     );
 
   // after the http servers, so that one of the same name that was written out answers first
