@@ -35,7 +35,7 @@ describe('the server, when the file of a server changes', () => {
     writeHostname('second.localhost');
 
     await until(async () => (await status('second.localhost')) === 200);
-    expect(await status('first.localhost')).toBe(404);
+    expect(await status('first.localhost')).toBe(421);
     // the other servers kept running
     expect(await status('worker.localhost')).toBe(200);
   });
@@ -54,13 +54,13 @@ describe('the server, when the file of a server changes', () => {
 
     fs.rmSync(file);
 
-    await until(async () => (await status('fourth.localhost')) === 404);
+    await until(async () => (await status('fourth.localhost')) === 421);
 
     writeHostname('fourth-again.localhost');
     writeServer();
 
     await until(async () => (await status('fourth-again.localhost')) === 200);
-    expect(await status('fourth.localhost')).toBe(404);
+    expect(await status('fourth.localhost')).toBe(421);
   });
 
   it('keeps the target that was registered with a proxy server whose file changed', async () => {

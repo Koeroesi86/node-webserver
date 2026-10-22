@@ -73,6 +73,7 @@ function runRoutes(
  * and only the hosts with wildcards are tested one by one. The hosts that match are run in the order of the configuration,
  * and a handler that calls `next` passes the request on to the next one, as it did when every host was a `vhost` middleware of its own.
  * The `fallback` is the last one: it gets the requests that no host answered, and those without a usable `Host` header.
+ * Without a fallback, a request that no host takes is answered with `421`, while one that a host passed on goes on with `next`.
  */
 function virtualHostRouter(hosts: VirtualHost[], fallback?: RequestHandler): RequestHandler {
   const routes = buildRouteGroups(hosts);
@@ -80,8 +81,14 @@ function virtualHostRouter(hosts: VirtualHost[], fallback?: RequestHandler): Req
 
   return (request, response, next) => {
     const hostname = getHostname(request.headers.host);
+    const matches = hostname ? selectRoutes(hostname, routes) : [];
 
-    runRoutes([...(hostname ? selectRoutes(hostname, routes) : []), ...last], request, response, next);
+    if (matches.length === 0 && last.length === 0) {
+      response.status(421).type('text/plain').send('Misdirected Request');
+      return;
+    }
+
+    runRoutes([...matches, ...last], request, response, next);
   };
 }
 

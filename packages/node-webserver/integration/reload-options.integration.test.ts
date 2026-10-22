@@ -37,7 +37,7 @@ describe('the options of the reload', () => {
       server.signal('SIGHUP');
 
       await serves(server, 'after-sighup.localhost');
-      expect(await status(server, 'before-sighup.localhost')).toBe(404);
+      expect(await status(server, 'before-sighup.localhost')).toBe(421);
       expect(server.hasExited()).toBe(false);
       // the other servers kept answering
       expect(await status(server, 'worker.localhost')).toBe(200);
@@ -66,14 +66,14 @@ describe('the options of the reload', () => {
       folder.writeHostname('after-reload.localhost');
       // there is nothing to wait for when nothing happens: a watcher would have loaded the servers again a long time before this (it waits 100 ms after the last write)
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      expect(await status(server, 'after-reload.localhost')).toBe(404);
+      expect(await status(server, 'after-reload.localhost')).toBe(421);
       expect(await status(server, 'before-reload.localhost')).toBe(200);
       expect(countReloads(server)).toBe(0);
 
       server.reload();
 
       await serves(server, 'after-reload.localhost');
-      expect(await status(server, 'before-reload.localhost')).toBe(404);
+      expect(await status(server, 'before-reload.localhost')).toBe(421);
       expect(countReloads(server)).toBe(1);
     });
   });
