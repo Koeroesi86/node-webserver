@@ -20,7 +20,7 @@ describe('createRulesHandler', () => {
     const server = http.createServer(
       express()
         .use(createRulesHandler(rules))
-        .use((req, res) => res.end(`${req.method} ${req.url} ${req.originalUrl}`))
+        .use((req, res) => res.type('text/plain').send(`${req.method} ${req.url} ${req.originalUrl}`))
     );
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, resolve));
