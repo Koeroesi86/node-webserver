@@ -66,8 +66,13 @@ describePebble('an https server that gets its certificate from Pebble', () => {
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdout?.on('data', (data: Buffer) => (output += data));
-    child.stderr?.on('data', (data: Buffer) => (output += data));
+    // echoed as it comes, as the log of a test that hangs shows nothing otherwise
+    const collect = (data: Buffer) => {
+      output += data;
+      process.stderr.write(`[server] ${data}`);
+    };
+    child.stdout?.on('data', collect);
+    child.stderr?.on('data', collect);
   });
 
   afterAll(async () => {
