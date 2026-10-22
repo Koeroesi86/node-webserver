@@ -5,6 +5,7 @@ import findChildProblems from './find-child-problems';
 import findLambdaProblems from './find-lambda-problems';
 import findMissingPaths from './find-missing-paths';
 import findRedirectProblems from './find-redirect-problems';
+import findRuleProblems from './find-rule-problems';
 import findProxyProblems from './find-proxy-problems';
 import findWorkerProblems from './find-worker-problems';
 
@@ -37,6 +38,7 @@ const findServerProblems = (instance: ServerConfig, server: string): Configurati
   ...attempt(() => (instance.acme ? [] : findCertificateProblems(instance, server))),
   ...attempt(() => findAcmeProblems(instance, server)),
   ...attempt(() => findRedirectProblems(instance, server)),
+  ...attempt(() => findRuleProblems(instance, server)),
   ...attempt(() => (instance.type ? (byType[instance.type]?.(instance, server) ?? []) : [])),
 ];
 

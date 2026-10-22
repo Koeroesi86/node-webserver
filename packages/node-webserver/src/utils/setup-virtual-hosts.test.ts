@@ -12,6 +12,7 @@ const text = 'It works! '.repeat(500);
 
 // the worker middleware starts processes, a handler that answers is enough here
 jest.mock('@koeroesi86/node-worker-express', () => ({
+  ...jest.requireActual('@koeroesi86/node-worker-express'),
   middleware: jest.fn(() => (request: http.IncomingMessage, response: http.ServerResponse) => {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(text);
@@ -58,7 +59,7 @@ describe('setupVirtualHosts', () => {
     return { httpApp, httpsApp };
   };
 
-  const get = async (app: Express, hostname: string, acceptEncoding?: string) => {
+  const get = async (app: Express, hostname: string, acceptEncoding?: string, path = '/') => {
     const server = http.createServer(app);
     servers.push(server);
     await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -66,7 +67,11 @@ describe('setupVirtualHosts', () => {
     return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }>((resolve, reject) => {
       http
         .get(
-          { port: (server.address() as { port: number }).port, headers: { Host: hostname, ...(acceptEncoding && { 'Accept-Encoding': acceptEncoding }) } },
+          {
+            port: (server.address() as { port: number }).port,
+            path,
+            headers: { Host: hostname, ...(acceptEncoding && { 'Accept-Encoding': acceptEncoding }) },
+          },
           (response) => {
             const chunks: Buffer[] = [];
             response.on('data', (chunk) => chunks.push(chunk));
@@ -201,6 +206,25 @@ describe('setupVirtualHosts', () => {
       const { httpsApp } = setup([secure()]);
 
       expect((await get(httpsApp, 'web.localhost')).status).toBe(200);
+    });
+  });
+
+  describe('rules', () => {
+    it('redirect before the server of the host answers, with HSTS on an https server', async () => {
+      const { httpsApp } = setup([instance({ protocol: 'https', hsts: true, rules: [{ path: '/old', redirect: '/new', status: 301 }] })]);
+
+      const response = await get(httpsApp, 'web.localhost', undefined, '/old');
+
+      expect(response.status).toBe(301);
+      expect(response.headers.location).toBe('/new');
+      expect(response.headers['strict-transport-security']).toBeDefined();
+    });
+
+    it('leave the requests no rule matches to the server, and the other hosts alone', async () => {
+      const { httpApp } = setup([instance({ rules: [{ path: '/old', redirect: '/new', status: 301 }] }), instance({ hostname: 'plain.localhost' })]);
+
+      expect((await get(httpApp, 'web.localhost', undefined, '/other')).status).toBe(200);
+      expect((await get(httpApp, 'plain.localhost', undefined, '/old')).status).toBe(200);
     });
   });
 

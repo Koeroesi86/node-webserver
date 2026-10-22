@@ -5,6 +5,7 @@ import type { AcmeOptions } from './acme';
 import type { CompressionOptions } from './compression';
 import type { LambdaOptions } from './lambda';
 import type { ProxyOptions } from './proxy';
+import type { Rule } from './rule';
 
 export type WorkerOptions = Parameters<typeof middleware>[0];
 
@@ -39,6 +40,8 @@ export interface ServerConfig {
   type?: ServerType;
   /** answer the requests of its protocol that no server takes (a host name that matches none, or no `Host` header) as well, like `default_server` of nginx. At most one server per protocol. Off by default. */
   defaultHost?: boolean;
+  /** redirects and rewrites run before the server of the host, the first one that matches the path decides. A host without rules does no work for them. */
+  rules?: Rule[];
   /** the file of the private key. With `acme` it is where the key is written, and it defaults to a file in `acme.storagePath`. */
   key?: string;
   /** the file of the certificate (with its chain). With `acme` it is where the certificate is written, and it defaults to a file in `acme.storagePath`. */

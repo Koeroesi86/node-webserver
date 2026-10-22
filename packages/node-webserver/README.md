@@ -374,6 +374,37 @@ Nothing sends a client from the http port to the https one unless the https serv
   Start with a short `maxAge` while trying it out.
 - Both are for `https` servers only, the configuration check fails for an `http` server that sets them.
 
+#### Redirects and rewrites
+
+`rules` on a server is a list that runs before the server of the host, in front of its compression and after HSTS, so a redirect carries the header. A host without `rules` does nothing for them.
+
+```javascript
+{
+  hostname: 'www.example.com',
+  protocol: 'http',
+  type: 'worker',
+  options: { root: '/path/to/files' },
+  rules: [
+    { path: '/old', redirect: '/new', status: 301 },
+    { pattern: '/blog/(?<year>[0-9]{4})/(?<slug>.+)', redirect: '/posts/{slug}-{year}', status: 308 },
+    { pattern: '/(?<rest>.*)', redirect: 'https://example.com/{rest}', status: 301, methods: ['GET', 'HEAD'] },
+    { pattern: '/app/.*', rewrite: '/index.html' },
+  ],
+}
+```
+
+- A rule has `path` (the whole path) or `pattern` (a regular expression for the whole path, `flags` as in the route tables of the workers and lambdas, so there is one implementation and the same checks), and either `redirect` with a `status` of 301, 302, 307 or 308 (required: no default
+  makes a client cache a permanent redirect by accident), or `rewrite`, the path the server of the host gets instead.
+- The first rule that matches decides, once: the path a rewrite makes is not matched against the rules again. A path is matched as the client wrote it (without the query, not decoded). `methods` limits a rule to some methods (all when left out), and a request
+  of another method goes on to the next rule. The query of the request is added to a redirect target unless `keepQuery: false`, and is always kept by a rewrite. The original url stays for the access log.
+- A target is a path of the host, or (redirect only) an absolute URL. `{name}` in it is the named group of the pattern of that name, as the request wrote it, with a backslash and what is not printable ASCII encoded (`%5C`): the configuration check fails for a name that
+  is no group of the pattern.
+- A request cannot redirect to a host of its choosing. The scheme and host name of an absolute target are the ones written in the configuration (a capture can only come after them), a path target has to start with a single `/`, and a result that does not (the request was
+  `//evil.com` and the target `/{rest}`) is answered with `400` and not followed. The check of the configuration refuses a target that could do it.
+- `301` and `302` let a client turn a `POST` into a `GET`: the check warns when a rule with such a status names a method other than `GET` and `HEAD`. Use `307` or `308` to keep the method.
+- The rules run on the front process for every request of the host, so patterns are trusted configuration: avoid ones that backtrack, like nested repetitions (the limit on the length of a path is the one of the route tables). The rules without `methods` next to each other
+  share one table, so a path costs a lookup in a map and the patterns before it, not a test of every rule.
+
 #### Default host
 
 `defaultHost: true` on a server makes it answer the requests of its protocol that no server takes, like `default_server` of nginx: a host name that matches no server (no exact name, no wildcard), a request without a `Host` header,
