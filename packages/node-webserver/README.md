@@ -348,6 +348,32 @@ What a worker writes to its stdout and stderr is handed to `onStdout` and `onStd
 A server with `protocol: 'https'` is served on the https port for its host name (SNI), with the files in `key`, `cert` and, for the chain, `ca` (paths to PEM files).
 A host name with a wildcard (`*.example.com`, `*` is one label) gets its certificate for every name it matches, found like the virtual hosts are: an exact name first, then the wildcards in the order of the configuration.
 A client that asks for a name without a certificate, or sends none, fails the handshake at once.
+
+#### Redirecting http to https and HSTS
+
+Nothing sends a client from the http port to the https one unless the https server asks for it:
+
+```javascript
+{
+  hostname: 'secure.example.com',
+  protocol: 'https',
+  key: '/etc/ssl/secure.example.com/privkey.pem',
+  cert: '/etc/ssl/secure.example.com/fullchain.pem',
+  redirectHttp: true, // or { status: 301 }
+  hsts: true, // or { maxAge: 31536000, includeSubDomains: true, preload: true }
+  type: 'worker',
+  options: { root: '/path/to/files' },
+}
+```
+
+- `redirectHttp` answers the plain http requests for the host name with `308` (the method and the body of the request are kept; `{ status: 301 }` is for old clients) to the same path and query on https,
+  on the name the client asked for (a wildcard host redirects each name it matches) and with the https port when it is not 443. It costs a lookup in the host table of the http port, like any other http server. The redirect comes after the servers
+  on the http port: an `http` server of the same name that is in the configuration answers first, and the redirect gets the requests it passes on.
+- `hsts` sends `Strict-Transport-Security` with the responses of the server, `max-age` a year (31536000) unless `maxAge` says otherwise. The browsers then keep to https for the host without asking the http port first.
+  `includeSubDomains` and `preload` are off: both reach beyond this host and are hard to take back (a browser keeps the host in the list for as long as `maxAge`, and a preload list for months), so switch them on only when every subdomain can be served on https.
+  Start with a short `maxAge` while trying it out.
+- Both are for `https` servers only, the configuration check fails for an `http` server that sets them.
+
 TLS ends in the front process, on the thread that serves every other request too, so a handshake slows all of them down a little, plain HTTP included. What keeps that small:
 
 - **Use an ECDSA (P-256) certificate** where the clients allow it (every current browser does). Its handshakes are cheaper for the server than with RSA 2048: about 40% more of them per second,

@@ -247,6 +247,28 @@
           "type": "string",
           "minLength": 1
         },
+        "redirectHttp": {
+          "description": "for an https server: answer the plain http requests for its host name with a redirect to https",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/redirectHttp"
+            }
+          ]
+        },
+        "hsts": {
+          "description": "for an https server: send Strict-Transport-Security with its responses",
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/hsts"
+            }
+          ]
+        },
         "compression": {
           "oneOf": [
             {
@@ -345,6 +367,35 @@
           }
         }
       ]
+    },
+    "redirectHttp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "integer",
+          "enum": [
+            301,
+            308
+          ]
+        }
+      }
+    },
+    "hsts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxAge": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "includeSubDomains": {
+          "type": "boolean"
+        },
+        "preload": {
+          "type": "boolean"
+        }
+      }
     },
     "compression": {
       "type": "object",

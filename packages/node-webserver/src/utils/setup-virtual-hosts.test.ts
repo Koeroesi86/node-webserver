@@ -166,4 +166,56 @@ describe('setupVirtualHosts', () => {
 
     expect(middleware).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'own-name' }));
   });
+
+  describe('redirect to https', () => {
+    const secure = (overrides: Partial<ServerConfig> = {}) => instance({ protocol: 'https', redirectHttp: true, ...overrides });
+
+    it('redirects the http requests of an https server that asked for it', async () => {
+      const { httpApp } = setup([secure()]);
+
+      const response = await get(httpApp, 'web.localhost');
+
+      expect(response.status).toBe(308);
+      expect(response.headers.location).toBe('https://web.localhost/');
+    });
+
+    it('leaves the http requests of the others alone', async () => {
+      const { httpApp } = setup([secure({ redirectHttp: undefined })]);
+
+      expect((await get(httpApp, 'web.localhost')).status).toBe(404);
+    });
+
+    it('redirects every name a wildcard matches, on the name that was asked for', async () => {
+      const { httpApp } = setup([secure({ hostname: '*.example.com' })]);
+
+      expect((await get(httpApp, 'a.example.com')).headers.location).toBe('https://a.example.com/');
+    });
+
+    it('lets an http server of the same name answer first', async () => {
+      const { httpApp } = setup([secure(), instance({})]);
+
+      expect((await get(httpApp, 'web.localhost')).status).toBe(200);
+    });
+
+    it('does not redirect the requests that come to https', async () => {
+      const { httpsApp } = setup([secure()]);
+
+      expect((await get(httpsApp, 'web.localhost')).status).toBe(200);
+    });
+  });
+
+  describe('hsts', () => {
+    it('sets the header on the responses of an https server that asked for it', async () => {
+      const { httpsApp } = setup([instance({ protocol: 'https', hsts: { maxAge: 60 } })]);
+
+      expect((await get(httpsApp, 'web.localhost')).headers['strict-transport-security']).toBe('max-age=60');
+    });
+
+    it('sets nothing by default, or on an http server', async () => {
+      const { httpApp, httpsApp } = setup([instance({ hostname: 'plain.localhost', protocol: 'https' }), instance({ hsts: true })]);
+
+      expect((await get(httpsApp, 'plain.localhost')).headers['strict-transport-security']).toBeUndefined();
+      expect((await get(httpApp, 'web.localhost')).headers['strict-transport-security']).toBeUndefined();
+    });
+  });
 });

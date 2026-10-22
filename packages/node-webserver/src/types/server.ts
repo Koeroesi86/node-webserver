@@ -20,6 +20,18 @@ export interface InstanceServerOptions {
   url?: string;
 }
 
+export interface RedirectOptions {
+  /** `308` keeps the method of the request, `301` is the one old clients know. Defaults to 308. */
+  status?: 301 | 308;
+}
+
+export interface HstsOptions {
+  /** how long, in seconds, the browsers only use https for the host. Defaults to a year. */
+  maxAge?: number;
+  includeSubDomains?: boolean;
+  preload?: boolean;
+}
+
 export interface ServerConfig {
   hostname: string;
   protocol: string;
@@ -27,6 +39,10 @@ export interface ServerConfig {
   key?: string;
   cert?: string;
   ca?: string;
+  /** for an `https` server: answer the plain http requests for its host name with a redirect to https. A server of the same name on the http port answers first. Off by default. */
+  redirectHttp?: boolean | RedirectOptions;
+  /** for an `https` server: send `Strict-Transport-Security` with its responses. `true` uses the defaults. Off by default. */
+  hsts?: boolean | HstsOptions;
   options?: WorkerOptions;
   /** compress the responses of this server for the clients that accept it. Off by default. `true` uses the defaults, an object tunes them. */
   compression?: boolean | CompressionOptions;

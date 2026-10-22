@@ -8,7 +8,7 @@ import {
   proxy as proxyMiddleware,
   proxyServer as proxyServerMiddleware,
 } from '../middlewares';
-import { getDate, trackRequests, untilIdle } from '../utils';
+import { createHstsHandler, getDate, trackRequests, untilIdle } from '../utils';
 import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
 
 interface Context {
@@ -94,11 +94,13 @@ const compose =
 
 /** starts what answers the requests of the server: the workers, the lambdas, the child process or the connections to the target of a proxy */
 function createInstanceHandler(instance: ServerConfig, runtime: ServerRuntime, context: Context): InstanceHandler {
-  const { compression } = instance;
+  const { compression, hsts, protocol } = instance;
   const started = getMiddleware(instance, runtime, context);
   const compress = compression ? compressionMiddleware(compression === true ? {} : compression, context.compressionBudget) : undefined;
+  const addHsts = hsts && protocol === 'https' ? createHstsHandler(hsts) : undefined;
+  const handlers = [addHsts, compress, started.handler].filter((handler) => handler !== undefined);
 
-  return { ...started, handler: compress ? compose(compress, started.handler) : started.handler };
+  return { ...started, handler: handlers.reduceRight((next, handler) => compose(handler, next)) };
 }
 
 export default createInstanceHandler;

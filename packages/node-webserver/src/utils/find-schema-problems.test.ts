@@ -10,6 +10,12 @@ describe('findSchemaProblems', () => {
     expect(find(server({ type: 'worker', options: { root: '/', limitPerPath: () => 1, onStdout: () => {} } }))).toEqual([]);
   });
 
+  it('accepts the redirect and HSTS settings as a flag or as options, and names a status that is not one', () => {
+    expect(find(server({ protocol: 'https', redirectHttp: true, hsts: { maxAge: 60, preload: true } }))).toEqual([]);
+    expect(find(server({ protocol: 'https', redirectHttp: { status: 301 }, hsts: false }))).toEqual([]);
+    expect(find(server({ protocol: 'https', redirectHttp: { status: 302 } }))).not.toEqual([]);
+  });
+
   it('names a setting that does not exist', () => {
     expect(find(server({ proxyOption: {} }))).toEqual(['proxyOption is not a setting']);
   });
