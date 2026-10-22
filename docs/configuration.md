@@ -25,6 +25,7 @@ module.exports = {
 | `keepAliveTimeout` | how long an idle connection stays open, in ms | 65000 |
 | `maxConnections` | open connections per server before new ones are dropped, 0 for no limit | 10000 |
 | `shutdownTimeout` | how long a stop waits for requests in flight, in ms | 30000 |
+| `unknownHostPage` | a file that answers a request for a host no server takes (`421`), instead of a plain text | plain text |
 | `workerLimit` | worker processes of all worker servers together, 0 for no limit | 0 |
 | `watchServers` | reload servers when their files change | on |
 | `reloadOnSighup` | reload on `SIGHUP` instead of stopping | off |

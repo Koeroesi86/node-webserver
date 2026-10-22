@@ -25,6 +25,11 @@ describe('validateConfiguration', () => {
     expect(find({ portHttp: 0, portHttps: 0 })).toEqual([]);
   });
 
+  it('finds a page for unknown hosts that is not a file', () => {
+    expect(find({ unknownHostPage: '/does/not/exist.html' })).toEqual(['unknownHostPage is not a file: /does/not/exist.html']);
+    expect(find({ unknownHostPage: __filename })).toEqual([]);
+  });
+
   it('finds a range of ports that ends before it starts', () => {
     expect(find({ portLookup: { from: 3010, to: 3000, address: 'localhost' } })).toEqual(['portLookup starts above where it ends']);
   });

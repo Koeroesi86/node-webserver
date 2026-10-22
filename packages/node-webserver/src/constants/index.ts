@@ -83,3 +83,6 @@ export const ACME_USER_AGENT = '@koeroesi86/node-webserver';
 
 /** how long a request to the ACME server may take, in milliseconds */
 export const ACME_REQUEST_TIMEOUT = 30000;
+
+/** the content type of a page by its extension, for the files of `errorPages` and `unknownHostPage`; anything else is plain text */
+export const PAGE_TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.json': 'application/json' };

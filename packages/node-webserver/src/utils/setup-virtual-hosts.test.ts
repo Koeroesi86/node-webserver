@@ -1,5 +1,8 @@
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
+import os from 'os';
+import path from 'path';
 import zlib from 'zlib';
 import { middleware } from '@koeroesi86/node-worker-express';
 import { createInstanceHandler } from '../server';
@@ -239,6 +242,18 @@ describe('setupVirtualHosts', () => {
       const { httpApp } = setup([instance({})]);
 
       expect((await get(httpApp, 'unknown.localhost')).status).toBe(421);
+    });
+
+    it('answers the others with the page of unknownHostPage, with 421', async () => {
+      const page = path.join(os.tmpdir(), `unknown-${process.pid}.html`);
+      fs.writeFileSync(page, '<p>no such site</p>');
+      const app = express().use(setupVirtualHosts([], { ...ports, unknownHostPage: page }, createMockLogger()).http);
+      const reply = await get(app, 'unknown.localhost');
+      fs.rmSync(page);
+
+      expect(reply.status).toBe(421);
+      expect(reply.body.toString()).toBe('<p>no such site</p>');
+      expect(reply.headers['content-type']).toBe('text/html; charset=utf-8');
     });
 
     it('is per protocol', async () => {

@@ -57,7 +57,7 @@ const createServerReloader = (
 
   const watch = () => {
     stopWatching();
-    stopWatching = watchFiles(getWatchedFiles(servers, loaded), debounce(reload, RELOAD_DEBOUNCE));
+    stopWatching = watchFiles(getWatchedFiles(servers, loaded, configuration.unknownHostPage), debounce(reload, RELOAD_DEBOUNCE));
   };
 
   const reload = () => {
