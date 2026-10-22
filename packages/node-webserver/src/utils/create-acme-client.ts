@@ -20,7 +20,7 @@ const readProblem = ({ body }: AcmeResponse): Problem => {
 
 const getJson = async <T>(url: string, ca?: string): Promise<T> => {
   const response = await acmeRequest(url, { ca });
-  if (response.status !== 200) throw new Error(`GET ${url} answered ${response.status}`);
+  if (response.status !== 200) throw new Error(`GET ${url} answered ${response.status}: ${response.body.toString('utf8').slice(0, 200)}`);
 
   return JSON.parse(response.body.toString('utf8'));
 };
