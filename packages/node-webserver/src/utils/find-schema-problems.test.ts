@@ -30,6 +30,12 @@ describe('findSchemaProblems', () => {
     expect(find(server({ rules: [{ path: '/a', rewrite: 'c' }] }))).not.toEqual([]);
   });
 
+  it('accepts errorPages as files per status, and names a page that is not a path', () => {
+    expect(find(server({ errorPages: { 404: '/pages/404.html', 503: '/pages/503.html' } }))).toEqual([]);
+    expect(find(server({ errorPages: { 404: true } }))).not.toEqual([]);
+    expect(find(server({ errorPages: '/pages' }))).not.toEqual([]);
+  });
+
   it('accepts defaultHost as a flag only', () => {
     expect(find(server({ defaultHost: true }))).toEqual([]);
     expect(find(server({ defaultHost: 'yes' }))).not.toEqual([]);

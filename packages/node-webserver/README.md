@@ -405,6 +405,24 @@ Nothing sends a client from the http port to the https one unless the https serv
 - The rules run on the front process for every request of the host, so patterns are trusted configuration: avoid ones that backtrack, like nested repetitions (the limit on the length of a path is the one of the route tables). The rules without `methods` next to each other
   share one table, so a path costs a lookup in a map and the patterns before it, not a test of every rule.
 
+#### Error pages
+
+`errorPages` on a server maps a status code from 400 to 599 to a file, and answers that status of the host with the file instead of the body it had, like `error_page` of nginx. The files are read when the server starts and on reload (a changed file loads the servers again), and the check fails for a file that is not there.
+
+```js
+{
+  hostname: 'example.com',
+  protocol: 'https',
+  type: 'worker',
+  options: { root: '/srv/example' },
+  errorPages: { 404: '/srv/pages/404.html', 502: '/srv/pages/down.html', 503: '/srv/pages/down.html' },
+}
+```
+
+- It replaces by status, on the front process, for the answers of the lambdas, the worker pool, the proxy and the front itself (404, 413, 502, 503, 504): at that point an answer of a worker or a proxied app with the same status looks the same, so it is replaced as well. An answer that is `text/html` already is left as it is, so a worker or an app that sends a page of its own for its 404 keeps it. Note that `res.send('text')` of Express is `text/html`.
+- The type of the page comes from the extension (`.html` and `.htm` are html, `.json` is JSON, anything else is plain text). The other headers of the answer stay (`Retry-After`, cookies), those of its body (`Content-Type`, `Content-Length`, `ETag` and the like) go.
+- It sits inside the compression and outside the server, so a page over the threshold is compressed. A host without `errorPages` does nothing for it, and a request with another status passes through untouched.
+
 #### Default host
 
 `defaultHost: true` on a server makes it answer the requests of its protocol that no server takes, like `default_server` of nginx: a host name that matches no server (no exact name, no wildcard), a request without a `Host` header,

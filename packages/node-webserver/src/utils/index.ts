@@ -20,6 +20,7 @@ export { default as createFileSink } from './create-file-sink';
 export { default as createGracefulStop } from './create-graceful-stop';
 export { default as createAcmeChallengeHandler } from './create-acme-challenge-handler';
 export { default as createAcmeRenewer } from './create-acme-renewer';
+export { default as createErrorPagesHandler } from './create-error-pages-handler';
 export { default as createHstsHandler } from './create-hsts-handler';
 export { default as createHttp2App } from './create-http2-app';
 export { default as createHttpsRedirect } from './create-https-redirect';
@@ -39,6 +40,7 @@ export { default as findCertificateProblems } from './find-certificate-problems'
 export { default as findChildProblems } from './find-child-problems';
 export { default as findDuplicateProblems } from './find-duplicate-problems';
 export type { ServerEntry } from './find-duplicate-problems';
+export { default as findErrorPageProblems } from './find-error-page-problems';
 export { default as findLambdaProblems } from './find-lambda-problems';
 export { default as findMissingPaths } from './find-missing-paths';
 export type { PathEntry } from './find-missing-paths';
