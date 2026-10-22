@@ -3,6 +3,7 @@ export * from './logger';
 export * from './proxy';
 export * from './lambda';
 export * from './compression';
+export * from './rule';
 export * from './server';
 export * from './configuration';
 export * from './instance';

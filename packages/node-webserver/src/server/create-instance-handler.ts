@@ -8,7 +8,7 @@ import {
   proxy as proxyMiddleware,
   proxyServer as proxyServerMiddleware,
 } from '../middlewares';
-import { createHstsHandler, getDate, trackRequests, untilIdle } from '../utils';
+import { createHstsHandler, createRulesHandler, getDate, trackRequests, untilIdle } from '../utils';
 import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
 
 interface Context {
@@ -94,11 +94,13 @@ const compose =
 
 /** starts what answers the requests of the server: the workers, the lambdas, the child process or the connections to the target of a proxy */
 function createInstanceHandler(instance: ServerConfig, runtime: ServerRuntime, context: Context): InstanceHandler {
-  const { compression, hsts, protocol } = instance;
+  const { compression, hsts, protocol, rules } = instance;
   const started = getMiddleware(instance, runtime, context);
   const compress = compression ? compressionMiddleware(compression === true ? {} : compression, context.compressionBudget) : undefined;
   const addHsts = hsts && protocol === 'https' ? createHstsHandler(hsts) : undefined;
-  const handlers = [addHsts, compress, started.handler].filter((handler) => handler !== undefined);
+  // after HSTS, so that a redirect carries it, and before the compression, which a redirect or a 400 has no use for
+  const applyRules = rules?.length ? createRulesHandler(rules) : undefined;
+  const handlers = [addHsts, applyRules, compress, started.handler].filter((handler) => handler !== undefined);
 
   return { ...started, handler: handlers.reduceRight((next, handler) => compose(handler, next)) };
 }

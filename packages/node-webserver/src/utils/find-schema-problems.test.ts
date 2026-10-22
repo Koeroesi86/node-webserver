@@ -10,6 +10,26 @@ describe('findSchemaProblems', () => {
     expect(find(server({ type: 'worker', options: { root: '/', limitPerPath: () => 1, onStdout: () => {} } }))).toEqual([]);
   });
 
+  it('accepts rules that redirect or rewrite, and names those that do both, neither or lack a status', () => {
+    expect(
+      find(
+        server({
+          rules: [
+            { path: '/a', redirect: '/b', status: 301 },
+            { pattern: '/x/(?<id>.+)', flags: 'i', methods: ['GET'], rewrite: '/y/{id}' },
+          ],
+        })
+      )
+    ).toEqual([]);
+    expect(find(server({ rules: [{ path: '/a' }] }))).not.toEqual([]);
+    expect(find(server({ rules: [{ path: '/a', redirect: '/b' }] }))).not.toEqual([]);
+    expect(find(server({ rules: [{ path: '/a', redirect: '/b', status: 303 }] }))).not.toEqual([]);
+    expect(find(server({ rules: [{ path: '/a', redirect: '/b', status: 301, rewrite: '/c' }] }))).not.toEqual([]);
+    expect(find(server({ rules: [{ path: '/a', rewrite: '/c', status: 301 }] }))).not.toEqual([]);
+    expect(find(server({ rules: [{ path: '/a', pattern: '/b', rewrite: '/c' }] }))).not.toEqual([]);
+    expect(find(server({ rules: [{ path: '/a', rewrite: 'c' }] }))).not.toEqual([]);
+  });
+
   it('accepts defaultHost as a flag only', () => {
     expect(find(server({ defaultHost: true }))).toEqual([]);
     expect(find(server({ defaultHost: 'yes' }))).not.toEqual([]);

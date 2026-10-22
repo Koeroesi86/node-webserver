@@ -301,6 +301,13 @@
         },
         "lambdaOptions": {
           "$ref": "#/definitions/lambdaOptions"
+        },
+        "rules": {
+          "description": "redirects and rewrites that run before the server of the host, the first one that matches decides",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/rule"
+          }
         }
       },
       "allOf": [
@@ -941,6 +948,114 @@
           "minLength": 1
         }
       }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "pattern": {
+          "description": "a regular expression the whole path has to match, named groups can be used in the target as {name}",
+          "type": "string",
+          "minLength": 1
+        },
+        "flags": {
+          "description": "of the regular expression: i, s, u or v",
+          "type": "string",
+          "pattern": "^[isuv]*$"
+        },
+        "methods": {
+          "description": "the methods the rule is for, all of them when left out",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "redirect": {
+          "description": "an absolute URL or a path of the host; {name} is a named group of the pattern, and can only come after the host name",
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "of the redirect: 301, 302, 307 or 308",
+          "type": "integer",
+          "enum": [
+            301,
+            302,
+            307,
+            308
+          ]
+        },
+        "keepQuery": {
+          "description": "add the query of the request to the target, true by default",
+          "type": "boolean"
+        },
+        "rewrite": {
+          "description": "the path the server of the host gets instead, the query is kept; {name} is a named group of the pattern",
+          "type": "string",
+          "pattern": "^/"
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": [
+                "path"
+              ]
+            },
+            {
+              "required": [
+                "pattern"
+              ]
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "required": [
+                "redirect",
+                "status"
+              ],
+              "not": {
+                "required": [
+                  "rewrite"
+                ]
+              }
+            },
+            {
+              "required": [
+                "rewrite"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "redirect"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "status"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "keepQuery"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   }
 }
