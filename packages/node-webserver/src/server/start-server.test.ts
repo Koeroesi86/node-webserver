@@ -15,6 +15,9 @@ import createMockLogger from '../utils/mock-logger.test-helper';
 jest.mock('../utils/setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
 
 describe('startServer', () => {
+  // openssl makes the certificates of the fake authority and an order is made once the server listens, which takes more than the 5 seconds of a test on a busy runner
+  jest.setTimeout(30000);
+
   const configuration = { servers: [], portHttp: 0, portHttps: 0, statsDomain: false as const, watchServers: false };
 
   it('rejects with all of the problems of the configuration, before anything listens', async () => {
