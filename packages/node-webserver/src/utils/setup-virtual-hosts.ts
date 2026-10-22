@@ -1,8 +1,10 @@
 import type { RequestHandler } from 'express';
+import createHttpsRedirect from './create-https-redirect';
 import getURL from './get-url';
 import virtualHostRouter from './virtual-host-router';
 import getDate from './get-date';
 import type { Configuration, Logger, ServerState } from '../types';
+import type { VirtualHost } from '../types/virtual-host';
 
 interface StartedHost extends ServerState {
   handler: RequestHandler;
@@ -18,17 +20,23 @@ function setupVirtualHosts(hosts: StartedHost[], Configuration: Partial<Configur
     .forEach(({ instance }) => logger.error(`[${getDate()}] Unknown protocol ${instance.protocol} for ${instance.hostname}`));
 
   // one router per protocol instead of a vhost middleware per host, so that finding the host does not walk the list
-  const forProtocol = (protocol: string) =>
-    virtualHostRouter(
-      hosts
+  const forProtocol = (protocol: string, after: VirtualHost[] = []) =>
+    virtualHostRouter([
+      ...hosts
         .filter(({ instance }) => instance.protocol === protocol)
         .map(({ instance, runtime, handler }) => {
           runtime.url = getURL(protocol, instance.hostname, ports[protocol]);
           return { hostname: instance.hostname, handler };
-        })
-    );
+        }),
+      ...after,
+    ]);
 
-  return { http: forProtocol('http'), https: forProtocol('https') };
+  // after the http servers, so that one of the same name that was written out answers first
+  const redirects = hosts
+    .filter(({ instance }) => instance.protocol === 'https')
+    .flatMap(({ instance: { hostname, redirectHttp } }) => (redirectHttp ? [{ hostname, handler: createHttpsRedirect(redirectHttp, portHttps) }] : []));
+
+  return { http: forProtocol('http', redirects), https: forProtocol('https') };
 }
 
 export default setupVirtualHosts;

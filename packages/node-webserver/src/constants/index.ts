@@ -8,6 +8,9 @@ export const DEFAULT_PORTS: Record<string, number> = {
   https: 443,
 };
 
+/** a year in seconds, what `hsts: true` sends and the least that preload lists ask for */
+export const DEFAULT_HSTS_MAX_AGE = 31536000;
+
 export const PROXY_PROTOCOLS: Record<string, string> = {
   http: 'http',
   https: 'http',
