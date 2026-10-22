@@ -44,6 +44,20 @@ describe('loadInstances', () => {
     expect(createInstanceHandler).toHaveBeenCalledTimes(2);
   });
 
+  it('gives an acme server the files of its certificate, and loads it before the certificate is there', () => {
+    const acme = { email: 'admin@example.com', storagePath: path.join(folder, 'acme') };
+    const definition: ServerConfig = { hostname: 'secure.example.com', protocol: 'https', acme };
+
+    const [loaded] = loadInstances([definition], [], createMockLogger());
+
+    expect(loaded.instance).toMatchObject({
+      key: path.join(acme.storagePath, 'secure.example.com', 'privkey.pem'),
+      cert: path.join(acme.storagePath, 'secure.example.com', 'fullchain.pem'),
+    });
+    expect(loaded.runtime.secureContext).toBeUndefined();
+    expect(definition.key).toBeUndefined();
+  });
+
   it('leaves out a file that does not exist', () => {
     expect(loadInstances([path.join(folder, 'missing.js')], [], createMockLogger())).toEqual([]);
   });

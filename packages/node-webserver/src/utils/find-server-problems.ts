@@ -1,4 +1,5 @@
 import type { ConfigurationProblem, ServerConfig } from '../types';
+import findAcmeProblems from './find-acme-problems';
 import findCertificateProblems from './find-certificate-problems';
 import findChildProblems from './find-child-problems';
 import findLambdaProblems from './find-lambda-problems';
@@ -23,16 +24,18 @@ const attempt = (find: () => ConfigurationProblem[]) => {
   }
 };
 
-/** what the schema cannot say about a server: files that are not there, certificates, patterns that are not regular expressions and settings that conflict */
+/** what the schema cannot say about a server: files that are not there, certificates, ACME settings, patterns that are not regular expressions and settings that conflict */
 const findServerProblems = (instance: ServerConfig, server: string): ConfigurationProblem[] => [
   ...attempt(() =>
     findMissingPaths(server, [
-      { setting: 'key', path: instance.key, kind: 'file' },
-      { setting: 'cert', path: instance.cert, kind: 'file' },
+      // the key and certificate of an acme server are made when it starts, and renewed after
+      { setting: 'key', path: instance.acme ? undefined : instance.key, kind: 'file' },
+      { setting: 'cert', path: instance.acme ? undefined : instance.cert, kind: 'file' },
       { setting: 'ca', path: instance.ca, kind: 'file' },
     ])
   ),
-  ...attempt(() => findCertificateProblems(instance, server)),
+  ...attempt(() => (instance.acme ? [] : findCertificateProblems(instance, server))),
+  ...attempt(() => findAcmeProblems(instance, server)),
   ...attempt(() => findRedirectProblems(instance, server)),
   ...attempt(() => (instance.type ? (byType[instance.type]?.(instance, server) ?? []) : [])),
 ];

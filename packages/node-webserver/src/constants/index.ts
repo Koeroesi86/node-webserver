@@ -71,3 +71,12 @@ export const BODYLESS_STATUSES = [204, 205, 304];
 
 /** a certificate that expires within this many days is reported, so that it is renewed before the clients notice */
 export const CERTIFICATE_EXPIRY_WARNING_DAYS = 14;
+
+/** the directory of Let's Encrypt that `acme` uses unless it names another */
+export const ACME_DEFAULT_DIRECTORY = 'https://acme-v02.api.letsencrypt.org/directory';
+
+/** how often the certificates of the `acme` servers are looked at, in milliseconds. A failed order is tried again at the next look. */
+export const ACME_CHECK_INTERVAL = 60 * 60 * 1000;
+
+/** how long a request to the ACME server may take, in milliseconds */
+export const ACME_REQUEST_TIMEOUT = 30000;

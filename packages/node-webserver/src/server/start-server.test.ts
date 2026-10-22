@@ -1,7 +1,13 @@
+import fs from 'fs';
+import http from 'http';
 import net from 'net';
+import os from 'os';
+import path from 'path';
+import tls from 'tls';
 import { getServerMetrics } from '@koeroesi86/node-worker-express';
 import { setupShutdown } from '../utils';
 import startServer from './start-server';
+import startFakeAcmeServer from '../utils/fake-acme-server.test-helper';
 import createMockLogger from '../utils/mock-logger.test-helper';
 
 // the exit listeners belong to the process, not to the server under test
@@ -112,5 +118,70 @@ describe('startServer', () => {
     expect(during.every((count, index) => count > start[index])).toBe(true);
     expect(afterRemove).toEqual(start);
     expect(counts()).toEqual(start);
+  });
+
+  const freePort = () =>
+    new Promise<number>((resolve) => {
+      const probe = net.createServer().listen(0, () => {
+        const { port } = probe.address() as net.AddressInfo;
+        probe.close(() => resolve(port));
+      });
+    });
+
+  const until = async (done: () => boolean) => {
+    const deadline = Date.now() + 15000;
+    while (!done() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(done()).toBe(true);
+  };
+
+  const handshake = (port: number, servername: string) =>
+    new Promise<string | undefined>((resolve) => {
+      const socket = tls.connect({ port, host: '127.0.0.1', servername, rejectUnauthorized: false }, () => {
+        const names = socket.getPeerCertificate().subjectaltname;
+        socket.destroy();
+        resolve(names);
+      });
+      socket.on('error', () => resolve(undefined));
+    });
+
+  it('gets the certificate of an acme server once it listens, answers the challenge before the redirect, and serves the certificate to new connections', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'start-server-acme-'));
+    const [portHttp, portHttps] = [await freePort(), await freePort()];
+    const authority = await startFakeAcmeServer(folder, () => portHttp);
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const logger = createMockLogger();
+    const acme = { email: 'admin@example.com', storagePath: path.join(folder, 'storage'), directory: authority.directory, directoryCa: authority.ca };
+
+    const server = await startServer(
+      {
+        ...configuration,
+        portHttp,
+        portHttps,
+        servers: [{ hostname: 'secure.example.com', protocol: 'https', redirectHttp: true, acme, type: 'worker', options: { root: folder } }],
+      },
+      logger,
+      { processHooks: false }
+    );
+    // no certificate yet
+    expect(await handshake(portHttps, 'secure.example.com')).toBeUndefined();
+
+    await until(() => logger.system.mock.calls.some(([line]) => String(line).includes('Servers loaded again')));
+    const names = await handshake(portHttps, 'secure.example.com');
+    const redirected = await new Promise<http.IncomingMessage>((resolve) =>
+      http.get({ port: portHttp, host: '127.0.0.1', path: '/page', headers: { Host: 'secure.example.com' } }, (response) =>
+        resolve(response.resume() && response)
+      )
+    );
+    server.removeProcessHooks();
+    await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
+    listen.mockRestore();
+    await authority.stop();
+    fs.rmSync(folder, { recursive: true, force: true });
+
+    expect(names).toBe('DNS:secure.example.com');
+    expect(authority.hostnames).toEqual(['secure.example.com']);
+    expect(redirected.statusCode).toBe(308);
   });
 });

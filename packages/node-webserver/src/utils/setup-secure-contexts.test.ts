@@ -42,4 +42,17 @@ describe('setupSecureContexts', () => {
 
     expect(jest.mocked(tls.createSecureContext).mock.calls[0][0]?.ca).toEqual([certificate('one'), certificate('two')]);
   });
+
+  it('leaves an acme server without a context until its files are there', () => {
+    jest.spyOn(fs, 'existsSync').mockImplementation((file) => file === '/key.pem');
+    const [waiting] = setupSecureContexts([instance({ key: '/key.pem', cert: '/cert.pem', acme: { email: 'a@example.com', storagePath: '/' } })]);
+
+    expect(waiting.runtime.secureContext).toBeUndefined();
+    expect(tls.createSecureContext).not.toHaveBeenCalled();
+
+    jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+    const [issued] = setupSecureContexts([instance({ key: '/key.pem', cert: '/cert.pem', acme: { email: 'a@example.com', storagePath: '/' } })]);
+
+    expect(issued.runtime.secureContext).toBe(secureContext);
+  });
 });

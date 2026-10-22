@@ -8,6 +8,8 @@ import { accessLogs as accessLogsMiddleware } from '../middlewares';
 import {
   applyTrustedProxies,
   configureServer,
+  createAcmeChallengeHandler,
+  createAcmeRenewer,
   createCompressionBudget,
   createHttp2App,
   createHttpsServer,
@@ -21,7 +23,7 @@ import {
   validateConfiguration,
 } from '../utils';
 import loadInstances from './load-instances';
-import type { Configuration, Logger } from '../types';
+import type { AcmeChallenges, Configuration, Logger } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
@@ -73,6 +75,10 @@ const startServer = async (
   const logHttps = accessLogsMiddleware({ alias: 'https', logger: log });
   [httpsApp, http2App].forEach((app) => app.use(logHttps));
 
+  /** the challenge of the certificate authority, before the hosts: a redirect to https must not get in its way */
+  const challenges: AcmeChallenges = new Map();
+  httpApp.use(createAcmeChallengeHandler(challenges));
+
   /** overall stats endpoint */
   setupStatsHandler(reloader.getLoaded, httpApp, configuration, log);
 
@@ -99,7 +105,11 @@ const startServer = async (
     getInstances: reloader.getInstances,
     logger: log,
   });
+  // after the servers listen, as the authority comes to the http port
+  const renewer = createAcmeRenewer({ getLoaded: reloader.getLoaded, challenges, logger: log, reload });
+  void renewer.start();
   httpServer.once('close', () => {
+    renewer.stop();
     unregisterMetrics();
     hooks.removeWorkerBudget();
   });

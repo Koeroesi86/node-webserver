@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'child_process';
 import type { SecureContext } from 'tls';
 import type { middleware } from '@koeroesi86/node-worker-express';
+import type { AcmeOptions } from './acme';
 import type { CompressionOptions } from './compression';
 import type { LambdaOptions } from './lambda';
 import type { ProxyOptions } from './proxy';
@@ -36,9 +37,13 @@ export interface ServerConfig {
   hostname: string;
   protocol: string;
   type?: ServerType;
+  /** the file of the private key. With `acme` it is where the key is written, and it defaults to a file in `acme.storagePath`. */
   key?: string;
+  /** the file of the certificate (with its chain). With `acme` it is where the certificate is written, and it defaults to a file in `acme.storagePath`. */
   cert?: string;
   ca?: string;
+  /** for an `https` server: get its certificate from an ACME server such as Let's Encrypt when there is none, and renew it before it expires. Off by default. */
+  acme?: AcmeOptions;
   /** for an `https` server: answer the plain http requests for its host name with a redirect to https. A server of the same name on the http port answers first. Off by default. */
   redirectHttp?: boolean | RedirectOptions;
   /** for an `https` server: send `Strict-Transport-Security` with its responses. `true` uses the defaults. Off by default. */
