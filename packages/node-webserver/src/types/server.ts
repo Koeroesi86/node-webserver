@@ -42,6 +42,8 @@ export interface ServerConfig {
   defaultHost?: boolean;
   /** redirects and rewrites run before the server of the host, the first one that matches the path decides. A host without rules does no work for them. */
   rules?: Rule[];
+  /** files that answer a status instead of the body of it: the key is a status code from 400 to 599, the value the file, read when the server starts and on reload. A response that is html already is left as it is. */
+  errorPages?: Record<string, string>;
   /** the file of the private key. With `acme` it is where the key is written, and it defaults to a file in `acme.storagePath`. */
   key?: string;
   /** the file of the certificate (with its chain). With `acme` it is where the certificate is written, and it defaults to a file in `acme.storagePath`. */

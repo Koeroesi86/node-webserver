@@ -308,6 +308,13 @@
           "items": {
             "$ref": "#/definitions/rule"
           }
+        },
+        "errorPages": {
+          "description": "files that answer a status code from 400 to 599 instead of the body of it, read when the server starts and on reload",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "allOf": [

@@ -2,6 +2,7 @@ import type { ConfigurationProblem, ServerConfig } from '../types';
 import findAcmeProblems from './find-acme-problems';
 import findCertificateProblems from './find-certificate-problems';
 import findChildProblems from './find-child-problems';
+import findErrorPageProblems from './find-error-page-problems';
 import findLambdaProblems from './find-lambda-problems';
 import findMissingPaths from './find-missing-paths';
 import findRedirectProblems from './find-redirect-problems';
@@ -39,6 +40,7 @@ const findServerProblems = (instance: ServerConfig, server: string): Configurati
   ...attempt(() => findAcmeProblems(instance, server)),
   ...attempt(() => findRedirectProblems(instance, server)),
   ...attempt(() => findRuleProblems(instance, server)),
+  ...attempt(() => findErrorPageProblems(instance, server)),
   ...attempt(() => (instance.type ? (byType[instance.type]?.(instance, server) ?? []) : [])),
 ];
 
