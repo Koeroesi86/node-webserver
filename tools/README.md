@@ -7,6 +7,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
 | [Channel benchmark](#channel-benchmark) | the channel between the server and a worker on its own: messages and bytes per second, the old IPC against the socket pair | `node tools/dist/scripts/channel-bench.js` |
 | [Pull request description](#pull-request-description) | holds the description of a pull request to the template | `node tools/dist/scripts/check-pull-request.js description.md` |
+| [Layout of added files](#layout-of-added-files) | holds the files a pull request adds to the layout rules of `CLAUDE.md` | `node tools/dist/scripts/check-layout.js origin/master` |
 | [Coverage report](#coverage-report) | merges the unit test coverage of the packages into one markdown and json report | `pnpm test:coverage` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
@@ -16,7 +17,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
@@ -59,6 +60,15 @@ It fails, with an error annotation per problem, when:
 - "Tried by hand:" names a command that CI runs (`pnpm lint`, `build`, `test`, `quality`, `test:integration`, `load-test` and the like). Only commands are matched, a word list would flag a person who really ran the load test by hand, and Not verified is not matched at all.
 
 Pull requests of `dependabot[bot]` are not checked (`EXEMPT_AUTHORS`). Whether a Release section is needed for a change in `packages/**` is not checked.
+## Layout of added files
+
+The `layout` job of `pr-checks.yml` runs `scripts/check-layout.ts` on the files that the pull request adds (`git diff --diff-filter=A` against the merge base with `origin/master`, plus untracked files) and is one of the `needs` of `required-checks`; `.claude/hooks/standards-gate.sh` runs the same script before Claude commits or pushes. It fails, with a line per problem, when an added file:
+
+- is a `.ts` file whose name is not kebab-case;
+- in `utils/`, `middlewares/` or `classes/` is not exported by the `index.ts` next to it (tests, test helpers and index files are exempt);
+- in `utils/` has more than one `export` line (a type next to the function counts, types belong in `types/`) or no `name.test.ts` next to it.
+
+Existing files are not checked, they break these rules today (camelCase names, several exports, no test) and are cleaned up on their own. Changed or renamed-over files are not "added", so editing an old file never fails. The job checks out with `fetch-depth: 0` for the merge base.
 
 ## Load tests
 

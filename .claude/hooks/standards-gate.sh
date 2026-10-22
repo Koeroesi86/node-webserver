@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Blocks what CLAUDE.md forbids and eslint cannot see: commands (prettier --write, pushing to master, commenting on a PR, skipped checks)
-# and, before a commit or push, files this branch adds that break the layout (kebab-case names, one function per utils file, a test next to it, an export from the index.ts of its folder).
+# and, before a commit or push, files this branch adds that break the layout (tools/src/scripts/check-layout.ts, which CI runs too).
 # Needs jq; without it the gate skips, like fallow-gate.sh.
 
 command -v jq >/dev/null 2>&1 || exit 0
@@ -25,16 +25,8 @@ grep -qE '(^|[;&| ])git +(-[^ ]+ +[^ ]+ +)*(commit|push)' <<<"$CMD" || exit 0
 BASE="$(git merge-base HEAD origin/master 2>/dev/null || true)"
 [ -n "$BASE" ] || exit 0
 
-problems=""
-while IFS= read -r file; do
-  name="$(basename "$file")"
-  case "$file" in *.ts) ;; *) continue ;; esac
-  [[ "$name" =~ ^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9-]+)*\.ts$ ]] || problems+="$file: new files are kebab-case"$'\n'
-  [[ "$name" != *.test.ts && "$name" != *.test-helper.ts && "$name" != index.ts ]] || continue
-  [[ "$file" =~ /(utils|middlewares|classes)/[^/]+$ ]] && ! grep -qE "from '\./${name%.ts}'" "$(dirname "$file")/index.ts" 2>/dev/null && problems+="$file: not exported by the index.ts next to it"$'\n'
-  [[ "$file" == */utils/* ]] || continue
-  [ "$(grep -cE '^export ' "$file")" = 1 ] || problems+="$file: one exported function per file in utils/"$'\n'
-  [ -f "${file%.ts}.test.ts" ] || problems+="$file: no ${name%.ts}.test.ts next to it"$'\n'
-done < <(git diff --name-only --diff-filter=A "$BASE" -- '*.ts'; git ls-files --others --exclude-standard -- '*.ts')
+# the same check as the layout job of CI, from the build of the tools (without node or the build the gate skips)
+command -v node >/dev/null 2>&1 && [ -f tools/dist/scripts/check-layout.js ] || exit 0
+problems="$(node tools/dist/scripts/check-layout.js "$BASE" 2>&1 || true)"
 
-[ -z "$problems" ] || block "$(printf 'layout of CLAUDE.md:\n%s' "$problems")"
+[ -z "$problems" ] || block "$problems"
