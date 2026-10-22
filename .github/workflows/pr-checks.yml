@@ -103,7 +103,6 @@ jobs:
   # the ACME client against Pebble, the test server of Let's Encrypt, as the fake server of the unit tests is written together with the client and would share its misreading of RFC 8555.
   # Both run on the host network: Pebble asks the name server of challtestsrv (which answers 127.0.0.1 for every name) and then the http port of the server under test.
   pebble:
-    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
