@@ -240,7 +240,8 @@ describe('createWatchedProbe', () => {
     const probe = createWatchedProbe(base);
     await probe.exists(path.join(directory, 'missing.txt'));
     await untilListed(probe, exists);
-    const watcher = watch.mock.results[0].value;
+    // the last one: macOS can report the changes of the setup late, which drops the first watcher, and the directory is listed again with a watcher of its own
+    const watcher = watch.mock.results.at(-1)?.value;
     const closeWatcher = jest.spyOn(watcher, 'close');
     exists.mockClear();
 
@@ -250,6 +251,24 @@ describe('createWatchedProbe', () => {
     expect(probe.stats()).toEqual({ directories: 0, listings: 0, entries: 0 });
     expect(closeWatcher).toHaveBeenCalled();
     expect(exists).toHaveBeenCalledTimes(1);
+    watch.mockRestore();
+    probe.close();
+  });
+
+  it('keeps the listing of a new watcher when a watcher it dropped reports an error late', async () => {
+    const watch = jest.spyOn(fsSync, 'watch');
+    const { base, exists } = countingBase();
+    const probe = createWatchedProbe(base, { cooldown: 1 });
+    await probe.exists(path.join(directory, 'missing.txt'));
+    await untilListed(probe, exists);
+    const first = watch.mock.results[0].value;
+    first.emit('change');
+    await untilListed(probe, exists);
+
+    first.emit('error', new Error('watching failed'));
+
+    expect(watch).toHaveBeenCalledTimes(2);
+    expect(probe.stats()).toMatchObject({ directories: 1, listings: 1 });
     watch.mockRestore();
     probe.close();
   });
