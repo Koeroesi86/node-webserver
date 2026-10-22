@@ -108,6 +108,31 @@ jobs:
           gh pr view "${PR_NUMBER}" --json body --jq .body > "${RUNNER_TEMP}/description.md"
           node tools/dist/scripts/check-pull-request.js "${RUNNER_TEMP}/description.md"
 
+  # the files that the pull request adds follow the layout rules of CLAUDE.md (names, index.ts, one export and a test in utils/); the existing files break them, so only added ones are checked
+  layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # the added files are found against the merge base with the base branch
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - name: Setup
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build the tools
+        timeout-minutes: 5
+        run: pnpm --filter @koeroesi86/tools build
+      - name: Check the added files
+        timeout-minutes: 5
+        run: node tools/dist/scripts/check-layout.js origin/master
+
   # the site of docs/ builds, which also fails on a link that leads nowhere
   docs:
     runs-on: ubuntu-latest
@@ -182,15 +207,15 @@ jobs:
   security:
     uses: ./.github/workflows/security.yml
 
-  # the one check that master requires: it fails unless the tests, the build, the audit, the description, the docs build, the Pebble test, the load test and the security scans all passed,
+  # the one check that master requires: it fails unless the tests, the build, the audit, the description, the layout check, the docs build, the Pebble test, the load test and the security scans all passed,
   # so the jobs and the operating systems can change without touching the branch protection
   required-checks:
     if: always()
-    needs: [test, build, audit, description, docs, pebble, load-test, security]
+    needs: [test, build, audit, description, layout, docs, pebble, load-test, security]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Tests, build, audit, description, docs, Pebble test, load test and security scans passed
+      - name: Tests, build, audit, description, layout, docs, Pebble test, load test and security scans passed
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
