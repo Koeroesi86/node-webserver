@@ -6,6 +6,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | --- | --- | --- |
 | [Versions](#versions) | prepares the versions of the packages for publishing | `pnpm generate-version` |
 | [Channel benchmark](#channel-benchmark) | the channel between the server and a worker on its own: messages and bytes per second, the old IPC against the socket pair | `node tools/dist/scripts/channel-bench.js` |
+| [Pull request description](#pull-request-description) | holds the description of a pull request to the template | `node tools/dist/scripts/check-pull-request.js description.md` |
 | [Coverage report](#coverage-report) | merges the unit test coverage of the packages into one markdown and json report | `pnpm test:coverage` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
@@ -15,7 +16,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
 | `utils/` | the functions the scripts are made of, one per file |
 | `types/` | the interfaces shared by the scripts and the utils |
@@ -46,6 +47,18 @@ Pin it like the load test to compare runs, for example `taskset -c 0-2 node tool
 
 `pnpm test:coverage` in the root runs the unit tests of the packages and of the tools with coverage (not counted: tests, test helpers, examples, the k6 scenarios and the load test scripts of node-webserver that are not published) (needs `pnpm build`, the tools are run from `dist`) and then `scripts/coverage-report.ts`.
 Developers open the html of a package (`packages/<name>/coverage/lcov-report/index.html`); `coverage/report.md` in the root is the same for reading as text, with a table of the packages and, for every file that is not fully covered, the line numbers that never ran, and `coverage/report.json` is that data for scripts. A line counts as covered when every statement on it ran. Nothing fails below a limit, and the output is not committed (`coverage` is ignored).
+
+## Pull request description
+
+The `description` job of `pr-checks.yml` runs `scripts/check-pull-request.ts` on the description of the pull request against `.github/pull_request_template.md` and is one of the `needs` of `required-checks`. The description is read when the job runs (`gh pr view`), so after editing it, re-run the job: a change of the description alone does not start a run.
+It fails, with an error annotation per problem, when:
+
+- a heading of the template is missing, except a section whose comment in the template says to delete it (Behaviour changes, Release);
+- a section is empty or still the comment and empty bullet of the template;
+- "Tried by hand:" or "**Not verified:**" of Verification says nothing (write "nothing" when all was done);
+- "Tried by hand:" names a command that CI runs (`pnpm lint`, `build`, `test`, `quality`, `test:integration`, `load-test` and the like). Only commands are matched, a word list would flag a person who really ran the load test by hand, and Not verified is not matched at all.
+
+Pull requests of `dependabot[bot]` are not checked (`EXEMPT_AUTHORS`). Whether a Release section is needed for a change in `packages/**` is not checked.
 
 ## Load tests
 
