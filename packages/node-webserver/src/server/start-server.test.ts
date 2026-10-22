@@ -8,6 +8,7 @@ import { getServerMetrics } from '@koeroesi86/node-worker-express';
 import { setupShutdown } from '../utils';
 import startServer from './start-server';
 import startFakeAcmeServer from '../utils/fake-acme-server.test-helper';
+import makeCertificate from '../utils/make-certificate.test-helper';
 import createMockLogger from '../utils/mock-logger.test-helper';
 
 // the exit listeners belong to the process, not to the server under test
@@ -136,9 +137,9 @@ describe('startServer', () => {
     expect(done()).toBe(true);
   };
 
-  const handshake = (port: number, servername: string) =>
+  const handshake = (port: number, servername: string, ca?: Buffer) =>
     new Promise<string | undefined>((resolve) => {
-      const socket = tls.connect({ port, host: '127.0.0.1', servername, rejectUnauthorized: false }, () => {
+      const socket = tls.connect({ port, host: '127.0.0.1', servername, ca }, () => {
         const names = socket.getPeerCertificate().subjectaltname;
         socket.destroy();
         resolve(names);
@@ -168,7 +169,7 @@ describe('startServer', () => {
     expect(await handshake(portHttps, 'secure.example.com')).toBeUndefined();
 
     await until(() => logger.system.mock.calls.some(([line]) => String(line).includes('Servers loaded again')));
-    const names = await handshake(portHttps, 'secure.example.com');
+    const names = await handshake(portHttps, 'secure.example.com', fs.readFileSync(authority.root));
     const redirected = await new Promise<http.IncomingMessage>((resolve) =>
       http.get({ port: portHttp, host: '127.0.0.1', path: '/page', headers: { Host: 'secure.example.com' } }, (response) =>
         resolve(response.resume() && response)
@@ -183,5 +184,60 @@ describe('startServer', () => {
     expect(names).toBe('DNS:secure.example.com');
     expect(authority.hostnames).toEqual(['secure.example.com']);
     expect(redirected.statusCode).toBe(308);
+  });
+
+  it('replaces the certificate for new connections when it renews, and leaves a connection that is open as it is', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'start-server-renewal-'));
+    const [portHttp, portHttps] = [await freePort(), await freePort()];
+    const authority = await startFakeAcmeServer(folder, () => portHttp);
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const logger = createMockLogger();
+    const storagePath = path.join(folder, 'storage');
+    const hostname = 'secure.example.com';
+    // a certificate of 30 days is due when 60 days are the margin, so the renewer replaces it as soon as the server listens
+    const old = makeCertificate(folder, hostname);
+    fs.mkdirSync(path.join(storagePath, hostname), { recursive: true });
+    fs.copyFileSync(old.key, path.join(storagePath, hostname, 'privkey.pem'));
+    fs.copyFileSync(old.cert, path.join(storagePath, hostname, 'fullchain.pem'));
+    const acme = { email: 'admin@example.com', storagePath, directory: authority.directory, directoryCa: authority.ca, renewBeforeDays: 60 };
+    const ca = [fs.readFileSync(old.cert), fs.readFileSync(authority.root)];
+    const fingerprint = (socket: tls.TLSSocket) => socket.getPeerCertificate().fingerprint256;
+    const request = (socket: tls.TLSSocket) =>
+      new Promise<string>((resolve) => {
+        socket.once('data', (data) => resolve(data.toString().split('\r\n')[0]));
+        socket.write(`GET /missing HTTP/1.1\r\nHost: ${hostname}\r\n\r\n`);
+      });
+
+    const server = await startServer(
+      { ...configuration, portHttp, portHttps, servers: [{ hostname, protocol: 'https', acme, type: 'worker', options: { root: folder } }] },
+      logger,
+      { processHooks: false }
+    );
+    const open = await new Promise<tls.TLSSocket>((resolve) => {
+      const socket: tls.TLSSocket = tls.connect({ port: portHttps, host: '127.0.0.1', servername: hostname, ca }, () => resolve(socket));
+    });
+    const before = fingerprint(open);
+    const statusBefore = await request(open);
+
+    await until(() => logger.system.mock.calls.some(([line]) => String(line).includes('Servers loaded again')));
+    const statusAfter = await request(open);
+    const fresh = await new Promise<tls.TLSSocket>((resolve) => {
+      const socket: tls.TLSSocket = tls.connect({ port: portHttps, host: '127.0.0.1', servername: hostname, ca }, () => resolve(socket));
+    });
+    const renewed = fingerprint(fresh);
+    const held = fingerprint(open);
+    open.destroy();
+    fresh.destroy();
+    server.removeProcessHooks();
+    await Promise.all(listen.mock.contexts.map((context: net.Server) => new Promise((resolve) => context.close(resolve))));
+    listen.mockRestore();
+    await authority.stop();
+    fs.rmSync(folder, { recursive: true, force: true });
+
+    expect(renewed).not.toBe(before);
+    expect(held).toBe(before);
+    expect(statusBefore).toMatch(/^HTTP\/1\.1 /);
+    expect(statusAfter).toMatch(/^HTTP\/1\.1 /);
+    expect(authority.hostnames).toEqual([hostname]);
   });
 });

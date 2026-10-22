@@ -19,6 +19,8 @@ export interface FakeAcmeServer {
   /** the directory URL, which is https with a certificate that `ca` holds */
   directory: string;
   ca: string;
+  /** the certificate that signs what the server issues, for a client that checks the chain */
+  root: string;
   /** every request the server got, as `METHOD /path` */
   requests: string[];
   /** the orders it took, by host name */
@@ -36,7 +38,7 @@ const thumbprint = ({ crv, kty, x, y }: JsonWebKey) => createHash('sha256').upda
 
 const fail = (response: http.ServerResponse) => (error: unknown) => {
   response.writeHead(500);
-  response.end(String(error));
+  response.end(error instanceof Error ? 'fake acme server failed' : 'unexpected failure');
 };
 
 const readBody = (request: http.IncomingMessage) =>
@@ -194,7 +196,9 @@ const startFakeAcmeServer = async (folder: string, challengePort: () => number, 
     if (kind === 'new-acct') return newAccount(payload, key);
     if (kind === 'new-order') return newOrder(payload);
 
-    return order && handlers[kind] ? handlers[kind](payload, key, order, id, path) : { status: 404, body: problem('malformed', 'no such resource') };
+    return order && Object.hasOwn(handlers, kind)
+      ? handlers[kind](payload, key, order, id, path)
+      : { status: 404, body: problem('malformed', 'no such resource') };
   };
 
   /** the account of a request, when its nonce, URL, algorithm and signature are right, otherwise the answer to send */
@@ -259,6 +263,7 @@ const startFakeAcmeServer = async (folder: string, challengePort: () => number, 
   return {
     directory: `${base}/directory`,
     ca: tls.cert,
+    root: authority.cert,
     requests,
     hostnames,
     behaviour: state,
