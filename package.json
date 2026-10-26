@@ -25,9 +25,9 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.71.2",
     "@typescript-eslint/parser": "^8.71.2",
-    "eslint": "^10.12.0",
+    "eslint": "^10.13.0",
     "eslint-plugin-prettier": "^5.5.7",
-    "fallow": "3.33.1",
+    "fallow": "3.34.1",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",
     "vitepress": "^1.6.4"
