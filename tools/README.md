@@ -265,7 +265,7 @@ k6 run tools/src/k6/cpu.ts
 | k6 | `VUS`, `WS_VUS`, `DURATION` | 20, 10, 30s | HTTP and websocket virtual users, duration |
 | k6 | `MIN_REQUEST_RATE` | 1000 | requests per second the whole run has to reach |
 | compare | `MAX_THROUGHPUT_DROP`, `MAX_P95_INCREASE`, `MAX_CPU_P95_INCREASE`, `MIN_P95_DIFFERENCE_MS` | 0.15, 0.5, 0.3, 5 | limits of the comparison with the base |
-| k6 (`cpu.ts`) | `CPU_RATE`, `MAX_P95_MS` | 150, 100 | requests per second for the CPU bound worker, and the p95 allowed |
+| k6 (`cpu.ts`) | `CPU_RATE`, `MAX_P95_MS` | 150, 100 | requests per second for the CPU bound worker, and the p95 allowed (the workflow runs it at 100 on Linux, see the notes in `load-test.yml`) |
 
 ### Cores
 
