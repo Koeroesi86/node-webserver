@@ -10,7 +10,7 @@ import { findExcludedRoutes, judgeRoutes } from './judge-routes';
 import { judgeThroughput } from './judge-throughput';
 
 /**
- * Compares the repetitions of both sides by their medians, the CPU bound run by the lowest p95 of each side.
+ * Compares the repetitions of both sides by their medians, the CPU bound run by the lowest and the median p95 of each side.
  * A route is only judged when the base can serve it: the load test of a pull request may have routes that the base does not have.
  */
 export const compareSummaries = (

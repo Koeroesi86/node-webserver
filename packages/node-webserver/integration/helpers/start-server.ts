@@ -38,6 +38,13 @@ const getFreePort = () =>
     });
   });
 
+/** the fixtures scan 20 ports upwards from here, and the OS may hand out one of the last ports (Windows does), which would run the scan past 65535 */
+const getFreePortRangeStart = async (): Promise<number> => {
+  const port = await getFreePort();
+
+  return port + 20 < 65535 ? port : getFreePortRangeStart();
+};
+
 const isListening = (port: number) =>
   new Promise<boolean>((done) => {
     const socket = net.connect(port, '127.0.0.1');
@@ -76,7 +83,7 @@ const makeCertificate = (folder: string) => {
 
 /** starts the built server with the servers of the fixtures in a process of its own, and resolves once it accepts connections. `env` goes to the configuration of the fixtures. */
 export const startServer = async (env: Record<string, string> = {}): Promise<RunningServer> => {
-  const [port, httpsPort, childPortFrom, closedPort] = await Promise.all([getFreePort(), getFreePort(), getFreePort(), getFreePort()]);
+  const [port, httpsPort, childPortFrom, closedPort] = await Promise.all([getFreePort(), getFreePort(), getFreePortRangeStart(), getFreePort()]);
   const certificateFolder = fs.mkdtempSync(join(os.tmpdir(), 'node-webserver-integration-'));
   const { key, cert, certificate } = makeCertificate(certificateFolder);
   const child = spawn(process.execPath, [resolve(__dirname, '../fixtures/run-server.js')], {

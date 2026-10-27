@@ -181,21 +181,22 @@ describe('createWatchedProbe', () => {
   it('holds no more names than allowed together, a directory that does not fit is not listed', async () => {
     const { base, exists } = countingBase();
     const directories = await Promise.all(
-      ['budget-a', 'budget-b', 'budget-c'].map(async (name) => {
-        const budgeted = path.join(root, name);
-        await fs.mkdir(budgeted);
+      [0, 1, 2].map(async () => {
+        // a name of its own, as a retry of the test would find the directories of the failed run
+        const budgeted = await fs.mkdtemp(path.join(root, 'budget-'));
         await Promise.all(['1', '2', '3'].map((file) => fs.writeFile(path.join(budgeted, file), '')));
         return budgeted;
       })
     );
-    const probe = createWatchedProbe(base, { maxTotalEntries: 7 });
+    const probe = createWatchedProbe(base, { maxTotalEntries: 7, maxAge: 600000 });
 
     await untilListed(probe, exists, directories[0]);
     await untilListed(probe, exists, directories[1]);
     // the third does not fit, its watcher is closed again once it has been read
     await probe.exists(path.join(directories[2], 'missing.txt'));
     await probe.exists(path.join(directories[2], 'other-missing.txt'));
-    while (probe.stats().directories > 2) await new Promise((resolve) => setImmediate(resolve));
+    // the listings must not expire on a slow runner, and the one that was read last has to be there before they are counted
+    while (probe.stats().directories > 2 || probe.stats().listings < 2) await new Promise((resolve) => setImmediate(resolve));
 
     expect(probe.stats()).toEqual({ directories: 2, listings: 2, entries: 6 });
     probe.close();
