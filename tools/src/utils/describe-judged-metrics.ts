@@ -5,7 +5,7 @@ export const describeJudgedMetrics = ({ limits, cpuRuns, binaryRuns }: JudgedMet
   const cpu = cpuRuns
     ? ` The CPU bound run (${cpuRuns.base} runs of the base, ${
         cpuRuns.head
-      } of the pull request, at a fixed rate) is judged on the lowest p95 of its runs (at most ${
+      } of the pull request, at a fixed rate) is judged on the p95 of its runs, a regression only when the lowest and the median of the runs are both higher (at most ${
         maxCpuP95Increase * 100
       }% and ${minP95DifferenceMs} ms higher) and on dropped requests.`
     : '';
