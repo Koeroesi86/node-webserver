@@ -27,7 +27,7 @@
     "@typescript-eslint/parser": "^8.72.0",
     "eslint": "^10.13.0",
     "eslint-plugin-prettier": "^5.5.7",
-    "fallow": "3.34.1",
+    "fallow": "3.36.0",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",
     "vitepress": "^1.6.4"
