@@ -2,14 +2,19 @@
 # Everything else fails the osv-scan job (.github/workflows/security.yml).
 
 [[IgnoredVulns]]
-id = "GHSA-vfj7-8cjw-p6xm"
+id = "GHSA-gcqx-w48m-w2h4"
 ignoreUntil = 2027-01-09
-reason = "braces has no fixed version. Only dev tooling (nodemon through chokidar, jest and eslint through micromatch) uses it, on patterns of this repository, and none of it is published"
+reason = "deepmerge has no fixed version. Only reached through jest-config of the test tooling, not published"
 
 [[IgnoredVulns]]
-id = "GHSA-hp3w-g68c-fv3c"
+id = "GHSA-3g3m-2fjr-6pw4"
 ignoreUntil = 2027-01-09
-reason = "sprintf-js has no fixed version. Only reached through js-yaml and argparse of the jest coverage tooling, not published"
+reason = "glob 10 and 13 are pulled in by the jest coverage tooling (test-exclude) and the fix is a major version of a dev dependency, not published"
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2027-01-09
+reason = "minimatch 3, 9 and 10 are pulled in by glob, nodemon and jest tooling and the fix is a major version of a dev dependency, not published"
 
 [[IgnoredVulns]]
 id = "GHSA-c2qf-rxjj-qqgw"
