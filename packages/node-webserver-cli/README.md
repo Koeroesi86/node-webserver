@@ -82,7 +82,7 @@ A Windows service needs the service control protocol in the process, which a Nod
 
 ### Coming from `@koeroesi86/node-webserver-service`
 
-The service commands were part of `@koeroesi86/node-webserver-service` (`nws-service`), which is deprecated and forwards to this package. The names changed:
+The service commands were part of `@koeroesi86/node-webserver-service` (`nws-service`), which is deprecated on npm and not developed here anymore; its last release forwards to this package. The names changed:
 
 | `nws-service` | `nws-cli` |
 |---|---|
@@ -91,4 +91,6 @@ The service commands were part of `@koeroesi86/node-webserver-service` (`nws-ser
 | `--user` | `--user` |
 | `--run --configuration <file>` | `--config <file>` |
 
-A service installed by `nws-service` keeps running through the forwarding of the old package. To move it, run `service add` of this package with the same configuration (it rewrites the definition of the same name, which starts `nws-cli` itself), then restart it: `systemctl restart <serviceName>` (`systemctl --user restart` for `--user`) or `launchctl kickstart -k <domain>/com.koeroesi86.<serviceName>`.
+A service installed by `nws-service` keeps running through the forwarding of the last release of the old package, as long as it stays installed. To move it, run `service add` of this package with the same configuration (it rewrites the definition of the same name, which starts `nws-cli` itself), then restart it: `systemctl restart <serviceName>` (`systemctl --user restart` for `--user`) or `launchctl kickstart -k <domain>/com.koeroesi86.<serviceName>`.
+
+Version 1 of the old package used the `os-service` addon. A Windows service installed by it starts `manage-service.js --run` through the service control manager, which later versions do not answer, so remove it with the old version before moving: `npx @koeroesi86/node-webserver-service@1 --remove --configuration <file>`. A Linux init.d service of that version is not removed by anything newer either, remove it the same way first.

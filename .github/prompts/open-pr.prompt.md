@@ -13,11 +13,10 @@ Open a pull request for the current branch, following the repo rules in `CLAUDE.
 ## Which packages publish
 A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and its dependents.
 
-- `node-worker` publishes `node-worker`, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`, `node-webserver-service`
-- `node-worker-express` and `node-lambda-invoke` publish themselves, `node-webserver`, `node-webserver-cli`, `node-webserver-service`
-- `node-webserver` publishes itself, `node-webserver-cli`, `node-webserver-service`
-- `node-webserver-cli` publishes itself and `node-webserver-service`
-- `node-webserver-service` publishes itself
+- `node-worker` publishes `node-worker`, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`
+- `node-worker-express` and `node-lambda-invoke` publish themselves, `node-webserver`, `node-webserver-cli`
+- `node-webserver` publishes itself, `node-webserver-cli`
+- `node-webserver-cli` publishes itself
 - `pnpm-lock.yaml` publishes the packages whose dependencies changed, plus their dependents
 - `tools/`, docs, and `.github/` do not publish
 

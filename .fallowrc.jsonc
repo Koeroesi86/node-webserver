@@ -44,7 +44,6 @@
       { "name": "node-lambda-invoke", "patterns": ["packages/node-lambda-invoke/**"] },
       { "name": "node-webserver", "patterns": ["packages/node-webserver/**"] },
       { "name": "node-webserver-cli", "patterns": ["packages/node-webserver-cli/**"] },
-      { "name": "node-webserver-service", "patterns": ["packages/node-webserver-service/**"] },
       { "name": "tools", "patterns": ["tools/**"] }
     ],
     // a zone without a rule may import anything, so the ones that import no other package have an empty one
@@ -55,12 +54,11 @@
       { "from": "node-worker-express", "allow": ["node-worker"] },
       // node-worker through the exports of node-worker-express that are its (the budget of the workers, the types of the protocol), which the server uses as the ones of the middleware
       { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke", "node-worker"] },
-      { "from": "node-webserver-cli", "allow": ["node-webserver"] },
-      { "from": "node-webserver-service", "allow": [] }
+      { "from": "node-webserver-cli", "allow": ["node-webserver"] }
     ]
   },
   // proves who uses an export of a package, which the syntactic pass can only guess
-  "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "packages/node-webserver-service/tsconfig.json", "tools/tsconfig.json"] },
+  "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "tools/tsconfig.json"] },
   "health": {
     // run by node, a browser or k6 on their own and not measured by the unit tests, they are examples and test fixtures, not the product
     "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
