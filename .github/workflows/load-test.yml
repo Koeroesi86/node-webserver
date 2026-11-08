@@ -180,9 +180,18 @@ jobs:
           echo 'Server did not become ready' >&2
           cat server.log
           exit 1
-      - uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
-        with:
-          k6-version: '1.2.2'
+      - name: Get k6
+        id: k6
+        uses: ./.github/actions/cache-k6
+      - name: Put k6 on the PATH
+        env:
+          K6_DIR: ${{ steps.k6.outputs.directory }}
+        run: echo "$K6_DIR" >> "$GITHUB_PATH"
+      # fails here, with the reason, instead of in the first step that runs k6
+      - name: Check k6
+        env:
+          K6_VERSION: ${{ steps.k6.outputs.version }}
+        run: k6 version | grep -F "v${K6_VERSION}"
       - name: Look at the runner before the load test
         run: node tools/dist/scripts/runner.js snapshot > runner-before.json
       - name: Run load test
