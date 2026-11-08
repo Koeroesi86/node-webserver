@@ -20,14 +20,12 @@ describe('forwardToCli', () => {
   let argvFile: string;
   let readyFile: string;
 
-  /** a stand-in for nws-cli: writes the arguments it got, and ends as the test tells it to */
+  /** a stand-in for nws-cli: writes the arguments it got next to itself, and ends as the test tells it to */
   const useScript = (body: string) => {
     const script = join(folder, 'cli.js');
     writeFileSync(
       script,
-      `const { writeFileSync } = require('node:fs');
-       writeFileSync(${JSON.stringify(argvFile)}, JSON.stringify(process.argv.slice(2)));
-       ${body}`
+      `const { writeFileSync } = require('node:fs');\nwriteFileSync(__dirname + '/argv.json', JSON.stringify(process.argv.slice(2)));\n${body}`
     );
     resolveCliScript.mockReturnValue(script);
   };
@@ -65,7 +63,7 @@ describe('forwardToCli', () => {
   });
 
   itWithSignals('passes SIGTERM on to nws-cli and waits for it to finish', async () => {
-    useScript(`process.on('SIGTERM', () => process.exit(7)); writeFileSync(${JSON.stringify(readyFile)}, ''); setInterval(() => undefined, 1000);`);
+    useScript(`process.on('SIGTERM', () => process.exit(7)); writeFileSync(__dirname + '/ready', ''); setInterval(() => undefined, 1000);`);
 
     const forwarded = forwardToCli(['--run']);
     await until(() => existsSync(readyFile));
