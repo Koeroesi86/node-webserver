@@ -15,5 +15,5 @@ Where to look for the rest:
 
 - using the server: [packages/node-webserver/README.md](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md)
 - the libraries: [node-worker](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker/README.md), [node-worker-express](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/README.md), [node-lambda-invoke](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-lambda-invoke/README.md)
-- the command line and the systemd or launchd service: [node-webserver-cli](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver-cli/README.md) (`node-webserver-service` is deprecated and forwards to it)
+- the command line and the systemd, launchd or Task Scheduler service: [node-webserver-cli](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver-cli/README.md) (`node-webserver-service` is deprecated and forwards to it)
 - versions and load tests: [tools/README.md](https://github.com/Koeroesi86/node-webserver/blob/master/tools/README.md)

@@ -12,7 +12,11 @@ interface RemoveDependencies extends Pick<InstallDependencies, 'platform' | 'run
 
 const removeService = async (definition: ServiceDefinition, dependencies: Partial<RemoveDependencies> = {}, user?: UserContext): Promise<void> => {
   const deps = { platform: defaultDependencies.platform, runCommand: defaultDependencies.runCommand, removeFile: (path: string) => rm(path), ...dependencies };
-  const { filePath, remove, afterRemove } = getServiceFiles(deps.platform, definition, user);
+  const { filePath, stop, remove, afterRemove } = getServiceFiles(deps.platform, definition, user);
+
+  for (const [command, ...args] of stop) {
+    await deps.runCommand(command, args).catch(() => undefined);
+  }
 
   for (const [command, ...args] of remove) {
     await deps.runCommand(command, args);

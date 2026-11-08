@@ -1,7 +1,6 @@
 import { posix } from 'path';
+import escapeXml from './escape-xml';
 import type { ServiceDefinition } from '../types';
-
-const escapeXml = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const string = (value: string): string => `<string>${escapeXml(value)}</string>`;
 

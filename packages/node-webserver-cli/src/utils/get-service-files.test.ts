@@ -46,8 +46,22 @@ describe('getServiceFiles', () => {
     expect(() => getServiceFiles('darwin', { ...definition, userService: true }, { home: '/home/dev', uid: undefined })).toThrow('user id');
   });
 
-  it('names nws-cli for the platforms without a generator', () => {
-    expect(() => getServiceFiles('win32', definition, user)).toThrow('not for win32');
-    expect(() => getServiceFiles('win32', definition, user)).toThrow('nws-cli --config');
+  it('creates the folder of a user service only', () => {
+    expect(getServiceFiles('linux', definition, user).folder).toBeUndefined();
+    expect(getServiceFiles('linux', { ...definition, userService: true }, user).folder).toBe('/home/dev/.config/systemd/user');
+    expect(getServiceFiles('darwin', { ...definition, userService: true }, user).folder).toBe('/home/dev/Library/LaunchAgents');
+  });
+
+  it('describes a task of Task Scheduler on Windows', () => {
+    const files = getServiceFiles('win32', definition, { ...user, userName: 'dev' });
+
+    expect(files.filePath).toMatch(/nws-cli\\nws\.xml$/);
+    expect(files.content).toContain('<BootTrigger>');
+    expect(files.install[1]).toEqual(['schtasks', '/run', '/tn', 'nws']);
+    expect(files.remove).toEqual([['schtasks', '/delete', '/tn', 'nws', '/f']]);
+  });
+
+  it('names the platforms with a generator for the others', () => {
+    expect(() => getServiceFiles('freebsd', definition, user)).toThrow('not for freebsd');
   });
 });
