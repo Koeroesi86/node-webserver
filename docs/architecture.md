@@ -36,15 +36,15 @@ Details: [How the server and the workers talk](https://github.com/Koeroesi86/nod
 ## Packages
 
 ```
-node-webserver-cli ────────┐
-                           ├─► node-webserver ─┬─► node-lambda-invoke ───┐
-node-webserver-service ────┘                   └─► node-worker-express ──┴─► node-worker
+node-webserver-service ─► node-webserver-cli ─► node-webserver ─┬─► node-lambda-invoke ───┐
+                                                                └─► node-worker-express ──┴─► node-worker
 ```
 
 | Package | Role |
 |---|---|
 | `node-webserver` | the front server and its configuration |
-| `node-webserver-cli`, `node-webserver-service` | thin wrappers: command line runner and systemd or launchd service generator |
+| `node-webserver-cli` | thin wrapper: command line runner and systemd or launchd service generator |
+| `node-webserver-service` | deprecated, forwards the old flags to `node-webserver-cli` |
 | `node-lambda-invoke` | runs Lambda style handlers locally, each a worker of the pool, one request at a time |
 | `node-worker-express` | the express middleware, the static worker and the routes, on top of the pool |
 | `node-worker` | WebWorker-like API for Node, and the pool of worker processes on it (`@koeroesi86/node-worker/pool`): leases, the framed channel, restart backoff, the shared budget, and the side of the worker process of the protocol |
