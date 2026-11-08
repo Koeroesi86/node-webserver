@@ -312,9 +312,9 @@ importers:
 
   packages/node-webserver-service:
     dependencies:
-      '@koeroesi86/node-webserver':
+      '@koeroesi86/node-webserver-cli':
         specifier: workspace:*
-        version: link:../node-webserver
+        version: link:../node-webserver-cli
     devDependencies:
       '@types/jest':
         specifier: ^30.0.0
@@ -325,9 +325,6 @@ importers:
       jest:
         specifier: ^30.5.2
         version: 30.5.2(@types/node@24.19.2)(supports-color@8.1.1)(ts-node@10.9.2(@types/node@24.19.2)(typescript@6.0.3))
-      nodemon:
-        specifier: ^2.0.15
-        version: 2.0.22
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3

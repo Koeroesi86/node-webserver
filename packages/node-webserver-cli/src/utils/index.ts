@@ -1,2 +1,17 @@
+export { default as createLaunchdPlist } from './create-launchd-plist';
+export { default as createSystemdUnit } from './create-systemd-unit';
+export { default as explainPermissionError } from './explain-permission-error';
+export { default as getServiceFiles } from './get-service-files';
+export type { UserContext } from './get-service-files';
+export { default as installService, defaultDependencies } from './install-service';
+export type { InstallDependencies } from './install-service';
+export { default as manageService } from './manage-service';
 export { default as parseArgv } from './parse-argv';
 export type { ParsedArgv } from './parse-argv';
+export { default as parseServiceArguments } from './parse-service-arguments';
+export { default as removeService } from './remove-service';
+export { default as resolveConfigurationPath } from './resolve-configuration-path';
+export { default as runCli } from './run-cli';
+export { default as runCommand } from './run-command';
+export { default as runServer } from './run-server';
+export { default as validateServiceName } from './validate-service-name';

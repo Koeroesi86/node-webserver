@@ -11,7 +11,7 @@ const createSystemdUnit = ({ displayName, nodePath, scriptPath, configPath, work
     '',
     '[Service]',
     'Type=simple',
-    `ExecStart=${[nodePath, scriptPath, '--run', '--configuration', configPath].map(quote).join(' ')}`,
+    `ExecStart=${[nodePath, scriptPath, '--config', configPath].map(quote).join(' ')}`,
     `WorkingDirectory=${workingDirectory.replace(/\s/g, '\\x20')}`,
     'Restart=on-failure',
     ...(user ? [`User=${user}`] : []),

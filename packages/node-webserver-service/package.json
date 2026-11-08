@@ -1,7 +1,7 @@
 {
   "name": "@koeroesi86/node-webserver-service",
   "version": "1.0.0",
-  "description": "OS service integration for @koeroesi86/node-webserver",
+  "description": "Deprecated: the service commands moved to @koeroesi86/node-webserver-cli",
   "license": "MIT",
   "author": {
     "name": "Krisztian Korosi",
@@ -23,26 +23,20 @@
   },
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
-    "test": "jest",
-    "service": "node dist/scripts/manage-service.js",
-    "start": "nodemon --watch src --ext ts --exec \"npm run build --silent && node dist/scripts/start.js\""
+    "test": "jest"
   },
   "dependencies": {
-    "@koeroesi86/node-webserver": "workspace:*"
+    "@koeroesi86/node-webserver-cli": "workspace:*"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^24.19.2",
     "jest": "^30.5.2",
-    "nodemon": "^3.1.14",
     "rimraf": "^6.1.3",
     "ts-jest": "^29.4.15",
     "typescript": "^6.0.3"
   },
   "files": [
-    "dist",
-    "examples",
-    "configuration.example.js",
-    ".logs/.gitkeep"
+    "dist"
   ]
 }

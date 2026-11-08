@@ -31,7 +31,7 @@ const until = async (condition: () => Promise<boolean>) => {
 };
 
 /** runs the built script, which is what the generated systemd unit and launchd plist start */
-describeWithSignals('manage-service.js --run', () => {
+describeWithSignals('cli.js --config', () => {
   let folder: string;
 
   beforeEach(() => {
@@ -49,7 +49,7 @@ describeWithSignals('manage-service.js --run', () => {
       configPath,
       `module.exports = ${JSON.stringify({ serviceName: 'nws', portHttp, portHttps, servers: [], watchServers: false, statsDomain: false })};`
     );
-    const service = spawn(process.execPath, [SERVICE_SCRIPT_PATH, '--run', '--configuration', configPath], { stdio: 'ignore' });
+    const service = spawn(process.execPath, [SERVICE_SCRIPT_PATH, '--config', configPath], { stdio: 'ignore' });
     const exited = once(service, 'exit');
 
     await Promise.race([until(() => isListening(portHttp)), exited.then(() => Promise.reject(new Error('The service ended before it listened.')))]);
@@ -61,7 +61,7 @@ describeWithSignals('manage-service.js --run', () => {
   });
 
   it('exits non-zero without a configuration', async () => {
-    const service = spawn(process.execPath, [SERVICE_SCRIPT_PATH, '--run'], { stdio: 'ignore', env: { ...process.env, NODE_WEBSERVER_CONFIG: '' } });
+    const service = spawn(process.execPath, [SERVICE_SCRIPT_PATH], { stdio: 'ignore', env: { ...process.env, NODE_WEBSERVER_CONFIG: '' } });
 
     const [code] = await once(service, 'exit');
     expect(code).toBe(1);

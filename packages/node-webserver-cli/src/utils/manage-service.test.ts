@@ -5,11 +5,9 @@ import manageService from './manage-service';
 
 const installService = jest.fn();
 const removeService = jest.fn();
-const start = jest.fn();
 
 jest.mock('./install-service', () => ({ __esModule: true, default: (...args: unknown[]) => installService(...args) }));
 jest.mock('./remove-service', () => ({ __esModule: true, default: (...args: unknown[]) => removeService(...args) }));
-jest.mock('./start', () => ({ __esModule: true, default: (...args: unknown[]) => start(...args) }));
 
 describe('manageService', () => {
   let folder: string;
@@ -18,7 +16,7 @@ describe('manageService', () => {
   const writeConfiguration = (configuration: object) => writeFileSync(configPath, `module.exports = ${JSON.stringify(configuration)};`);
 
   beforeEach(() => {
-    [installService, removeService, start].forEach((mock) => mock.mockReset().mockResolvedValue(undefined));
+    [installService, removeService].forEach((mock) => mock.mockReset().mockResolvedValue(undefined));
     folder = mkdtempSync(join(tmpdir(), 'manage-service-'));
     configPath = join(folder, 'configuration.js');
     writeConfiguration({ serviceName: 'nws', serviceDisplayName: 'Node webserver' });
@@ -27,13 +25,13 @@ describe('manageService', () => {
   afterEach(() => rmSync(folder, { recursive: true, force: true }));
 
   it('installs the service described by the configuration, with absolute paths', async () => {
-    await manageService(['--add', '--configuration', configPath], undefined);
+    await manageService(['add', '--config', configPath], undefined);
 
     expect(installService).toHaveBeenCalledWith({
       name: 'nws',
       displayName: 'Node webserver',
       nodePath: process.execPath,
-      scriptPath: expect.stringMatching(/dist[\\/]scripts[\\/]manage-service\.js$/),
+      scriptPath: expect.stringMatching(/dist[\\/]scripts[\\/]cli\.js$/),
       configPath,
       workingDirectory: folder,
       user: undefined,
@@ -44,55 +42,52 @@ describe('manageService', () => {
 
   it('passes the user and the log folder, and names the service when it has no display name', async () => {
     writeConfiguration({ serviceName: 'nws', serviceUser: 'www', fileLogPath: '/var/log/nws' });
-    await manageService(['--add'], configPath);
+    await manageService(['add'], configPath);
 
     expect(installService).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'nws', user: 'www', logFolder: '/var/log/nws' }));
   });
 
   it('installs and removes the service for the current user', async () => {
-    await manageService(['--add', '--user'], configPath);
-    await manageService(['--remove', '--user'], configPath);
+    await manageService(['add', '--user'], configPath);
+    await manageService(['remove', '--user'], configPath);
 
     expect(installService).toHaveBeenCalledWith(expect.objectContaining({ userService: true }));
     expect(removeService).toHaveBeenCalledWith(expect.objectContaining({ userService: true }));
   });
 
-  it('does not combine --user with serviceUser, or use it without an action', async () => {
+  it('does not combine --user with serviceUser', async () => {
     writeConfiguration({ serviceName: 'nws', serviceUser: 'www' });
-    await expect(manageService(['--add', '--user'], configPath)).rejects.toThrow('serviceUser');
-    await expect(manageService(['--run', '--user'], configPath)).rejects.toThrow('--add or --remove');
+    await expect(manageService(['add', '--user'], configPath)).rejects.toThrow('serviceUser');
     expect(installService).not.toHaveBeenCalled();
   });
 
   it('removes the service', async () => {
-    await manageService(['--remove', '--configuration', configPath], undefined);
+    await manageService(['remove', '--config', configPath], undefined);
 
     expect(removeService).toHaveBeenCalledWith(expect.objectContaining({ name: 'nws' }));
     expect(installService).not.toHaveBeenCalled();
   });
 
-  it('starts the server in this process, and passes a failed start on', async () => {
-    await manageService(['--run', '--configuration', configPath], undefined);
-    expect(start).toHaveBeenCalledWith(configPath);
-
-    start.mockRejectedValue(new Error('port in use'));
-    await expect(manageService(['--run'], configPath)).rejects.toThrow('port in use');
+  it('rejects an action it does not know, without touching the service', async () => {
+    await expect(manageService(['restart'], configPath)).rejects.toThrow('add or remove');
+    expect(installService).not.toHaveBeenCalled();
+    expect(removeService).not.toHaveBeenCalled();
   });
 
   it('fails without a configuration, with a missing one and with an invalid name', async () => {
-    await expect(manageService(['--add'], undefined)).rejects.toThrow('--configuration');
-    await expect(manageService(['--add', '--configuration', join(folder, 'missing.js')], undefined)).rejects.toThrow('does not exist');
+    await expect(manageService(['add'], undefined)).rejects.toThrow('--config');
+    await expect(manageService(['add', '--config', join(folder, 'missing.js')], undefined)).rejects.toThrow('does not exist');
 
     writeConfiguration({ serviceName: '../evil' });
-    await expect(manageService(['--add'], configPath)).rejects.toThrow('Invalid serviceName');
+    await expect(manageService(['add'], configPath)).rejects.toThrow('Invalid serviceName');
     expect(installService).not.toHaveBeenCalled();
   });
 
   it('prints the usage without an action', async () => {
     const info = jest.spyOn(console, 'info').mockImplementation(() => {});
-    await manageService(['--configuration', configPath], undefined);
+    await manageService(['--config', configPath], undefined);
 
-    expect(info).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('--add'));
+    expect(info).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('service add'));
     info.mockRestore();
   });
 });
