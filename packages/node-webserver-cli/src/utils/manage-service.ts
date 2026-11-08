@@ -1,10 +1,9 @@
 import { dirname } from 'path';
 import { SERVICE_SCRIPT_PATH, USAGE } from '../constants';
 import installService from './install-service';
-import parseArguments from './parse-arguments';
+import parseServiceArguments from './parse-service-arguments';
 import removeService from './remove-service';
 import resolveConfigurationPath from './resolve-configuration-path';
-import start from './start';
 import validateServiceName from './validate-service-name';
 import type { ServiceConfiguration, ServiceDefinition } from '../types';
 
@@ -30,22 +29,21 @@ const createDefinition = (configPath: string, userService: boolean): ServiceDefi
 };
 
 const manageService = async (args: string[], environment: string | undefined = process.env.NODE_WEBSERVER_CONFIG): Promise<void> => {
-  const { add, remove, run, user, configuration } = parseArguments(args);
+  const { action, user, config } = parseServiceArguments(args);
 
-  if (!add && !remove && !run) {
+  if (!action) {
     console.info('\x1b[32m%s\x1b[0m', USAGE);
     return;
   }
 
-  if (user && !add && !remove) {
-    throw new Error('--user goes with --add or --remove.');
+  if (action !== 'add' && action !== 'remove') {
+    throw new Error(`Unknown service action ${JSON.stringify(action)}, use add or remove.`);
   }
 
-  const configPath = resolveConfigurationPath(configuration, environment);
+  const definition = createDefinition(resolveConfigurationPath(config, environment), user);
 
-  if (run) return start(configPath);
-  if (add) return installService(createDefinition(configPath, user));
-  return removeService(createDefinition(configPath, user));
+  if (action === 'add') return installService(definition);
+  return removeService(definition);
 };
 
 export default manageService;

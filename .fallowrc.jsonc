@@ -56,7 +56,7 @@
       // node-worker through the exports of node-worker-express that are its (the budget of the workers, the types of the protocol), which the server uses as the ones of the middleware
       { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke", "node-worker"] },
       { "from": "node-webserver-cli", "allow": ["node-webserver"] },
-      { "from": "node-webserver-service", "allow": ["node-webserver"] }
+      { "from": "node-webserver-service", "allow": [] }
     ]
   },
   // proves who uses an export of a package, which the syntactic pass can only guess

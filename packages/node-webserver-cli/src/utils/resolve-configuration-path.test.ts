@@ -24,16 +24,10 @@ describe('resolveConfigurationPath', () => {
   });
 
   it('throws without either, instead of starting an example server', () => {
-    expect(() => resolveConfigurationPath(undefined, undefined)).toThrow('--configuration');
+    expect(() => resolveConfigurationPath(undefined, undefined)).toThrow('--config');
   });
 
   it('throws when the file is missing', () => {
     expect(() => resolveConfigurationPath(join(folder, 'missing.js'), undefined)).toThrow('does not exist');
-  });
-
-  it('uses the fallback for the development script, even before the file exists', () => {
-    const missing = join(folder, 'missing.js');
-
-    expect(resolveConfigurationPath(undefined, undefined, missing)).toBe(missing);
   });
 });

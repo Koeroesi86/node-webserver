@@ -12,7 +12,7 @@ const createLaunchdPlist = (label: string, { name, nodePath, scriptPath, configP
     '<plist version="1.0">',
     '<dict>',
     `  <key>Label</key>${string(label)}`,
-    `  <key>ProgramArguments</key><array>${[nodePath, scriptPath, '--run', '--configuration', configPath].map(string).join('')}</array>`,
+    `  <key>ProgramArguments</key><array>${[nodePath, scriptPath, '--config', configPath].map(string).join('')}</array>`,
     `  <key>WorkingDirectory</key>${string(workingDirectory)}`,
     '  <key>RunAtLoad</key><true/>',
     '  <key>KeepAlive</key><true/>',

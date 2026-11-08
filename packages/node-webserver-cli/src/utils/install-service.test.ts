@@ -6,7 +6,7 @@ const definition: ServiceDefinition = {
   name: 'nws',
   displayName: 'Node webserver',
   nodePath: '/usr/bin/node',
-  scriptPath: '/opt/nws/dist/scripts/manage-service.js',
+  scriptPath: '/opt/nws/dist/scripts/cli.js',
   configPath: '/etc/nws/configuration.js',
   workingDirectory: '/etc/nws',
 };
