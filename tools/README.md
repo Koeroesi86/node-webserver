@@ -90,7 +90,7 @@ It uses **the installed k6** when there is one, and otherwise **Docker** with th
 
 #### Installing k6 (preferred)
 
-The scenarios are TypeScript that k6 runs itself, so k6 1.0 or newer is needed (the workflow uses 1.2.2). Other systems and the release binaries: [Install k6](https://grafana.com/docs/k6/latest/set-up/install-k6/).
+The scenarios are TypeScript that k6 runs itself, so k6 1.0 or newer is needed (the workflows use 1.2.2, set in `.github/actions/cache-k6`, which restores it from the cache of GitHub Actions and downloads it only when the cache has none; `k6-cache.yml` keeps that cache on master). Other systems and the release binaries: [Install k6](https://grafana.com/docs/k6/latest/set-up/install-k6/).
 
 | System | Install |
 | --- | --- |

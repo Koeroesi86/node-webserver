@@ -25,7 +25,10 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: github-actions
-    directory: /
+    # the workflows, and the composite action that wraps the k6 one
+    directories:
+      - /
+      - /.github/actions/cache-k6
     schedule:
       interval: weekly
       day: monday

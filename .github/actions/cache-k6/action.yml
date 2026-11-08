@@ -1,0 +1,46 @@
+name: Cache k6
+description: Restores k6 from the cache and downloads it only when the cache has none, so that a failing download does not fail a load test
+
+inputs:
+  k6-version:
+    description: The release of k6, which is also the key of its cache
+    default: '1.2.2'
+
+outputs:
+  version:
+    description: The release of k6 that is in the folder
+    value: ${{ inputs.k6-version }}
+  directory:
+    description: The folder that holds k6, which the caller puts on the PATH (GITHUB_PATH is the caller's to write, zizmor does not trust it in an action)
+    value: ${{ runner.temp }}/k6
+
+runs:
+  using: composite
+  steps:
+    # a download from GitHub releases fails now and then with a 504, which stopped the load tests of the macOS and Windows runners
+    - name: Restore k6
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/k6
+        key: k6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.k6-version }}
+    - name: Download k6
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
+      with:
+        k6-version: ${{ inputs.k6-version }}
+    # saved at once rather than at the end of the job, so that a later failing step does not lose it
+    - name: Keep k6 for the next runs
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        K6_DIR: ${{ runner.temp }}/k6
+      run: |
+        mkdir -p "$K6_DIR"
+        cp -r "$(dirname "$(command -v k6)")/." "$K6_DIR/"
+    - name: Save k6
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/k6
+        key: k6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.k6-version }}

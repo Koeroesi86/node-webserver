@@ -1,0 +1,33 @@
+name: k6 cache
+
+# the load test runs on pull requests, which can read the caches of master and their own but not those of each other, so master saves the k6 that they restore.
+# a cache that is not read for 7 days is deleted by GitHub, hence the schedule.
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/actions/cache-k6/**'
+      - '.github/workflows/k6-cache.yml'
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  k6:
+    name: k6 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions
+          persist-credentials: false
+      - uses: ./.github/actions/cache-k6
