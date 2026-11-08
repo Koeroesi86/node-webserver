@@ -1,0 +1,35 @@
+name: Restore the pnpm store
+description: Restores the pnpm store from the cache of GitHub Actions and never saves it, so that only master (pnpm-cache.yml) writes the cache that every pull request reads
+
+outputs:
+  key:
+    description: The key of the cache, which is the lockfile of the system, for the job that saves it
+    value: ${{ steps.key.outputs.key }}
+  path:
+    description: The folder of the pnpm store, for the job that saves it
+    value: ${{ steps.key.outputs.path }}
+  cache-hit:
+    description: Whether the cache of exactly this lockfile was restored, not just an older one
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # needs pnpm and node on the PATH (pnpm/action-setup, then actions/setup-node without its own cache, which would save the store of every pull request)
+    - name: Find the store
+      id: key
+      shell: bash
+      env:
+        KEY: node-cache-${{ runner.os }}-${{ runner.arch }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+      run: |
+        echo "key=${KEY}" >> "$GITHUB_OUTPUT"
+        echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+    # a lockfile that changed starts from the latest store of the same system
+    - name: Restore the store
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.path }}
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: |
+          node-cache-${{ runner.os }}-${{ runner.arch }}-pnpm-
