@@ -16,7 +16,8 @@ A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and 
 - `node-worker` publishes `node-worker`, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`, `node-webserver-service`
 - `node-worker-express` and `node-lambda-invoke` publish themselves, `node-webserver`, `node-webserver-cli`, `node-webserver-service`
 - `node-webserver` publishes itself, `node-webserver-cli`, `node-webserver-service`
-- `node-webserver-cli` and `node-webserver-service` publish themselves
+- `node-webserver-cli` publishes itself and `node-webserver-service`
+- `node-webserver-service` publishes itself
 - `pnpm-lock.yaml` publishes the packages whose dependencies changed, plus their dependents
 - `tools/`, docs, and `.github/` do not publish
 

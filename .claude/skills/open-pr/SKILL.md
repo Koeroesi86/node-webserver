@@ -20,7 +20,8 @@ A change in `packages/<name>/**` or `pnpm-lock.yaml` publishes that package and 
 | `node-worker` | `node-worker`, `node-worker-express`, `node-lambda-invoke`, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
 | `node-worker-express`, `node-lambda-invoke` | itself, `node-webserver`, `node-webserver-cli`, `node-webserver-service` |
 | `node-webserver` | itself, `node-webserver-cli`, `node-webserver-service` |
-| `node-webserver-cli`, `node-webserver-service` | itself |
+| `node-webserver-cli` | itself, `node-webserver-service` |
+| `node-webserver-service` | itself |
 | `pnpm-lock.yaml` | packages whose dependencies changed, plus their dependents |
 
 Check the table against the `workspace:*` dependencies (it goes stale), and say whether the change is breaking. Only `tools/`, docs or `.github/` publishes nothing: delete Release.

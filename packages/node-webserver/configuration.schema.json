@@ -126,16 +126,16 @@
       "type": "boolean"
     },
     "serviceName": {
-      "description": "@koeroesi86/node-webserver-service: the name of the service, which the server itself ignores",
+      "description": "@koeroesi86/node-webserver-cli (`nws-cli service`): the name of the service, which the server itself ignores",
       "type": "string",
       "minLength": 1
     },
     "serviceDisplayName": {
-      "description": "@koeroesi86/node-webserver-service: the description of the service",
+      "description": "@koeroesi86/node-webserver-cli (`nws-cli service`): the description of the service",
       "type": "string"
     },
     "serviceUser": {
-      "description": "@koeroesi86/node-webserver-service: the user the service runs as, root when missing",
+      "description": "@koeroesi86/node-webserver-cli (`nws-cli service`): the user the service runs as, root when missing",
       "type": "string",
       "minLength": 1
     }
