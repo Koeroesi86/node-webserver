@@ -17,27 +17,63 @@ outputs:
 runs:
   using: composite
   steps:
-    # a download from GitHub releases fails now and then with a 504, which stopped the load tests of the macOS and Windows runners
     - name: Restore k6
       id: cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/k6
         key: k6-${{ runner.os }}-${{ runner.arch }}-${{ inputs.k6-version }}
+    # Not the download URL of the release (grafana/setup-k6-action): its zip files answered 504 for hours in November 2026, while the API serves the same assets.
+    # The archive is checked against the checksums of the release.
     - name: Download k6
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: grafana/setup-k6-action@43b9fc21641a76002687994433dd586f56e791b1 # v1.2.2
-      with:
-        k6-version: ${{ inputs.k6-version }}
-    # saved at once rather than at the end of the job, so that a later failing step does not lose it
-    - name: Keep k6 for the next runs
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
+        GH_TOKEN: ${{ github.token }}
+        K6_VERSION: ${{ inputs.k6-version }}
         K6_DIR: ${{ runner.temp }}/k6
+        DOWNLOAD_DIR: ${{ runner.temp }}/k6-download
       run: |
-        mkdir -p "$K6_DIR"
-        cp -r "$(dirname "$(command -v k6)")/." "$K6_DIR/"
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64) asset="k6-v${K6_VERSION}-linux-amd64.tar.gz" ;;
+          Linux-ARM64) asset="k6-v${K6_VERSION}-linux-arm64.tar.gz" ;;
+          macOS-ARM64) asset="k6-v${K6_VERSION}-macos-arm64.zip" ;;
+          macOS-X64) asset="k6-v${K6_VERSION}-macos-amd64.zip" ;;
+          Windows-X64) asset="k6-v${K6_VERSION}-windows-amd64.zip" ;;
+          *) echo "No k6 release for ${RUNNER_OS} ${RUNNER_ARCH}" >&2; exit 1 ;;
+        esac
+        checksums="k6-v${K6_VERSION}-checksums.txt"
+
+        mkdir -p "$DOWNLOAD_DIR" "$K6_DIR"
+        for attempt in 1 2 3 4 5 6; do
+          gh release download "v${K6_VERSION}" --repo grafana/k6 --dir "$DOWNLOAD_DIR" --clobber --pattern "$asset" --pattern "$checksums" && break
+          [ "$attempt" -lt 6 ] || { echo "k6 could not be downloaded" >&2; exit 1; }
+          sleep $((attempt * 10))
+        done
+
+        node -e '
+          const { createHash } = require("node:crypto");
+          const { readFileSync } = require("node:fs");
+          const [directory, asset, checksums] = process.argv.slice(1);
+          const expected = readFileSync(`${directory}/${checksums}`, "utf8").split("\n").map((line) => line.trim().split(/\s+/)).find(([, name]) => name === asset)?.[0];
+          const actual = createHash("sha256").update(readFileSync(`${directory}/${asset}`)).digest("hex");
+          if (!expected || expected !== actual) {
+            console.error(`${asset} does not match its checksum: ${actual}, the release says ${expected}`);
+            process.exit(1);
+          }
+        ' "$DOWNLOAD_DIR" "$asset" "$checksums"
+
+        # the archive holds a folder of its own name with k6 (k6.exe) in it
+        if [ "$RUNNER_OS" = Windows ]; then
+          powershell -NoProfile -Command "Expand-Archive -LiteralPath '${DOWNLOAD_DIR}/${asset}' -DestinationPath '${DOWNLOAD_DIR}' -Force"
+        elif [ "$RUNNER_OS" = macOS ]; then
+          unzip -q -o "${DOWNLOAD_DIR}/${asset}" -d "$DOWNLOAD_DIR"
+        else
+          tar -xzf "${DOWNLOAD_DIR}/${asset}" -C "$DOWNLOAD_DIR"
+        fi
+        folder="${asset%.tar.gz}"
+        cp -r "${DOWNLOAD_DIR}/${folder%.zip}/." "$K6_DIR/"
+    # saved at once rather than at the end of the job, so that a later failing step does not lose it
     - name: Save k6
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
