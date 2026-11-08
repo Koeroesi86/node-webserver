@@ -31,8 +31,8 @@ sudo npx nws-cli service remove --config </path/to/config>
 
 `service add` installs, enables and starts the service, `service remove` stops and removes it. Without an action `nws-cli service` prints the usage. It needs:
 
-* Linux with systemd, or macOS with launchd. Nothing is compiled on install: the service definition is generated and loaded with `systemctl` / `launchctl`.
-* Root (`sudo`) to install or remove a system service, not with `--user`. Without it the command fails and says so.
+* Linux with systemd, macOS with launchd, or Windows with Task Scheduler. Nothing is compiled on install: the service definition is generated and loaded with `systemctl` / `launchctl` / `schtasks`.
+* Root (`sudo`), or an administrator on Windows, to install or remove a system service, not with `--user`. Without it the command fails and says so.
 
 The service is named after `serviceName` of the configuration (letters, digits, `_`, `.` and `-`), described by `serviceDisplayName`, and starts `node cli.js --config <absolute path>` in the folder of the configuration, with the `node` that ran `service add`.
 
@@ -65,10 +65,20 @@ Linux without systemd (init.d, upstart) is not supported anymore.
 
 ### Windows
 
-Windows services need the service control protocol in the process, which a Node script does not speak, so `service add` and `service remove` do not support Windows. Run `nws-cli --config <file>` from a tool made for it, for example:
+A Windows service needs the service control protocol in the process, which a Node script does not speak. `service add` therefore installs a task of Task Scheduler (`schtasks`), which ships with Windows, instead of a service. Run it from an elevated prompt.
 
-* [WinSW](https://github.com/winsw/winsw) or [NSSM](https://nssm.cc/), which wrap the command as a service
-* Task Scheduler: `schtasks /create /tn node-webserver /sc onstart /ru SYSTEM /tr "\"C:\\Program Files\\nodejs\\node.exe\" \"<package>\\dist\\scripts\\cli.js\" --config <file>"`
+| | System | `--user` |
+|---|---|---|
+| File | `%ProgramData%\nws-cli\<serviceName>.xml` | `%LocalAppData%\nws-cli\<serviceName>.xml` |
+| Loaded with | `schtasks /create /xml` then `/run` | the same |
+| Starts | at boot, as `SYSTEM` | at the logon of the user, without elevation |
+| Restarts | every minute after a failure, 999 times | the same |
+| Stop | `schtasks /end` (ends the process, the requests in flight are lost) | the same |
+| Output | none, Task Scheduler does not keep it | none |
+
+* `serviceUser` is not supported on Windows (a task needs the password of another user), and `fileLogPath` has no effect: log from the server itself.
+* The task is not in `services.msc`: manage it in Task Scheduler or with `schtasks /query /tn <serviceName>`.
+* A tool that wraps the command as a real service, such as [WinSW](https://github.com/winsw/winsw) or [NSSM](https://nssm.cc/), works too: run `nws-cli --config <file>` from it.
 
 ### Coming from `@koeroesi86/node-webserver-service`
 

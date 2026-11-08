@@ -75,10 +75,20 @@ describe('installService and removeService', () => {
     expect(removeFile).not.toHaveBeenCalled();
   });
 
-  it('does not generate a service for windows, and says what to do', async () => {
-    await expect(installService(definition, { platform: 'win32', writeFile, runCommand })).rejects.toThrow('WinSW');
-    await expect(removeService(definition, { platform: 'win32', runCommand, removeFile })).rejects.toThrow('not for win32');
+  it('does not generate a service for a platform without a generator', async () => {
+    await expect(installService(definition, { platform: 'freebsd', writeFile, runCommand })).rejects.toThrow('not for freebsd');
+    await expect(removeService(definition, { platform: 'freebsd', runCommand, removeFile })).rejects.toThrow('not for freebsd');
     expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it('writes the task definition of Windows into its folder, imports it and starts it', async () => {
+    const makeFolder = jest.fn().mockResolvedValue(undefined);
+
+    await installService(definition, { platform: 'win32', makeFolder, writeFile, runCommand }, { home: 'C:\\Users\\dev', uid: undefined, userName: 'dev' });
+
+    expect(makeFolder).toHaveBeenCalledWith(expect.stringMatching(/nws-cli$/));
+    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/nws\.xml$/), expect.stringContaining('<BootTrigger>'));
+    expect(runCommand.mock.calls.map(([command, args]) => `${command} ${args[0]}`)).toEqual(['schtasks /create', 'schtasks /run']);
   });
 
   describe('for the current user', () => {

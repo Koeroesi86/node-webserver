@@ -26,4 +26,16 @@ describe('removeService', () => {
 
     await expect(removeService(definition, { platform: 'darwin', runCommand: jest.fn(), removeFile })).rejects.toThrow('run this as root');
   });
+
+  it('stops the task of Windows and goes on when it is not running', async () => {
+    const order: string[] = [];
+    const runCommand = jest.fn(async (command: string, args: string[]) => {
+      order.push(`${command} ${args[0]}`);
+      if (args[0] === '/end') throw new Error('no running instance');
+    });
+
+    await removeService(definition, { platform: 'win32', runCommand, removeFile: jest.fn() }, { home: 'C:\\Users\\dev', uid: undefined, userName: 'dev' });
+
+    expect(order).toEqual(['schtasks /end', 'schtasks /delete']);
+  });
 });
