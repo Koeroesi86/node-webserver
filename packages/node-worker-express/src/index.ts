@@ -1,16 +1,10 @@
 export { default as middleware } from './middleware';
-export { streamResponse } from './utils';
+export { streamResponse } from './static';
 export * from './types';
 export { createWorkerBudget } from '@koeroesi86/node-worker/pool';
-export {
-  closeWebSockets,
-  createCache,
-  createRouteMatcher,
-  getServerMetrics,
-  isHandedOff,
-  isRequestHandedOff,
-  registerMetricsSource,
-  requestHandOffDoneEvent,
-  type RouteMatcherResult,
-} from './utils';
+export { closeWebSockets } from './websocket';
+export { createCache } from './static';
+export { createRouteMatcher, type RouteMatcherResult } from './routing';
+export { getServerMetrics, registerMetricsSource } from './metrics';
+export { isHandedOff, isRequestHandedOff, requestHandOffDoneEvent } from './hand-off';
 export type { ServerMetrics, StatusClass } from '@koeroesi86/node-worker/pool';

@@ -1,4 +1,4 @@
-import { buildSummaryReport } from '../utils';
+import { buildSummaryReport } from '../report';
 
 // Turns the summary export of k6 into markdown for the job summary of the workflow.
 //   node summary.js [k6-summary.json] [server.log] [title]

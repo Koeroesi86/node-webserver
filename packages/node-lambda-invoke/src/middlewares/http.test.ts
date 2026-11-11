@@ -141,7 +141,9 @@ describe('httpMiddleware', () => {
         await fs.writeFile(path.join(build, file.replace(/\.ts$/, '.js')), file.endsWith('.json') ? content : compile(content));
       })
     );
-    lambdaPath = path.join(build, 'lambda.js');
+    // in a folder of its own, next to the sources `lambda.js` would shadow their `lambda/` folder
+    await fs.mkdir(path.join(build, 'fixtures'));
+    lambdaPath = path.join(build, 'fixtures', 'lambda.js');
     pidFile = path.join(build, 'pids');
     process.env.PID_FILE = pidFile;
     await fs.writeFile(lambdaPath, lambdaSource);

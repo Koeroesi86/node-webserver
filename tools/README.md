@@ -19,7 +19,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 | --- | --- |
 | `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
-| `utils/` | the functions the scripts are made of, one per file |
+| `utils/` and `checks/`, `compare/`, `coverage-report/`, `load-test/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
 | `types/` | the interfaces shared by the scripts and the utils |
 | `constants/` | the limits and defaults of the load test |
 | `test-helpers/` | what several tests share (summaries to compare, a server on a free port), not compiled |
@@ -65,8 +65,8 @@ Pull requests of `dependabot[bot]` are not checked (`EXEMPT_AUTHORS`). Whether a
 The `layout` job of `pr-checks.yml` runs `scripts/check-layout.ts` on the files that the pull request adds (`git diff --diff-filter=A` against the merge base with `origin/master`, plus untracked files) and is one of the `needs` of `required-checks`; `.claude/hooks/standards-gate.sh` runs the same script before Claude commits or pushes. It fails, with a line per problem, when an added file:
 
 - is a `.ts` file whose name is not kebab-case;
-- in `utils/`, `middlewares/` or `classes/` is not exported by the `index.ts` next to it (tests, test helpers and index files are exempt);
-- in `utils/` has more than one `export` line (a type next to the function counts, types belong in `types/`) or no `name.test.ts` next to it.
+- in `utils/`, a domain folder (`FUNCTION_FOLDERS` in `constants/function-folders.ts`), `middlewares/` or `classes/` is not exported by the `index.ts` next to it (tests, test helpers and index files are exempt);
+- in `utils/` or a domain folder has more than one `export` line (a type next to the function counts, types belong in `types/`) or no `name.test.ts` next to it.
 
 Existing files are not checked, they break these rules today (camelCase names, several exports, no test) and are cleaned up on their own. Changed or renamed-over files are not "added", so editing an old file never fails. The job checks out with `fetch-depth: 0` for the merge base.
 
@@ -281,15 +281,15 @@ taskset -c 3 k6 run -e HTTPS_PORT=8443 tools/src/k6/example.ts
 ### Comparison with the base
 
 The absolute thresholds catch a collapse, not a slowdown, and the machines of shared runners differ too much from run to run to compare numbers of different runs: the same code has run at 3,300 and 4,600 requests per second.
-So on a pull request the workflow also builds the base (the commit it is merged into) next to the pull request, and measures both **in the same job**, one at a time, alternating, three runs of 15 seconds each (`scripts/compare-with-base.ts`, with the logic in `utils/compare-with-base.ts`).
-Both sides run the load test of the pull request against their own server, so that the load is the same. Then `utils/compare-summaries.ts` takes the median of the runs of each side and shows the change in the job summary:
+So on a pull request the workflow also builds the base (the commit it is merged into) next to the pull request, and measures both **in the same job**, one at a time, alternating, three runs of 15 seconds each (`scripts/compare-with-base.ts`, with the logic in `compare/compare-with-base.ts`).
+Both sides run the load test of the pull request against their own server, so that the load is the same. Then `compare/compare-summaries.ts` takes the median of the runs of each side and shows the change in the job summary:
 
 - **throughput** is judged: a pull request with more than 15% less requests per second than the base fails (`MAX_THROUGHPUT_DROP`, 0.15),
 - **the p95 of a route** is judged with wide limits, 50% and 5 milliseconds higher (`MAX_P95_INCREASE` 0.5, `MIN_P95_DIFFERENCE_MS` 5). The load is a fixed number of users, so a build that is faster gets more requests through
   every route, which makes the routes compete for the cores: the p95 of one route can rise while the build is better. The limits only catch a route that got much slower,
 - a route that the base cannot serve (the pull request added it, which the checks per route show) is listed with n/a and not judged, and its requests (`http_reqs{route:...}` of `example.ts`) are taken out of the throughput of both sides: the fast errors of the base would count as throughput, and the work of the pull request as a loss. The row then says so,
 - the p95 of all requests and the connect time of the websocket are shown, not judged,
-- **warm-up**: before the measuring of every run the server is warmed up (`utils/warm-up-server.ts`). Each endpoint in `constants/warm-up.ts` (the worker, static, CPU, stream, binary, lambda, compressed, upload and health servers) is polled until it answers with anything but a server error, which starts its worker, and then gets 20 more requests. The first seconds of a run would otherwise measure the start of the workers, which differs between versions on purpose (for example the pre-started static worker). An endpoint that does not answer in time (the base may lack a server of the pull request) is reported in the log and the run goes on. The WebSocket and the secure server are not warmed up,
+- **warm-up**: before the measuring of every run the server is warmed up (`load-test/warm-up-server.ts`). Each endpoint in `constants/warm-up.ts` (the worker, static, CPU, stream, binary, lambda, compressed, upload and health servers) is polled until it answers with anything but a server error, which starts its worker, and then gets 20 more requests. The first seconds of a run would otherwise measure the start of the workers, which differs between versions on purpose (for example the pre-started static worker). An endpoint that does not answer in time (the base may lack a server of the pull request) is reported in the log and the run goes on. The WebSocket and the secure server are not warmed up,
 - **the CPU bound run** (`cpu.ts`, 10 seconds after every run of the example load test, on the same server) is compared as well. It has a fixed arrival rate, so its latency does not depend on how fast the other routes are,
   and tighter limits hold: a p95 more than 30% and 5 milliseconds higher fails (`MAX_CPU_P95_INCREASE`, 0.3), and so does a build that drops more requests than the base (30% and 10 requests more, as the count moves by tens between runs of the same code near saturation). A base without the CPU bound worker is listed with n/a and not judged.
   Its p95 is a regression only when the lowest run of a side and the median of its runs are both beyond the limit. At a fixed arrival rate the machine can only slow a run down, so a slower build is slower in every run; the lowest run alone is the fastest the machine allowed, but one lucky run of the base made unchanged code look twice as slow (104 ms against 250-290 ms in all runs of the head, a Linux runner near saturation, #268), while the median alone once came out 43 against 73 ms with the same server on both sides.

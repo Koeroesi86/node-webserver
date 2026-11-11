@@ -1,6 +1,11 @@
 import path from 'path';
 import createInstanceHandler from './create-instance-handler';
-import { applyAcmeFiles, getEntryFiles, loadInstanceModule, readFingerprint, reportProblems, setupSecureContexts, validateServers } from '../utils';
+import { applyAcmeFiles } from '../acme';
+import { getEntryFiles, readFingerprint } from '../reload';
+import { loadInstanceModule } from '../children';
+import { reportProblems } from '../problems';
+import { setupSecureContexts } from '../tls';
+import { validateServers } from '../configuration';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { CompressionBudget, Configuration, LoadedInstance, Logger } from '../types';

@@ -3,7 +3,7 @@ import http from 'http';
 import zlib from 'zlib';
 import type { RequestHandler } from 'express';
 import compression from './compression';
-import { createCompressionBudget } from '../utils';
+import { createCompressionBudget } from '../compression';
 import type { CompressionBudget, CompressionOptions } from '../types';
 
 const text = 'It works! '.repeat(500);

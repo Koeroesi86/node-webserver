@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import http from 'http';
 import net from 'net';
 import path from 'path';
-import { getServerMetrics } from '../utils';
+import { getServerMetrics } from '../metrics';
 import workerMiddleware from './index';
 import { setupMiddlewareTest, type Handlers } from './middleware.test-helper';
 

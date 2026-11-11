@@ -1,4 +1,4 @@
-import type { SpawnOptions } from '../utils';
+import type { SpawnOptions } from '../pooling';
 import type { WorkerBudget } from './budget';
 
 export interface WorkerPoolParams {

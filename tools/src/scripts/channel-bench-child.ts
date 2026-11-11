@@ -1,5 +1,5 @@
 import net from 'node:net';
-import { loadCreateChannel } from '../utils';
+import { loadCreateChannel } from '../load-test';
 
 // The other end of channel-bench.js: gives every message back as it came.
 const [mode] = process.argv.slice(2);

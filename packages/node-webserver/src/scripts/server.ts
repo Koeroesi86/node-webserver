@@ -1,5 +1,6 @@
 import { startServer } from '../server';
-import { createLogger, findPorts } from '../utils';
+import { createLogger } from '../observability';
+import { findPorts } from '../utils';
 import Configuration from '../configuration.example';
 
 const logger = createLogger(Configuration);

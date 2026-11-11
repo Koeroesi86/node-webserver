@@ -1,5 +1,5 @@
 import { http as httpMiddleware } from './middlewares';
-import { createLambdaStats, getLambdaStats } from './utils';
+import { createLambdaStats, getLambdaStats } from './lambda';
 
 export { httpMiddleware, getLambdaStats, createLambdaStats };
 export type { HttpMiddleware } from './middlewares';

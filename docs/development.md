@@ -20,7 +20,7 @@ Run the checks above before calling a change done, and the load test when the re
 ## Conventions
 
 - TypeScript with strict null checks, no `any`, no casts to get past the compiler, `undefined` over `null`.
-- New files are kebab-case, one function per file in `utils/`, types in `types/`, constants in `constants/`.
+- New files are kebab-case, one function per file in `utils/` and the domain folders (`acme/`, `tls/`, `routing/` ...), types in `types/`, constants in `constants/`.
 - A test sits next to its code (`name.test.ts`), and a change comes with a test that fails without it. Tests do not depend on machine speed.
 - Prefer native Node APIs to packages. Keep conditions and loops flat.
 - A changed option, default, header or limit is updated in the READMEs and these pages in the same change.

@@ -108,7 +108,7 @@ jobs:
           gh pr view "${PR_NUMBER}" --json body --jq .body > "${RUNNER_TEMP}/description.md"
           node tools/dist/scripts/check-pull-request.js "${RUNNER_TEMP}/description.md"
 
-  # the files that the pull request adds follow the layout rules of CLAUDE.md (names, index.ts, one export and a test in utils/); the existing files break them, so only added ones are checked
+  # the files that the pull request adds follow the layout rules of CLAUDE.md (names, index.ts, one export and a test in utils/ and the domain folders); the existing files break them, so only added ones are checked
   layout:
     runs-on: ubuntu-latest
     timeout-minutes: 10

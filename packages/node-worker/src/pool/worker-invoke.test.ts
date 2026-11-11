@@ -8,9 +8,8 @@ import path from 'path';
 import { Duplex } from 'stream';
 import ts from 'typescript';
 import { WORKER_EVENT } from './constants';
-import { type Channel, createChannel } from './utils';
-import type { ResponseMessage, WorkerInputEvent } from './types';
-import type { ServerMetrics } from './types';
+import { type Channel, createChannel } from './channel';
+import type { ResponseMessage, WorkerInputEvent, ServerMetrics } from './types';
 
 /** what the worker sends for a request, the messages for websockets are not tested here */
 type Received = { type: string; requestId: string; event?: ResponseMessage };
@@ -134,6 +133,9 @@ module.exports = async (event, callback) => {
 };
 `;
 
+// the folders the worker process loads, with their barrels, as the build puts them together
+const WORKER_FOLDERS = ['channel', 'child', 'hand-off', 'websocket'];
+
 describe('workerInvoke', () => {
   let folder: string;
   let child: ChildProcess;
@@ -143,39 +145,23 @@ describe('workerInvoke', () => {
   beforeAll(async () => {
     folder = await fs.mkdtemp(path.join(os.tmpdir(), 'worker-invoke-'));
     await fs.mkdir(path.join(folder, 'constants'));
-    await fs.mkdir(path.join(folder, 'utils'));
+    await Promise.all(WORKER_FOLDERS.map((name) => fs.mkdir(path.join(folder, name))));
     const compile = (source: string) =>
       ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
     // a limit of a frame that a response can go over without half a gigabyte, still above the response of several megabytes
     const smallerLimit = (source: string) => source.replace(/ChannelMaxFrameLength = [^;]+;/, `ChannelMaxFrameLength = ${4 * 1024 * 1024};`);
     // what the worker process loads, as the build puts it together
+    const files = await Promise.all(
+      WORKER_FOLDERS.map(async (name) =>
+        (await fs.readdir(path.join(__dirname, name)))
+          .filter((file) => file.endsWith('.ts') && !/\.(test|test-helper)\.ts$/.test(file))
+          .map((file) => `${name}/${file.replace(/\.ts$/, '')}`)
+      )
+    );
     await Promise.all(
-      [
-        'worker-invoke',
-        'constants/index',
-        'utils/answer-worker-failure',
-        'utils/create-channel',
-        'utils/create-hand-off-requests',
-        'utils/create-handed-request',
-        'utils/create-socket-body',
-        'utils/create-socket-responder',
-        'utils/is-request-hand-off',
-        'utils/frames',
-        'utils/close-ws-connection',
-        'utils/create-body-stream',
-        'utils/create-empty-body',
-        'utils/create-metrics-waiting',
-        'utils/create-request-contexts',
-        'utils/create-response-sender',
-        'utils/create-upload',
-        'utils/create-worker-event',
-        'utils/create-worker-session',
-        'utils/invoke-worker',
-        'utils/receive-ws-message',
-        'utils/send-ws-message',
-        'utils/start-worker-process',
-        'utils/to-response-message',
-      ].map(async (file) => fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8')))))
+      ['worker-invoke', 'constants/index', ...files.flat()].map(async (file) =>
+        fs.writeFile(path.join(folder, `${file}.js`), compile(smallerLimit(await fs.readFile(path.join(__dirname, `${file}.ts`), 'utf8'))))
+      )
     );
     await fs.writeFile(path.join(folder, 'worker.js'), workerSource);
   });

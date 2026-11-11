@@ -1,21 +1,21 @@
 export {
   type BodyForwarderParams,
-  type Channel,
   createBodyForwarder,
-  createChannel,
   createWorkerBudget,
   type SpawnOptions,
   startUnrefInterval,
   startUnrefTimer,
-  startWorkerProcess,
-  type WireMessage,
-  workerAbandonedError as WorkerAbandonedError,
-  workerBusyError as WorkerBusyError,
   type WorkerLease,
   type WorkerOptions,
   workerPool as WorkerPool,
+} from './pooling';
+export { type Channel, createChannel, type WireMessage } from './channel';
+export { startWorkerProcess } from './child';
+export {
+  workerAbandonedError as WorkerAbandonedError,
+  workerBusyError as WorkerBusyError,
   workerStartError as WorkerStartError,
   workerUnavailableError as WorkerUnavailableError,
-} from './utils';
+} from './errors';
 export * from './constants';
 export * from './types';

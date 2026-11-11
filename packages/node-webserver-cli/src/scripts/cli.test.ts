@@ -2,7 +2,7 @@ import { resolve } from 'path';
 
 const runCli = jest.fn();
 
-jest.mock('../utils', () => ({ runCli: (...args: unknown[]) => runCli(...args) }));
+jest.mock('../cli', () => ({ runCli: (...args: unknown[]) => runCli(...args) }));
 
 const configuration = resolve(__dirname, '../../configuration.example.js');
 

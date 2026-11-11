@@ -1,6 +1,8 @@
 import type { RequestHandler, Response } from 'express';
 import { CONTROL_BODY_LIMIT, CONTROL_FAILURES_PER_WINDOW, CONTROL_RATE_WINDOW, CONTROL_UPDATES_PER_WINDOW } from '../constants';
-import { createRateLimiter, getClientAddress, getDate, readBody, resolveRegisteredTarget, tokensMatch } from '../utils';
+import { createRateLimiter, getClientAddress, readBody, tokensMatch } from '../request';
+import { getDate } from '../utils';
+import { resolveRegisteredTarget } from '../proxy';
 import type { DynamicTargetOptions, Logger, ProxyTarget, TargetStore } from '../types';
 
 interface ControlOptions extends DynamicTargetOptions {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { EXEMPT_AUTHORS } from '../constants/pull-request-description';
-import { findDescriptionProblems } from '../utils';
+import { findDescriptionProblems } from '../checks';
 
 // Holds the description of a pull request to the template of the repository, exits with 1 and names the problems when it does not fit.
 //   PR_AUTHOR=login node check-pull-request.js description.md [.github/pull_request_template.md]

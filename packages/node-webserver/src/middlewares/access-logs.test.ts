@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import accessLogsMiddleware from './access-logs';
 import { isHandedOff, isRequestHandedOff } from '@koeroesi86/node-worker-express';
-import createMockLogger from '../utils/mock-logger.test-helper';
+import createMockLogger from '../observability/mock-logger.test-helper';
 import type { NextFunction, Request, Response } from 'express';
 
 jest.mock('@koeroesi86/node-worker-express', () => ({
