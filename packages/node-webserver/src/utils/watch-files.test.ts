@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -95,30 +96,35 @@ describe('watchFiles', () => {
     fs.symlinkSync(path.join(folder, 'one'), link, 'dir');
     const changed = watch([path.join(link, 'a.js')]);
 
-    fs.symlinkSync(path.join(folder, 'two'), `${link}.next`, 'dir');
+    fs.symlinkSync(path.join(folder, 'two'), `${link}.next`, 'junction');
+    // windows cannot rename a link over another, a deploy there removes the old one first
+    if (process.platform === 'win32') {
+      fs.rmSync(link);
+    }
     fs.renameSync(`${link}.next`, link);
 
     await changed;
   });
 
-  it('does not tell about the other files next to a link', async () => {
+  it('does not tell about the other files next to a link', () => {
+    // the listener is called by hand: the events of the system differ in which names they carry, and a late one for the link itself would count as a sibling
+    const listeners: ((event: string, name: string) => void)[] = [];
+    const watch = jest.spyOn(fs, 'watch').mockImplementation((...args: unknown[]) => {
+      listeners.push(args.filter((arg): arg is (event: string, name: string) => void => typeof arg === 'function')[0]);
+      return Object.assign(new EventEmitter(), { close: jest.fn() }) as unknown as fs.FSWatcher;
+    });
     fs.mkdirSync(path.join(folder, 'one'));
     const link = path.join(folder, 'build');
-    fs.symlinkSync(path.join(folder, 'one'), link, 'dir');
+    fs.symlinkSync(path.join(folder, 'one'), link, 'junction');
     const onChange = jest.fn();
     stop = watchFiles([path.join(link, 'a.js')], onChange);
-    const seen = new Promise<void>((resolve) => {
-      const watcher = fs.watch(folder, () => {
-        watcher.close();
-        resolve();
-      });
-    });
 
-    fs.writeFileSync(path.join(folder, '.deploy.lock'), 'one');
-    await seen;
-    await new Promise((resolve) => setImmediate(resolve));
-
+    listeners.forEach((listener) => listener('rename', '.deploy.lock'));
     expect(onChange).not.toHaveBeenCalled();
+
+    listeners.forEach((listener) => listener('rename', 'build'));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    watch.mockRestore();
   });
 
   it('ignores a folder that does not exist', () => {

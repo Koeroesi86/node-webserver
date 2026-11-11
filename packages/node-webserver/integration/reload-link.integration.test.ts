@@ -29,6 +29,10 @@ describe('the server, when the files of a worker are replaced through a link', (
   /** the way a deploy does it: a new link next to the old one, renamed over it */
   const point = (root: string) => {
     fs.symlinkSync(root, `${link}.next`, 'junction');
+    // windows cannot rename a link over another, a deploy there removes the old one first
+    if (process.platform === 'win32') {
+      fs.rmSync(link);
+    }
     fs.renameSync(`${link}.next`, link);
   };
   const body = async () => (await server.get('linked.localhost')).body.toString();
