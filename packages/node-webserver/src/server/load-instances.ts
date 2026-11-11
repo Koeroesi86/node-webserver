@@ -1,5 +1,6 @@
+import path from 'path';
 import createInstanceHandler from './create-instance-handler';
-import { applyAcmeFiles, loadInstanceModule, readFingerprint, reportProblems, setupSecureContexts, validateServers } from '../utils';
+import { applyAcmeFiles, getEntryFiles, loadInstanceModule, readFingerprint, reportProblems, setupSecureContexts, validateServers } from '../utils';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import type { CompressionBudget, Configuration, LoadedInstance, Logger } from '../types';
@@ -22,7 +23,14 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
 
   const loaded = loadInstanceModule(source);
 
-  return loaded ? [{ source, ...loaded, instance: applyAcmeFiles(loaded.instance), runtime: {}, fingerprint: readFingerprint(loaded.files) }] : [];
+  if (!loaded) {
+    return [];
+  }
+
+  // the module as it is given, as it can be reached through a link, and the files of its workers and lambdas, which run in other processes and are not in the require graph
+  const files = Array.from(new Set([path.resolve(source), ...loaded.files, ...getEntryFiles(loaded.instance)]));
+
+  return [{ source, ...loaded, files, instance: applyAcmeFiles(loaded.instance), runtime: {}, fingerprint: readFingerprint(files) }];
 };
 
 interface Shared {
