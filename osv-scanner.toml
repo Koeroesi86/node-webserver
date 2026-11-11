@@ -14,9 +14,4 @@ reason = "glob 10 and 13 are pulled in by the jest coverage tooling (test-exclud
 [[IgnoredVulns]]
 id = "GHSA-g3hv-75wg-m249"
 ignoreUntil = 2027-01-09
-reason = "minimatch 3, 9 and 10 are pulled in by glob, nodemon and jest tooling and the fix is a major version of a dev dependency, not published"
-
-[[IgnoredVulns]]
-id = "GHSA-c2qf-rxjj-qqgw"
-ignoreUntil = 2027-01-09
-reason = "semver 7.0.0 is pinned by simple-update-notifier of nodemon, a dev dependency that is not published"
+reason = "minimatch 3, 9 and 10 are pulled in by glob and jest tooling and the fix is a major version of a dev dependency, not published"
