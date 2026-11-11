@@ -7,7 +7,7 @@ import { StaticOptionsEnv, StaticStreamThreshold } from './constants';
 import staticWorker from './static-worker';
 import type { StaticOptions } from './types';
 
-jest.mock('./utils/get-charset', () => ({ __esModule: true, default: jest.fn().mockResolvedValue('utf-8') }));
+jest.mock('./static/get-charset', () => ({ __esModule: true, default: jest.fn().mockResolvedValue('utf-8') }));
 
 /** the static worker only sends single values */
 const withSingleValues = ({ headers = {}, ...response }: ResponseEvent | HandOffEvent) => ({

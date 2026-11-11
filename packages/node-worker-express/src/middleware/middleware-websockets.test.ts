@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import net from 'net';
 import path from 'path';
 import { WebSocketWindow } from '../constants';
-import { clientFrame } from '../utils/ws-client-frame.test-helper';
+import { clientFrame } from '../websocket/ws-client-frame.test-helper';
 import { setupMiddlewareTest, type Handlers } from './middleware.test-helper';
 
 jest.mock('@koeroesi86/node-worker/pool', () => require('./fake-pool.test-helper').createFakePoolModule());

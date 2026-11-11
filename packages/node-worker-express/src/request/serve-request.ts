@@ -2,8 +2,7 @@ import { Protocols, WORKER_EVENT, createBodyForwarder, type RequestEvent, type W
 import type { Request, Response } from 'express';
 import type { ServeRequestOptions } from '../types/serve-request-options';
 import { attachWebSocket } from '../websocket';
-import { createHandOffs } from '../hand-off';
-import { isHandedOff } from '../hand-off';
+import { createHandOffs, isHandedOff } from '../hand-off';
 import createResponseTimeout from './create-response-timeout';
 import { createWorkerMessageListener } from '../worker';
 import registerRequestListeners from './register-request-listeners';

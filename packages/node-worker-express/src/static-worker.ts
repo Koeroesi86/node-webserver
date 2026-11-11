@@ -2,7 +2,7 @@ import type { InvokableWorker } from '@koeroesi86/node-worker/pool';
 import path from 'path';
 import fs from 'fs/promises';
 import { StaticOptionsEnv } from './constants';
-import { decodePath, findCacheControl, isInside, normalizeStaticOptions, notFoundResponse, serveDirectory, serveStaticFile } from './utils';
+import { decodePath, findCacheControl, isInside, normalizeStaticOptions, notFoundResponse, serveDirectory, serveStaticFile } from './static';
 
 let timer: NodeJS.Timeout | undefined;
 

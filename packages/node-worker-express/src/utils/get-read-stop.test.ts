@@ -1,6 +1,6 @@
 import net from 'net';
 import getReadStop from './get-read-stop';
-import { createSocketPair } from './socket-pair.test-helper';
+import { createSocketPair } from '../websocket/socket-pair.test-helper';
 
 describe('getReadStop', () => {
   it('stops libuv from reading the socket, which a pause does not', async () => {
