@@ -1,10 +1,7 @@
 import type { Judgement } from '../types/comparison';
 import type { K6Summary, Metrics } from '../types/k6-summary';
-import { collectMetric } from './collect-metric';
-import { formatChange } from './format-change';
-import { formatNumber } from './format-number';
-import { median } from './median';
-import { spread } from './spread';
+import { collectMetric, formatChange, formatNumber } from '../report';
+import { median, spread } from '../utils';
 
 const rateSpread = (summaries: K6Summary[], rateOf: (metrics: Metrics) => number | undefined) => {
   const range = spread(collectMetric(summaries, rateOf));

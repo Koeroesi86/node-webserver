@@ -1,12 +1,9 @@
 import type { Judgement, Limits } from '../types/comparison';
 import type { K6Summary } from '../types/k6-summary';
-import { buildJudgedRow } from './build-judged-row';
-import { collectMetric } from './collect-metric';
-import { formatNumber } from './format-number';
+import { buildJudgedRow, collectMetric, formatNumber } from '../report';
 import { isComparable } from './is-comparable';
 import { judgeP95 } from './judge-p95';
-import { lowest } from './lowest';
-import { median } from './median';
+import { lowest, median } from '../utils';
 
 // requests (of about 3000 in a run) that more may be dropped than by the base: at the edge of what the cores take the count moves by tens between runs of the same code
 const minDroppedDifference = 10;

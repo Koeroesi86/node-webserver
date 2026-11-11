@@ -2,7 +2,7 @@ import { availableParallelism } from 'node:os';
 import type { Snapshot } from '../types/runner';
 import { getCpuModel } from './get-cpu-model';
 import { getCpuTimes } from './get-cpu-times';
-import { readFile } from './read-file';
+import { readFile } from '../utils';
 
 export const takeSnapshot = (statPath = '/proc/stat', cpuInfoPath = '/proc/cpuinfo'): Snapshot => ({
   cpuModel: getCpuModel(readFile(cpuInfoPath)),

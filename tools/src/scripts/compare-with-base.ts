@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { defaultBinaryDuration, defaultCpuDuration, defaultDuration, defaultPortHttp, defaultPortHttps, defaultRounds } from '../constants/load-test';
-import { compareWithBase, parseAssignments } from '../utils';
+import { compareWithBase } from '../compare';
+import { parseAssignments } from '../utils';
 
 // Runs the load test against the base of a pull request and against the pull request itself, one after the other, and compares them.
 //   node compare-with-base.js <checkout of the base> <checkout of the pull request> [runs of each side, 3] [duration of a run, 15s] [duration of the CPU bound run, 10s] [duration of the binary run, 10s]

@@ -5,7 +5,8 @@
  * Usage: node check-layout.js [base], the base defaults to origin/master. Exits with 1 and lists the problems.
  */
 import { resolve } from 'node:path';
-import { findLayoutProblems, listAddedFiles, readFile } from '../utils';
+import { findLayoutProblems, listAddedFiles } from '../checks';
+import { readFile } from '../utils';
 
 // compiled to tools/dist/scripts, the workspace root is three levels up
 const rootPath = resolve(__dirname, '../../..');

@@ -4,14 +4,8 @@ import type { ComparisonOptions, ComparisonResult } from '../types/comparison';
 import type { RunningProcess } from '../types/server';
 import type { WarmUpResult } from '../types/warm-up';
 import { compareFiles } from './compare-files';
-import { describeRun } from './describe-run';
-import { describeUnevenlyServed } from './describe-unevenly-served';
-import { getStealPercent } from './get-steal-percent';
-import { startProcess } from './start-process';
-import { stopProcess } from './stop-process';
-import { takeSnapshot } from './take-snapshot';
-import { waitForServer } from './wait-for-server';
-import { warmUpServer } from './warm-up-server';
+import { describeRun, describeUnevenlyServed, getStealPercent } from '../report';
+import { startProcess, stopProcess, takeSnapshot, waitForServer, warmUpServer } from '../load-test';
 
 /**
  * Runs the load test against the base of a pull request and against the pull request itself, one after the other on this machine, and compares them.

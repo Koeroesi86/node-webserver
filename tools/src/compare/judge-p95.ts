@@ -1,7 +1,5 @@
 import type { Judgement, P95Judgement } from '../types/comparison';
-import { buildJudgedRow } from './build-judged-row';
-import { formatChange } from './format-change';
-import { formatNumber } from './format-number';
+import { buildJudgedRow, formatChange, formatNumber } from '../report';
 
 export const judgeP95 = ({ subject, label, base, head, comparable, maxIncrease, minDifferenceMs }: P95Judgement): Judgement => {
   const slower = comparable && base !== undefined && head !== undefined && head > base * (1 + maxIncrease) && head - base > minDifferenceMs;

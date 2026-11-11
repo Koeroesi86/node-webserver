@@ -1,7 +1,7 @@
 import { routeDurationPattern } from '../constants/load-test';
 import type { K6Summary } from '../types/k6-summary';
 import { formatNumber } from './format-number';
-import { readFile } from './read-file';
+import { readFile } from '../utils';
 
 const percent = (share: number | undefined) => (share === undefined ? 'n/a' : `${(share * 100).toFixed(2)}%`);
 

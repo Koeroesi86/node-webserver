@@ -1,10 +1,10 @@
 import type { Judgement, Limits } from '../types/comparison';
 import type { K6Summary } from '../types/k6-summary';
-import { collectMetric } from './collect-metric';
+import { collectMetric } from '../report';
 import { getRouteP95 } from './get-route-p95';
 import { isComparable } from './is-comparable';
 import { judgeP95 } from './judge-p95';
-import { median } from './median';
+import { median } from '../utils';
 
 /** a base without the route answers with fast errors, the bodies are what this run is about */
 export const judgeBinary = (baseBinary: K6Summary[], headBinary: K6Summary[], { maxP95Increase, minP95DifferenceMs, minCheckRate }: Limits): Judgement => {

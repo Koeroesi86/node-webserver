@@ -1,5 +1,5 @@
 import { procStat } from '../test-helpers/proc-stat';
-import { getCpuTimes } from './get-cpu-times';
+import { getCpuTimes } from '../load-test';
 import { getStealPercent } from './get-steal-percent';
 
 describe('getStealPercent', () => {

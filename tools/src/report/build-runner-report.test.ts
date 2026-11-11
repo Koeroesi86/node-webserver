@@ -1,7 +1,7 @@
 import { procStat } from '../test-helpers/proc-stat';
 import type { Snapshot } from '../types/runner';
 import { buildRunnerReport } from './build-runner-report';
-import { getCpuTimes } from './get-cpu-times';
+import { getCpuTimes } from '../load-test';
 
 describe('buildRunnerReport', () => {
   const snapshot = (steal: number): Snapshot => ({

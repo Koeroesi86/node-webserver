@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { findEntryProblems } from './find-entry-problems';
-import { readPackages } from './read-packages';
+import { readPackages } from '../versions';
 
 describe('findEntryProblems', () => {
   it('accepts the primary entry and package.json', () => {

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { buildRunnerReport, takeSnapshot } from '../utils';
+import { buildRunnerReport } from '../report';
+import { takeSnapshot } from '../load-test';
 
 // Describes the machine a load test ran on, as the numbers of shared runners differ a lot between machines.
 //   node runner.js snapshot [/proc/stat] [/proc/cpuinfo]    prints what is known now as JSON, to be called before and after the test

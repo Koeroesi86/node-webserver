@@ -1,8 +1,7 @@
 import { defaultLimits } from '../constants/comparison-limits';
 import type { BinarySummaries, ComparisonDetails, CpuSummaries, Limits } from '../types/comparison';
 import type { K6Summary } from '../types/k6-summary';
-import { buildInfoRows } from './build-info-rows';
-import { describeJudgedMetrics } from './describe-judged-metrics';
+import { buildInfoRows, describeJudgedMetrics } from '../report';
 import { getRoutes } from './get-routes';
 import { judgeBinary } from './judge-binary';
 import { judgeCpu } from './judge-cpu';

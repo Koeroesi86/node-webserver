@@ -31,4 +31,11 @@ export const FUNCTION_FOLDERS = [
   'cli',
   'service',
   'service-files',
+  // tools
+  'checks',
+  'compare',
+  'coverage',
+  'load-test',
+  'report',
+  'versions',
 ];
