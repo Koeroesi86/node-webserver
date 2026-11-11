@@ -1,3 +1,5 @@
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import getEntryFiles from './get-entry-files';
 
@@ -17,6 +19,23 @@ describe('getEntryFiles', () => {
     });
 
     expect(files).toEqual([path.resolve('site'), path.resolve('site/api.js'), path.resolve('elsewhere/abs.js')]);
+  });
+
+  it('gives the index files under the root and the static worker of a worker server, also without routes', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'get-entry-files-'));
+    fs.mkdirSync(path.join(root, 'api'));
+    fs.writeFileSync(path.join(root, 'api', 'index.js'), '');
+    fs.writeFileSync(path.join(root, 'style.css'), '');
+
+    const files = getEntryFiles({
+      hostname: 'a.localhost',
+      protocol: 'http',
+      type: 'worker',
+      options: { root, index: ['index.js'], staticWorker: 'static.js' },
+    });
+    fs.rmSync(root, { recursive: true });
+
+    expect(files).toEqual([root, path.join(root, 'api', 'index.js'), path.resolve('static.js')]);
   });
 
   it('gives the lambda of a lambda server and the lambdas of its routes', () => {

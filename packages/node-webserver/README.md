@@ -488,8 +488,9 @@ which the `connections:*` metrics count. Both are in the top level of the config
 
 The servers given as paths in `servers` are loaded again when their files change, while the server keeps running. The files that are watched are the file of a server, the local files it loads
 (not the packages under `node_modules`) and its `key`, `cert` and `ca`. A file in `servers` that does not exist yet is watched too, and started once it is created.
-The paths a `worker` or `lambda` server is given are watched and part of the check for a change, as they run in other processes and are not among the files the server file loaded: `options.root` and the `worker` of the routes,
-`lambdaOptions.lambda` and the `lambda` of the routes. Of a `root` the real path is checked, not the files under it.
+The paths a `worker` or `lambda` server is given are watched and part of the check for a change, as they run in other processes and are not among the files the server file loaded: `options.root`, the `worker` of the routes, the files under the `root` named in `options.index` (the workers that a request finds without a route, not those in `node_modules`),
+`options.staticWorker`, `lambdaOptions.lambda` and the `lambda` of the routes. Of a `root` the real path is checked, not the files under it. The index files are looked for when the server is loaded:
+one that is added in a folder that has none is found at the next reload, not by the watch.
 
 - A link on the way to a watched file is followed: when it is made to point to another folder (`ln -sfn` and `mv -T`, the way a deploy switches releases), the servers under it are loaded again, and the old ones finish their requests
   as described below. Keep at least two releases on disk: a draining worker can still load files from the old one for up to 30 seconds. The folder that holds the link is watched, and only the name of the link and the watched files report a change.

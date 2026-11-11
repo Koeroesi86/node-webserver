@@ -25,7 +25,7 @@ What the server does when things get busy, break or change. Defaults are the one
 
 ## On a reload
 
-Servers given as paths in `servers` are watched with their local files, the `root` and route files of their workers, the files of their lambdas, and certificates. Links are followed: a deploy that points a symlinked folder to a new release reloads the servers under it (keep at least two releases, as a draining worker can still load files from the old one). A change is applied once everything loads; a file that does not load is logged and the servers keep running as they were.
+Servers given as paths in `servers` are watched with their local files, the `root`, the route files and the index files under the `root` of their workers, the files of their lambdas, and certificates. Links are followed: a deploy that points a symlinked folder to a new release reloads the servers under it (keep at least two releases, as a draining worker can still load files from the old one). A change is applied once everything loads; a file that does not load is logged and the servers keep running as they were.
 Unchanged servers keep their workers and processes, changed ones finish their requests (up to 30 s) while a new one starts next to them, and the listening sockets stay open. The configuration itself needs a restart.
 `watchServers: false` turns watching off, `reloadOnSighup: true` reloads on `SIGHUP`.
 

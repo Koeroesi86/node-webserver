@@ -42,6 +42,7 @@ export { default as findChildProblems } from './find-child-problems';
 export { default as findDuplicateProblems } from './find-duplicate-problems';
 export type { ServerEntry } from './find-duplicate-problems';
 export { default as findErrorPageProblems } from './find-error-page-problems';
+export { default as findIndexFiles } from './find-index-files';
 export { default as findLambdaProblems } from './find-lambda-problems';
 export { default as findLinks } from './find-links';
 export { default as findMissingPaths } from './find-missing-paths';

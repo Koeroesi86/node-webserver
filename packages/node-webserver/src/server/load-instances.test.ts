@@ -130,6 +130,23 @@ describe('loadInstances', () => {
     expect(loadInstances([file], previous, createMockLogger())[0]).not.toBe(previous[0]);
   });
 
+  it('loads a server again when an index file under its worker root changes, without a route naming it', () => {
+    const root = path.join(folder, 'site');
+    fs.mkdirSync(path.join(root, 'api'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'api', 'index.js'), 'one');
+    const file = write(
+      'a.js',
+      `module.exports = { hostname: 'w.localhost', protocol: 'http', type: 'worker', options: { root: ${JSON.stringify(root)}, index: ['index.js'] } };`
+    );
+    const previous = loadInstances([file], [], createMockLogger());
+
+    expect(loadInstances([file], previous, createMockLogger())[0]).toBe(previous[0]);
+
+    fs.writeFileSync(path.join(root, 'api', 'index.js'), 'two');
+
+    expect(loadInstances([file], previous, createMockLogger())[0]).not.toBe(previous[0]);
+  });
+
   it('drops a server whose file was removed', () => {
     const file = server('a.js', 'a.localhost');
     const previous = loadInstances([file, server('b.js', 'b.localhost')], [], createMockLogger());
