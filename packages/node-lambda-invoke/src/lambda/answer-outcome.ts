@@ -2,8 +2,7 @@ import type { ServerResponse, IncomingMessage } from 'http';
 import type { WorkerLease } from '@koeroesi86/node-worker/pool';
 import { MESSAGE_ENDPOINT_TIMED_OUT, MESSAGE_INTERNAL_SERVER_ERROR } from '../constants';
 import type { InvocationOutcome } from './invoke-lambda';
-import { writeError } from '../response';
-import { writeTooLarge } from '../response';
+import { writeError, writeTooLarge } from '../response';
 
 interface AnswerOutcomeParams {
   outcome: InvocationOutcome;

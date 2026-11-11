@@ -1,5 +1,4 @@
-import { statSync } from 'fs';
-import { rmSync } from 'fs';
+import { statSync, rmSync } from 'fs';
 import { basename, dirname } from 'path';
 import { tmpdir } from 'os';
 import createLambdaFolder from './create-lambda-folder';

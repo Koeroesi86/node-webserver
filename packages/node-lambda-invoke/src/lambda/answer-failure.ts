@@ -3,8 +3,7 @@ import { WorkerAbandonedError, WorkerBusyError } from '@koeroesi86/node-worker/p
 import { RequestBodyTooLargeError } from '../classes';
 import { MESSAGE_INTERNAL_SERVER_ERROR, MESSAGE_SERVICE_UNAVAILABLE } from '../constants';
 import type { Logger } from '../types';
-import { writeError } from '../response';
-import { writeTooLarge } from '../response';
+import { writeError, writeTooLarge } from '../response';
 
 interface AnswerFailureParams {
   error: unknown;

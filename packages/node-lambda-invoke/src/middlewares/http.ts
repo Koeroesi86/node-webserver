@@ -3,16 +3,8 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { availableParallelism } from 'os';
 import { RequestBodyTooLargeError } from '../classes';
 import { DEFAULT_LIMIT_REQUEST_BODY, DEFAULT_START_TIMEOUT, DEFAULT_TIMEOUT } from '../constants';
-import {
-  answerFailure,
-  answerOutcome,
-  createLambdaPool,
-  createLambdaStatsSource,
-  createWorkerRequestEvent,
-  defaultLambdaStats,
-  invokeLambda,
-  sweepLambdaFolders,
-} from '../utils';
+import { answerFailure, answerOutcome, createLambdaPool, createLambdaStatsSource, defaultLambdaStats, invokeLambda, sweepLambdaFolders } from '../lambda';
+import { createWorkerRequestEvent } from '../event';
 import type { HttpMiddlewareOptions } from '../types';
 
 /**
