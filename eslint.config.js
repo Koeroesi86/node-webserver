@@ -8,7 +8,7 @@ const BARREL_FOLDERS = [
   ...['hand-off', 'metrics', 'static', 'websocket', 'worker', 'event', 'lambda', 'response'],
   ...['cli', 'service', 'service-files'],
   ...['child', 'errors', 'channel', 'pooling'],
-  ...['checks', 'compare', 'coverage', 'load-test', 'report', 'versions'],
+  ...['checks', 'compare', 'coverage-report', 'load-test', 'report', 'versions'],
   ...['middlewares', 'classes', 'server'],
 ];
 

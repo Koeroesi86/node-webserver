@@ -19,7 +19,7 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 | --- | --- |
 | `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
-| `utils/` and `checks/`, `compare/`, `coverage/`, `load-test/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
+| `utils/` and `checks/`, `compare/`, `coverage-report/`, `load-test/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
 | `types/` | the interfaces shared by the scripts and the utils |
 | `constants/` | the limits and defaults of the load test |
 | `test-helpers/` | what several tests share (summaries to compare, a server on a free port), not compiled |

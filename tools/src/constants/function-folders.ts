@@ -39,7 +39,7 @@ export const FUNCTION_FOLDERS = [
   // tools
   'checks',
   'compare',
-  'coverage',
+  'coverage-report',
   'load-test',
   'report',
   'versions',

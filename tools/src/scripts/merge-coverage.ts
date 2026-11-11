@@ -4,7 +4,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { mergeCoverage } from '../coverage';
+import { mergeCoverage } from '../coverage-report';
 
 const root = resolve(__dirname, '../../..');
 const coverage = mergeCoverage(root);
