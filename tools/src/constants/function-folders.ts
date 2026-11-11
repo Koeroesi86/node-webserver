@@ -31,6 +31,11 @@ export const FUNCTION_FOLDERS = [
   'cli',
   'service',
   'service-files',
+  // node-worker (pool)
+  'child',
+  'errors',
+  'channel',
+  'pooling',
   // tools
   'checks',
   'compare',
