@@ -1,5 +1,7 @@
 import type { RequestHandler } from 'express';
-import { asString, chooseEncoding, createCompressionBudget, decideCompression, defaultEncodings, patchResponse } from '../utils';
+import { asString } from '../utils';
+import { chooseEncoding, createCompressionBudget, decideCompression, defaultEncodings } from '../compression';
+import { patchResponse } from '../request';
 import type { CompressionBudget, CompressionOptions } from '../types';
 
 /**

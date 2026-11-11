@@ -8,7 +8,11 @@ import {
   proxy as proxyMiddleware,
   proxyServer as proxyServerMiddleware,
 } from '../middlewares';
-import { createErrorPagesHandler, createHstsHandler, createRulesHandler, getDate, trackRequests, untilIdle } from '../utils';
+import { createErrorPagesHandler, createRulesHandler } from '../routing';
+import { createHstsHandler } from '../tls';
+import { getDate } from '../utils';
+import { trackRequests } from '../observability';
+import { untilIdle } from '../lifecycle';
 import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
 
 interface Context {

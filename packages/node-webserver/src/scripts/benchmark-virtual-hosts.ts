@@ -1,4 +1,5 @@
-import { benchmarkVirtualHosts, createLogger } from '../utils';
+import { benchmarkVirtualHosts } from '../routing';
+import { createLogger } from '../observability';
 import Configuration from '../configuration.example';
 
 const logger = createLogger(Configuration);

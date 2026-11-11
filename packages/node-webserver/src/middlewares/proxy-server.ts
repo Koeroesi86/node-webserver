@@ -1,7 +1,9 @@
 import { readFileSync } from 'fs';
 import type { RequestHandler } from 'express';
 import { DEFAULT_CONTROL_PATH, DEFAULT_PROXY_TIMEOUT } from '../constants';
-import { createProxyTarget, createTargetStore, getDate, proxyRequest, retireAgent, setForwardedHeaders } from '../utils';
+import { createProxyTarget, createTargetStore, proxyRequest, retireAgent } from '../proxy';
+import { getDate } from '../utils';
+import { setForwardedHeaders } from '../request';
 import proxyControl from './proxy-control';
 import type { Logger, ProxyTarget, ServerConfig } from '../types';
 

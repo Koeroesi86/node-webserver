@@ -5,7 +5,7 @@ import net from 'net';
 import { once } from 'events';
 import proxyMiddleware from './proxy';
 import { addPort, clearPorts } from '../utils';
-import createMockLogger from '../utils/mock-logger.test-helper';
+import createMockLogger from '../observability/mock-logger.test-helper';
 import type { ServerConfig, ServerRuntime } from '../types';
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spawn: jest.fn(() => ({ pid: 1 })) }));

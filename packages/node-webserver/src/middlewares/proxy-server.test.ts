@@ -4,7 +4,7 @@ import https from 'https';
 import net from 'net';
 import { once } from 'events';
 import proxyServerMiddleware from './proxy-server';
-import createMockLogger from '../utils/mock-logger.test-helper';
+import createMockLogger from '../observability/mock-logger.test-helper';
 import type { ProxyOptions, ServerConfig } from '../types';
 
 interface Reply {

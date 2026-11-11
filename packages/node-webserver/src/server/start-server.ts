@@ -5,23 +5,15 @@ import type net from 'net';
 import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
 import { createWorkerBudget } from '@koeroesi86/node-worker-express';
 import { accessLogs as accessLogsMiddleware } from '../middlewares';
-import {
-  applyTrustedProxies,
-  configureServer,
-  createAcmeChallengeHandler,
-  createAcmeRenewer,
-  createCompressionBudget,
-  createHttp2App,
-  createHttpsServer,
-  createLogger,
-  createServerReloader,
-  hydrateConfiguration,
-  registerServerMetrics,
-  reportProblems,
-  setupProcessHooks,
-  setupStatsHandler,
-  validateConfiguration,
-} from '../utils';
+import { applyTrustedProxies, createHttp2App } from '../request';
+import { configureServer, hydrateConfiguration, validateConfiguration } from '../configuration';
+import { createAcmeChallengeHandler, createAcmeRenewer } from '../acme';
+import { createCompressionBudget } from '../compression';
+import { createHttpsServer } from '../tls';
+import { createLogger, registerServerMetrics, setupStatsHandler } from '../observability';
+import { createServerReloader } from '../reload';
+import { reportProblems } from '../problems';
+import { setupProcessHooks } from '../lifecycle';
 import loadInstances from './load-instances';
 import type { AcmeChallenges, Configuration, Logger } from '../types';
 

@@ -5,14 +5,14 @@ import os from 'os';
 import path from 'path';
 import tls from 'tls';
 import { getServerMetrics } from '@koeroesi86/node-worker-express';
-import { setupShutdown } from '../utils';
+import { setupShutdown } from '../lifecycle';
 import startServer from './start-server';
-import startFakeAcmeServer from '../utils/fake-acme-server.test-helper';
-import makeCertificate from '../utils/make-certificate.test-helper';
-import createMockLogger from '../utils/mock-logger.test-helper';
+import startFakeAcmeServer from '../acme/fake-acme-server.test-helper';
+import makeCertificate from '../tls/make-certificate.test-helper';
+import createMockLogger from '../observability/mock-logger.test-helper';
 
 // the exit listeners belong to the process, not to the server under test
-jest.mock('../utils/setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('../lifecycle/setup-shutdown', () => ({ __esModule: true, default: jest.fn() }));
 
 describe('startServer', () => {
   // openssl makes the certificates of the fake authority and an order is made once the server listens, which takes more than the 5 seconds of a test on a busy runner
@@ -107,7 +107,7 @@ describe('startServer', () => {
     const counts = () => events.map((event) => process.listenerCount(event));
     const start = counts();
     // the real shutdown, as the listeners it adds are what must not be left behind
-    jest.mocked(setupShutdown).mockImplementation(jest.requireActual('../utils/setup-shutdown').default);
+    jest.mocked(setupShutdown).mockImplementation(jest.requireActual('../lifecycle/setup-shutdown').default);
 
     const first = await startServer(configuration, createMockLogger());
     const second = await startServer(configuration, createMockLogger());

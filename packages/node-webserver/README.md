@@ -78,7 +78,7 @@ Clients that offer `h2` during the TLS handshake get HTTP/2, the others keep get
 The same servers answer both, they are set up once: a worker pool is not started twice. What differs for a handler is that the `host` header is the authority of the request, and that the pseudo headers (`:path`, `:authority`, ...) are not among the headers.
 Headers that only HTTP/1 has (`Connection`, `Keep-Alive`, `Transfer-Encoding`, `Upgrade`) are dropped from the responses of HTTP/2, as the protocol does not allow them. An idle connection is closed after `keepAliveTimeout`.
 
-Express 4 builds its requests and responses on the classes of HTTP/1, which the objects of HTTP/2 are not, so the requests of HTTP/2 go to a second express app with the same methods on top of the classes of HTTP/2 (`src/utils/create-http2-app.ts`).
+Express 4 builds its requests and responses on the classes of HTTP/1, which the objects of HTTP/2 are not, so the requests of HTTP/2 go to a second express app with the same methods on top of the classes of HTTP/2 (`src/request/create-http2-app.ts`).
 A certificate is needed for every host, a handshake for a host without one is refused.
 
 ### Request bodies
