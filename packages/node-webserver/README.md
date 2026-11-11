@@ -488,6 +488,11 @@ which the `connections:*` metrics count. Both are in the top level of the config
 
 The servers given as paths in `servers` are loaded again when their files change, while the server keeps running. The files that are watched are the file of a server, the local files it loads
 (not the packages under `node_modules`) and its `key`, `cert` and `ca`. A file in `servers` that does not exist yet is watched too, and started once it is created.
+The paths a `worker` or `lambda` server is given are watched and part of the check for a change, as they run in other processes and are not among the files the server file loaded: `options.root` and the `worker` of the routes,
+`lambdaOptions.lambda` and the `lambda` of the routes. Of a `root` the real path is checked, not the files under it.
+
+- A link on the way to a watched file is followed: when it is made to point to another folder (`ln -sfn` and `mv -T`, the way a deploy switches releases), the servers under it are loaded again, and the old ones finish their requests
+  as described below. Keep at least two releases on disk: a draining worker can still load files from the old one for up to 30 seconds. The folder that holds the link is watched, and only the name of the link and the watched files report a change.
 
 - The writes that come within 100 milliseconds of each other are one change, as an editor can write a file several times when it saves it.
 - Everything is loaded and checked before anything changes. A file that cannot be loaded, or a server with a problem the [check](#checking-the-configuration) reports (a syntax error, a server without a `hostname` or `protocol`, a certificate that cannot be read, a server that fails to start) is logged,

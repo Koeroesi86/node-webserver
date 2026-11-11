@@ -87,6 +87,49 @@ describe('loadInstances', () => {
     expect(previous[0].close).not.toHaveBeenCalled();
   });
 
+  it('loads a server again when a link on the way to its worker root or lambda points to another release', () => {
+    const releases = ['one', 'two'].map((name) => {
+      fs.mkdirSync(path.join(folder, name));
+      fs.writeFileSync(path.join(folder, name, 'main.js'), 'same');
+      return path.join(folder, name);
+    });
+    const link = path.join(folder, 'build');
+    fs.symlinkSync(releases[0], link, 'dir');
+    const file = write(
+      'a.js',
+      `module.exports = [
+        { hostname: 'w.localhost', protocol: 'http', type: 'worker', options: { root: ${JSON.stringify(link)} } },
+      ][0];`
+    );
+    const lambda = write(
+      'b.js',
+      `module.exports = { hostname: 'l.localhost', protocol: 'http', type: 'lambda', lambdaOptions: { lambda: ${JSON.stringify(path.join(link, 'main.js'))} } };`
+    );
+    const previous = loadInstances([file, lambda], [], createMockLogger());
+
+    expect(loadInstances([file, lambda], previous, createMockLogger())).toEqual(previous);
+
+    fs.rmSync(link);
+    fs.symlinkSync(releases[1], link, 'dir');
+    const loaded = loadInstances([file, lambda], previous, createMockLogger());
+
+    expect(loaded[0]).not.toBe(previous[0]);
+    expect(loaded[1]).not.toBe(previous[1]);
+  });
+
+  it('loads a server again when the file of its lambda changes, also without a link', () => {
+    const handler = path.join(folder, 'handler.js');
+    fs.writeFileSync(handler, 'one');
+    const file = write(
+      'a.js',
+      `module.exports = { hostname: 'l.localhost', protocol: 'http', type: 'lambda', lambdaOptions: { lambda: ${JSON.stringify(handler)} } };`
+    );
+    const previous = loadInstances([file], [], createMockLogger());
+    fs.writeFileSync(handler, 'two');
+
+    expect(loadInstances([file], previous, createMockLogger())[0]).not.toBe(previous[0]);
+  });
+
   it('drops a server whose file was removed', () => {
     const file = server('a.js', 'a.localhost');
     const previous = loadInstances([file, server('b.js', 'b.localhost')], [], createMockLogger());

@@ -86,6 +86,41 @@ describe('watchFiles', () => {
     await changed;
   });
 
+  it('tells about a link that is made to point to another folder, as a deploy does', async () => {
+    ['one', 'two'].forEach((release) => {
+      fs.mkdirSync(path.join(folder, release));
+      fs.writeFileSync(path.join(folder, release, 'a.js'), release);
+    });
+    const link = path.join(folder, 'build');
+    fs.symlinkSync(path.join(folder, 'one'), link, 'dir');
+    const changed = watch([path.join(link, 'a.js')]);
+
+    fs.symlinkSync(path.join(folder, 'two'), `${link}.next`, 'dir');
+    fs.renameSync(`${link}.next`, link);
+
+    await changed;
+  });
+
+  it('does not tell about the other files next to a link', async () => {
+    fs.mkdirSync(path.join(folder, 'one'));
+    const link = path.join(folder, 'build');
+    fs.symlinkSync(path.join(folder, 'one'), link, 'dir');
+    const onChange = jest.fn();
+    stop = watchFiles([path.join(link, 'a.js')], onChange);
+    const seen = new Promise<void>((resolve) => {
+      const watcher = fs.watch(folder, () => {
+        watcher.close();
+        resolve();
+      });
+    });
+
+    fs.writeFileSync(path.join(folder, '.deploy.lock'), 'one');
+    await seen;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('ignores a folder that does not exist', () => {
     expect(() => watchFiles([path.join(folder, 'missing', 'a.js')], jest.fn())()).not.toThrow();
   });
