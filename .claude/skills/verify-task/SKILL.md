@@ -22,7 +22,7 @@ Repository rules (`CLAUDE.md`), report only the ones that apply:
 - a test next to the code (`name.test.ts`) that fails without the change, for the success and the refusal path; no fixed sleeps; none passing only on a retry
 - request path changed (`node-webserver/src`, `node-worker`, `node-worker-express`, `node-lambda-invoke`): a k6 scenario in `tools/src/k6` or a stated reason; nothing extra per request in the front process
 - changed option, default, header or message type is in the READMEs and the type's doc comment
-- kebab-case files, one function per file in `utils/`, types in `types/`, constants in `constants/`, no `any`/casts, flat conditions, no dead comments; new `workspace:*` dependency in `boundaries` of `.fallowrc.jsonc`; complexity within `.fallowrc.ci.jsonc`
+- kebab-case files, one function per file in `utils/` or a domain folder, types in `types/`, constants in `constants/`, no `any`/casts, flat conditions, no dead comments; new `workspace:*` dependency in `boundaries` of `.fallowrc.jsonc`; complexity within `.fallowrc.ci.jsonc`
 - no edit of `version`/`gitHead`, no unrelated `packages/**` edit (it publishes)
 - `.github/`: actions pinned to SHA with version comment, minimal `permissions`, `persist-credentials: false`, no `${{ }}` of untrusted input in `run:`, new required job in `needs` of `required-checks`, no uncommented `continue-on-error`
 - PR body follows `.github/pull_request_template.md`, has `Closes #N`, ticks only what ran, lists the rest under Not verified; compare its claims with the diff and `gh pr checks`

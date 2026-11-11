@@ -32,8 +32,21 @@ describe('findLayoutProblems', () => {
     };
 
     expect(findLayoutProblems(['src/utils/a.ts'], (path) => other[path])).toEqual([
-      'src/utils/a.ts: one exported function per file in utils/',
+      'src/utils/a.ts: one exported function per file in a function folder',
       'src/utils/a.ts: no a.test.ts next to it',
+    ]);
+  });
+
+  it('holds the files of a domain folder to the same rules', () => {
+    const other: Record<string, string> = {
+      'src/acme/index.ts': '',
+      'src/acme/a.ts': 'export const a = 1;\nexport const b = 2;\n',
+    };
+
+    expect(findLayoutProblems(['src/acme/a.ts'], (path) => other[path])).toEqual([
+      'src/acme/a.ts: not exported by the index.ts next to it',
+      'src/acme/a.ts: one exported function per file in a function folder',
+      'src/acme/a.ts: no a.test.ts next to it',
     ]);
   });
 

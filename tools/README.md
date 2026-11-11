@@ -65,8 +65,8 @@ Pull requests of `dependabot[bot]` are not checked (`EXEMPT_AUTHORS`). Whether a
 The `layout` job of `pr-checks.yml` runs `scripts/check-layout.ts` on the files that the pull request adds (`git diff --diff-filter=A` against the merge base with `origin/master`, plus untracked files) and is one of the `needs` of `required-checks`; `.claude/hooks/standards-gate.sh` runs the same script before Claude commits or pushes. It fails, with a line per problem, when an added file:
 
 - is a `.ts` file whose name is not kebab-case;
-- in `utils/`, `middlewares/` or `classes/` is not exported by the `index.ts` next to it (tests, test helpers and index files are exempt);
-- in `utils/` has more than one `export` line (a type next to the function counts, types belong in `types/`) or no `name.test.ts` next to it.
+- in `utils/`, a domain folder (`FUNCTION_FOLDERS` in `constants/function-folders.ts`), `middlewares/` or `classes/` is not exported by the `index.ts` next to it (tests, test helpers and index files are exempt);
+- in `utils/` or a domain folder has more than one `export` line (a type next to the function counts, types belong in `types/`) or no `name.test.ts` next to it.
 
 Existing files are not checked, they break these rules today (camelCase names, several exports, no test) and are cleaned up on their own. Changed or renamed-over files are not "added", so editing an old file never fails. The job checks out with `fetch-depth: 0` for the merge base.
 

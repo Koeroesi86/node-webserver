@@ -1,6 +1,5 @@
 import type { Readable } from 'stream';
-import type { RequestEvent } from '../types';
-import type { ServerMetrics } from '../types';
+import type { RequestEvent, ServerMetrics } from '../types';
 
 /** the parts of a streamed response that wait to be written by the parent */
 export interface Stream {

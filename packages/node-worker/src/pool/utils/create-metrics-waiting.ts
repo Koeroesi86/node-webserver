@@ -1,8 +1,7 @@
 import { WORKER_EVENT } from '../constants';
-import type { WorkerOutputEvent } from '../types';
+import type { WorkerOutputEvent, ServerMetrics } from '../types';
 import type { Channel } from './create-channel';
 import type { RequestContexts } from './create-request-contexts';
-import type { ServerMetrics } from '../types';
 
 /** the questions of the workers for the metrics of the server, which are answered in the order they were asked */
 export default function createMetricsWaiting(contexts: RequestContexts, channel: Channel<WorkerOutputEvent>) {

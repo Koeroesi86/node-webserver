@@ -2,6 +2,14 @@ const tsParser = require('@typescript-eslint/parser');
 const tsPlugin = require('@typescript-eslint/eslint-plugin');
 const prettierPlugin = require('eslint-plugin-prettier');
 
+// the folders with a barrel: FUNCTION_FOLDERS of tools/src/constants/function-folders.ts (eslint cannot import it) and the other folders that have an index.ts
+const BARREL_FOLDERS = [
+  ...['utils', 'acme', 'children', 'compression', 'configuration', 'lifecycle', 'observability', 'problems', 'proxy', 'reload', 'request', 'routing', 'tls'],
+  ...['hand-off', 'metrics', 'static', 'websocket', 'worker', 'event', 'lambda', 'response'],
+  ...['cli', 'service', 'service-files'],
+  ...['middlewares', 'classes', 'server'],
+];
+
 module.exports = [
   {
     ignores: ['**/dist/**', '.idea/**', '.cache/**', '**/node_modules/**', '**/*.js'],
@@ -26,7 +34,7 @@ module.exports = [
         {
           patterns: [
             // a folder is imported through its index.ts, so that a file can be renamed or moved inside it without touching the ones outside; the files of a folder import each other directly (`./name`)
-            { group: ['**/utils/*', '**/middlewares/*', '**/classes/*', '**/server/*', '!**/*.test-helper'], message: 'Import the folder (its index.ts), not a file in it.' },
+            { group: [...BARREL_FOLDERS.map((folder) => `**/${folder}/*`), '!**/*.test-helper'], message: 'Import the folder (its index.ts), not a file in it.' },
             // the package entry is what its exports map says: the root, and the pool of node-worker
             { group: ['@koeroesi86/*/*', '!@koeroesi86/node-worker/pool'], message: 'Import the package, not a file in it: only the entries of its exports map are public.' },
           ],

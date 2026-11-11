@@ -1,6 +1,5 @@
 import type { Readable } from 'stream';
-import type { RequestEvent, WorkerRequestEvent } from '../types';
-import type { ServerMetrics } from '../types';
+import type { RequestEvent, WorkerRequestEvent, ServerMetrics } from '../types';
 
 /** what a worker is called with, the websocket frames and the closing of a connection too */
 export default function createWorkerEvent(

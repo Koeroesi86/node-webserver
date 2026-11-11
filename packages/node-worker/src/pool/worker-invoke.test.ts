@@ -9,8 +9,7 @@ import { Duplex } from 'stream';
 import ts from 'typescript';
 import { WORKER_EVENT } from './constants';
 import { type Channel, createChannel } from './utils';
-import type { ResponseMessage, WorkerInputEvent } from './types';
-import type { ServerMetrics } from './types';
+import type { ResponseMessage, WorkerInputEvent, ServerMetrics } from './types';
 
 /** what the worker sends for a request, the messages for websockets are not tested here */
 type Received = { type: string; requestId: string; event?: ResponseMessage };
