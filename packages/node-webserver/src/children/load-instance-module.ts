@@ -39,8 +39,9 @@ const loadInstanceModule = (configPath: string): { instance: ServerConfig; files
 
   // the require of node, also in the tests, which have a module registry of their own
   const load = createRequire(resolvedPath);
-  // node keeps a module by its real path, which differs from the given one when the path goes through a link (the temporary folder of macOS is one)
-  const filename = load.resolve(resolvedPath);
+  // node keeps a module by its real path, which differs from the given one when the path goes through a link (the temporary folder of macOS is one).
+  // not load.resolve: the loader caches real paths for the life of the process, so a link switched by a deploy would keep leading to the first release
+  const filename = fs.realpathSync(resolvedPath);
   [filename, ...(loadedFiles.get(filename) ?? [])].forEach((file) => delete load.cache[file]);
   const instance: unknown = load(filename);
   const module = load.cache[filename];
