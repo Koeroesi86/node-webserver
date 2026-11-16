@@ -1,0 +1,34 @@
+name: Spike reusePort
+
+# throwaway, for #296: runs .github/spikes/reuse-port.mjs on each platform and writes what it saw (does reusePort listen, how it balances, how it
+# compares with cluster) to the job summary. Only runs for a change of the spike itself, and goes with the spike.
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/spikes/**'
+      - '.github/workflows/spike-reuse-port.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: reusePort on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Run the spike
+        run: node .github/spikes/reuse-port.mjs
