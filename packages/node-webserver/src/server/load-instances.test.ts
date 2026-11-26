@@ -216,6 +216,51 @@ describe('loadInstances', () => {
   });
 });
 
+describe('a server defined in the configuration', () => {
+  let folder: string;
+
+  beforeEach(() => (folder = fs.mkdtempSync(path.join(os.tmpdir(), 'inline-server-'))));
+  afterEach(() => fs.rmSync(folder, { recursive: true, force: true }));
+
+  const lambdaServer = () => {
+    const lambda = path.join(folder, 'lambda.js');
+    fs.writeFileSync(lambda, 'exports.handler = async () => ({ statusCode: 200 });');
+    const server: ServerConfig = { hostname: 'inline.localhost', protocol: 'http', type: 'lambda', lambdaOptions: { lambda } };
+    return { server, lambda };
+  };
+
+  it('is kept while the files of its workers and lambdas stay as they are', async () => {
+    const { server } = lambdaServer();
+    const running = loadInstances([server], [], createMockLogger());
+
+    expect(loadInstances([server], running, createMockLogger())).toEqual(running);
+    await running[0].close(0);
+  });
+
+  it('is loaded again when the file of its lambda changes', async () => {
+    const { server, lambda } = lambdaServer();
+    const running = loadInstances([server], [], createMockLogger());
+
+    fs.writeFileSync(lambda, 'exports.handler = async () => ({ statusCode: 201 });');
+    const [next] = loadInstances([server], running, createMockLogger());
+
+    expect(next).not.toBe(running[0]);
+    expect(next.files).toEqual([lambda]);
+    await Promise.all([running[0].close(0), next.close(0)]);
+  });
+
+  it('reports settings of the wrong type as problems of the server', () => {
+    const server: ServerConfig = {
+      hostname: 'wrong.localhost',
+      protocol: 'http',
+      type: 'worker',
+      options: JSON.parse('{ "root": ".", "routes": 5 }'),
+    };
+
+    expect(() => loadInstances([server], [], createMockLogger())).toThrow('The configuration has problems');
+  });
+});
+
 describe('the servers of a front', () => {
   const lambda: ServerConfig = {
     hostname: 'lambda.localhost',

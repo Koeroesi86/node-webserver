@@ -1,18 +1,20 @@
 import cluster from 'cluster';
 import os from 'os';
 import startPrimary from './start-primary';
-import { createFrontSupervisor, readServerVersion } from '../cluster';
+import { createFrontSupervisor, createReloadRounds, readServerVersion } from '../cluster';
+import { watchFiles } from '../reload';
 import { setupPrimaryHooks } from '../lifecycle';
 import createMockLogger from '../observability/mock-logger.test-helper';
 import { FRONT_STOP_MARGIN } from '../constants';
 
 jest.mock('cluster', () => ({ __esModule: true, default: { isWorker: false, SCHED_RR: 2, schedulingPolicy: 1 } }));
-jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createFrontSupervisor: jest.fn() }));
+jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createFrontSupervisor: jest.fn(), createReloadRounds: jest.fn() }));
 jest.mock('../lifecycle', () => ({ ...jest.requireActual('../lifecycle'), setupPrimaryHooks: jest.fn() }));
 
 describe('startPrimary', () => {
   const logger = createMockLogger();
-  const supervisor = { start: jest.fn(), send: jest.fn(), stop: jest.fn() };
+  const supervisor = { start: jest.fn(), send: jest.fn(), stop: jest.fn(), kill: jest.fn() };
+  const rounds = { start: jest.fn(), stop: jest.fn(), request: jest.fn(), serving: jest.fn(), message: jest.fn(), exited: jest.fn() };
   const removeHooks = jest.fn();
   const configuration = { frontProcesses: 2, servers: [], portHttp: 0, portHttps: 0, shutdownTimeout: 100 };
 
@@ -21,6 +23,7 @@ describe('startPrimary', () => {
     jest.spyOn(os, 'availableParallelism').mockReturnValue(8);
     supervisor.start.mockResolvedValue(undefined);
     jest.mocked(createFrontSupervisor).mockReturnValue(supervisor);
+    jest.mocked(createReloadRounds).mockReturnValue(rounds);
     jest.mocked(setupPrimaryHooks).mockReturnValue(removeHooks);
   });
 
@@ -55,14 +58,37 @@ describe('startPrimary', () => {
     expect(removeHooks).toHaveBeenCalled();
   });
 
-  it('reloads and stops every front', async () => {
+  it('reloads every front together, once they serve, and stops them and the reloads', async () => {
     const running = await startPrimary(configuration, logger, {});
 
     running.reload();
     await running.stop();
 
-    expect(supervisor.send).toHaveBeenCalledWith({ nodeWebserver: 'reload' });
+    expect(rounds.start).toHaveBeenCalled();
+    expect(rounds.request).toHaveBeenCalled();
+    expect(rounds.stop).toHaveBeenCalled();
     expect(supervisor.stop).toHaveBeenCalledWith({ nodeWebserver: 'stop' }, 100 + FRONT_STOP_MARGIN);
+  });
+
+  it('has the rounds hear about the fronts, and reach them', async () => {
+    await startPrimary(configuration, logger, {});
+    const given = jest.mocked(createReloadRounds).mock.calls[0][0];
+
+    given.send({ nodeWebserver: 'prepare', round: 1 }, 1);
+    given.kill(0);
+
+    expect(options().listener).toBe(rounds);
+    expect(supervisor.send).toHaveBeenCalledWith({ nodeWebserver: 'prepare', round: 1 }, 1);
+    expect(supervisor.kill).toHaveBeenCalledWith(0);
+  });
+
+  it.each([
+    [true, watchFiles],
+    [false, undefined],
+  ])('watches the files for the fronts unless watchServers is off (%s)', async (watchServers, watch) => {
+    await startPrimary({ ...configuration, watchServers }, logger, {});
+
+    expect(jest.mocked(createReloadRounds).mock.calls[0][0].watch).toBe(watch);
   });
 
   it.each([

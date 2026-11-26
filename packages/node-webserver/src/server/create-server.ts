@@ -12,11 +12,11 @@ import { splitConfigurationLimits } from '../cluster';
 import { createCompressionBudget } from '../compression';
 import { createHttpsServer } from '../tls';
 import { createLogger, registerServerMetrics, setupStatsHandler } from '../observability';
-import { createServerReloader } from '../reload';
+import { createServerReloader, getLoadFingerprint } from '../reload';
 import { reportProblems } from '../problems';
 import { createServerStop, setupProcessHooks } from '../lifecycle';
 import loadInstances from './load-instances';
-import type { AcmeChallenges, Configuration, FrontShare, Logger, SignalSource } from '../types';
+import type { AcmeChallenges, Configuration, FrontShare, LoadReport, Logger, PreparedServers, SignalSource } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
@@ -28,6 +28,8 @@ export interface ServerOptions {
   signals?: SignalSource;
   /** whether the server is stopped with `stop`, which needs its connections tracked from the start */
   stoppable?: boolean;
+  /** for a server that is not to load its servers on its own, as a primary has all fronts do it together: asks for it. Such a server watches no file. */
+  requestReload?: () => void;
 }
 
 export interface RunningServer {
@@ -37,13 +39,17 @@ export interface RunningServer {
   removeProcessHooks: () => void;
   /** stops softly, within `shutdownTimeout`. Only for a `stoppable` server. */
   stop: () => Promise<void>;
+  /** loads the servers and starts what is new, without serving from it yet */
+  prepare: () => PreparedServers;
+  /** the files to watch, and what was loaded */
+  report: (servers?: PreparedServers) => LoadReport;
 }
 
 /** the server of one process: both listening servers with everything behind them */
 const createServer = async (
   configuration: Partial<Configuration>,
   logger?: Logger,
-  { processHooks = true, front, signals, stoppable = false }: ServerOptions = {}
+  { processHooks = true, front, signals, stoppable = false, requestReload }: ServerOptions = {}
 ): Promise<RunningServer> => {
   // one set for each call, so that a second server in the process does not share the middlewares of the first
   const httpApp = express();
@@ -73,11 +79,12 @@ const createServer = async (
   const reloader = createServerReloader(
     servers,
     configuration,
-    watchServers,
+    watchServers && !requestReload,
     (previous) => loadInstances(servers, previous, log, { workerBudget, lambdaStats, compressionBudget, configuration, front }),
     log
   );
-  const { reload, watch } = reloader;
+  const { watch } = reloader;
+  const reload = requestReload ?? reloader.reload;
 
   /** access logs */
   httpApp.use(accessLogsMiddleware({ alias: 'http', logger: log }));
@@ -111,7 +118,8 @@ const createServer = async (
   const hooks = setupProcessHooks(processHooks, [httpServer, httpsServer], workerBudget, {
     reloadOnSighup,
     shutdownTimeout,
-    reload,
+    // the signal reaches the primary too, which has every front load the servers
+    reload: requestReload ? () => {} : reload,
     getLoaded: reloader.getLoaded,
     getInstances: reloader.getInstances,
     logger: log,
@@ -126,9 +134,22 @@ const createServer = async (
     unregisterMetrics();
     hooks.removeWorkerBudget();
   });
-  if (watchServers) watch();
+  if (watchServers && !requestReload) watch();
 
-  return { httpApp, httpsApp, reload, removeProcessHooks: hooks.remove, stop: async () => gracefulStop?.(shutdownTimeout) };
+  const report = (servers?: PreparedServers) => ({
+    files: reloader.getWatchedFiles(),
+    fingerprint: getLoadFingerprint(servers?.instances ?? reloader.getLoaded(), configuration.unknownHostPage),
+  });
+
+  return {
+    httpApp,
+    httpsApp,
+    reload,
+    removeProcessHooks: hooks.remove,
+    stop: async () => gracefulStop?.(shutdownTimeout),
+    prepare: reloader.prepare,
+    report,
+  };
 };
 
 export default createServer;

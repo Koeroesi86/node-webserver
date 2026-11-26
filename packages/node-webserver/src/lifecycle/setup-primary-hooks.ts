@@ -3,15 +3,14 @@ import type { PrimaryHookOptions, PrimaryMessage } from '../types';
 
 /**
  * The listeners of the primary on its process. It passes the signals that stop the server on to the fronts, over the channel to them, as a signal sent to the primary alone does not
- * reach them, and ends with the signal once they did. A second signal is passed on too, which ends a front at once. With `reloadOnSighup` SIGHUP is passed on to reload them.
+ * reach them, and ends with the signal once they did. A second signal is passed on too, which ends a front at once. With `reloadOnSighup` SIGHUP reloads the servers of every front.
  * With `enabled` false it adds nothing. Returns a function that takes the listeners off again.
  */
-const setupPrimaryHooks = (enabled: boolean, { reloadOnSighup, shutdownTimeout, logger, send, stop }: PrimaryHookOptions): (() => void) => {
+const setupPrimaryHooks = (enabled: boolean, { reloadOnSighup, shutdownTimeout, logger, reload, stop }: PrimaryHookOptions): (() => void) => {
   if (!enabled) return () => {};
 
   const stopSignals: NodeJS.Signals[] = reloadOnSighup ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGHUP'];
   let stopping = false;
-  const reload = (signal: NodeJS.Signals) => send({ nodeWebserver: 'signal', signal });
   const listen = (signal: NodeJS.Signals) => {
     const message: PrimaryMessage = { nodeWebserver: 'signal', signal };
     // the fronts end at once on a second one, and are killed soon after when they do not

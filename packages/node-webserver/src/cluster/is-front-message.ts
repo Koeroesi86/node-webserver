@@ -1,6 +1,15 @@
 import type { FrontMessage } from '../types';
 
-const TYPES: unknown[] = ['hello', 'ready', 'failed', 'stale'] satisfies FrontMessage['nodeWebserver'][];
+const TYPES: unknown[] = [
+  'hello',
+  'ready',
+  'failed',
+  'stale',
+  'prepared',
+  'prepare-failed',
+  'files',
+  'reload-request',
+] satisfies FrontMessage['nodeWebserver'][];
 
 /** whether a message of a front process is one of the server: a worker of a cluster may send others */
 const isFrontMessage = (message: unknown): message is FrontMessage =>

@@ -1,5 +1,6 @@
 export { default as createFrontSignals } from './create-front-signals';
 export { default as createFrontSupervisor } from './create-front-supervisor';
+export { default as createReloadRounds } from './create-reload-rounds';
 export { default as fingerprintConfiguration } from './fingerprint-configuration';
 export { default as forkFront } from './fork-front';
 export { default as getFrontCount } from './get-front-count';

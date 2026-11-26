@@ -4,11 +4,12 @@ import { createFakeFork } from './fake-front.test-helper';
 import { FRONT_MIN_UPTIME, FRONT_STOP_MARGIN } from '../constants';
 
 const release = { configuration: 'a', version: '1.0.0' };
-const ready = { nodeWebserver: 'ready' as const, release };
+const ready = { nodeWebserver: 'ready' as const, release, files: ['a.js'], fingerprint: 'running' };
 
 describe('createFrontSupervisor', () => {
   const logger = createMockLogger();
   const onLost = jest.fn();
+  const listener = { serving: jest.fn(), message: jest.fn(), exited: jest.fn() };
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -19,7 +20,7 @@ describe('createFrontSupervisor', () => {
 
   const create = (count = 2) => {
     const { fork, fronts } = createFakeFork();
-    return { fronts, supervisor: createFrontSupervisor({ count, release, fork, logger, onLost }) };
+    return { fronts, supervisor: createFrontSupervisor({ count, release, fork, logger, onLost, listener }) };
   };
 
   const started = async (count = 2) => {
@@ -101,7 +102,7 @@ describe('createFrontSupervisor', () => {
     const { supervisor, fronts } = create();
     const start = supervisor.start();
     fronts[0].say(ready);
-    fronts[1].say({ nodeWebserver: 'ready', release: { ...release, configuration: 'b' } });
+    fronts[1].say({ ...ready, release: { ...release, configuration: 'b' } });
     await start;
 
     fronts[0].exit(1);
@@ -142,9 +143,37 @@ describe('createFrontSupervisor', () => {
   it('passes a message on to every front that runs', async () => {
     const { supervisor, fronts } = await started();
 
-    supervisor.send({ nodeWebserver: 'reload' });
+    supervisor.send({ nodeWebserver: 'stop' });
 
-    expect(fronts.map(({ sent }) => sent)).toEqual([[{ nodeWebserver: 'reload' }], [{ nodeWebserver: 'reload' }]]);
+    expect(fronts.map(({ sent }) => sent)).toEqual([[{ nodeWebserver: 'stop' }], [{ nodeWebserver: 'stop' }]]);
+  });
+
+  it('passes a message on to one front', async () => {
+    const { supervisor, fronts } = await started();
+
+    supervisor.send({ nodeWebserver: 'prepare', round: 1 }, 1);
+
+    expect(fronts.map(({ sent }) => sent)).toEqual([[], [{ nodeWebserver: 'prepare', round: 1 }]]);
+  });
+
+  it('kills one front, which it replaces', async () => {
+    const { supervisor, fronts } = await started();
+
+    supervisor.kill(1);
+    jest.advanceTimersByTime(0);
+
+    expect(fronts.map(({ killed }) => killed)).toEqual([false, true, false]);
+  });
+
+  it('tells the listener when a front serves, what it says about its servers, and when it ends', async () => {
+    const { fronts } = await started(1);
+
+    fronts[0].say({ nodeWebserver: 'files', files: [] });
+    fronts[0].exit(1);
+
+    expect(listener.serving).toHaveBeenCalledWith(0, { files: ['a.js'], fingerprint: 'running' });
+    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [] });
+    expect(listener.exited).toHaveBeenCalledWith(0);
   });
 
   it('stops the fronts, resolves once they ended and starts none in their place', async () => {

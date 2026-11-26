@@ -1,3 +1,4 @@
+export { default as createFrontReload } from './create-front-reload';
 export { default as createInstanceHandler } from './create-instance-handler';
 export { default as createServer } from './create-server';
 export type { RunningServer, ServerOptions } from './create-server';

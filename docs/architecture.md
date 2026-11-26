@@ -14,7 +14,7 @@ The front server listens on the http and the https port (HTTP/2 and SNI optional
 By default it is a single process. With `frontProcesses` the command line runs several of them with `node:cluster`:
 
 ```
-primary          owns the ports, hands the connections to the fronts in turn, supervises them, serves no request
+primary          owns the ports, hands the connections to the fronts in turn, supervises them and has them reload together, serves no request
  ├─ front 1      the front server as above: http, https, express, pools of its own
  ├─ front 2
  └─ front N

@@ -522,19 +522,25 @@ is not compared. When the primary dies, its fronts and their workers exit.
 **Stopping** works as below. The primary passes `SIGINT`, `SIGTERM` and `SIGHUP` on to the fronts over the channel to them, as a signal to the primary alone does not reach them (and Windows would end them at once);
 systemd and Ctrl+C signal every process, and a front takes the same signal from both as one. The primary ends once the fronts did, and kills the ones that are still there 2 seconds after `shutdownTimeout`.
 
-**Reloading** works as below, in every front on its own: each watches the files and loads them, so they switch at slightly different moments, and a front that reads a file while it is written keeps the old servers until the next change while the others
-take the new ones. `SIGHUP` is passed on with `reloadOnSighup`. A change of a limit that would change the number of fronts is refused, the running servers are kept and the log says that a restart is needed.
+**Reloading** happens in all fronts together. The primary alone watches the files, which the fronts name to it after every load, and loads no server itself. On a change, a `SIGHUP` with `reloadOnSighup` (also with `watchServers` off),
+or `reload`, it asks every front to load the servers and to start what changed without serving it. Only when all of them did, and loaded the same, it tells them to serve it and retire the old servers. Otherwise every front keeps what it runs,
+and the log says why: a file that cannot be loaded or a problem of a server is tried again at the next change, fronts that read a file while it was written are asked again at once, up to 3 times. One reload runs at a time, a change during one
+starts another after it. A front that does not answer within 30 seconds is replaced. The fronts switch close to each other, not at the same instant, and while they do every front holds the old and the new workers, which takes more memory than with one front.
+A front that replaces another one loads the files as they are then; once it serves, all fronts are asked to load again, so that they run the same. While it cannot load them it is tried again with the delays above, and the others serve.
+A change of a limit that would change the number of fronts is refused, the running servers are kept and the log says that a restart is needed.
 
 **Logs.** Each front writes files of its own, `<start>.front-<n>.<level>.log`, and puts `[front-<n>]` in front of its lines. The primary logs the fronts it starts, loses and replaces, in files of its own: `<start>.primary.<level>.log`
 with the logger `startCluster` makes, or where the logger it is given writes.
 
 ### Reloading the servers
 
-The servers given as paths in `servers` are loaded again when their files change, while the server keeps running. The files that are watched are the file of a server, the local files it loads
-(not the packages under `node_modules`) and its `key`, `cert` and `ca`. A file in `servers` that does not exist yet is watched too, and started once it is created.
+The servers are loaded again when their files change, while the server keeps running. For a server given as a path in `servers` the files that are watched are the file of the server, the local files it loads
+(not the packages under `node_modules`) and its `key`, `cert` and `ca`. A file in `servers` that does not exist yet is watched too, and started once it is created. A server written directly in the configuration is loaded again when
+the files of its workers or lambdas change (below); its definition itself stays the one the server was given.
 The paths a `worker` or `lambda` server is given are watched and part of the check for a change, as they run in other processes and are not among the files the server file loaded: `options.root`, the `worker` of the routes, the files under the `root` named in `options.index` (the workers that a request finds without a route, not those in `node_modules`),
 `options.staticWorker`, `lambdaOptions.lambda` and the `lambda` of the routes. Of a `root` the real path is checked, not the files under it. The index files are looked for when the server is loaded:
-one that is added in a folder that has none is found at the next reload, not by the watch.
+one that is added in a folder that has none is found at the next reload, not by the watch. A change of only a module that a worker or a lambda imports is not noticed, unless a deploy makes a link on the way to a watched path point elsewhere:
+its processes keep the module they loaded until they are stopped.
 
 - A link on the way to a watched file is followed: when it is made to point to another folder (`ln -sfn` and `mv -T`, the way a deploy switches releases), the servers under it are loaded again, and the old ones finish their requests
   as described below. Keep at least two releases on disk: a draining worker can still load files from the old one for up to 30 seconds. The folder that holds the link is watched, and only the name of the link and the watched files report a change.
@@ -550,9 +556,10 @@ one that is added in a folder that has none is found at the next reload, not by 
 - A `proxy` server with a `dynamic` target keeps the target that was registered with it when its file changes, as long as its `hostname` and `protocol` stay the same, so the service behind it does not
   have to register again (its `ttl` still counts from the last registration).
 - The listening sockets stay open, so no connection is refused during a reload.
+- With [several front processes](#front-processes) all of them load the servers again together.
 
 `watchServers: false` in the configuration turns watching off, `reloadOnSighup: true` loads the servers again on `SIGHUP` instead of stopping, for deployments that prefer to say when.
-What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the servers defined in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
+What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the definitions of the servers written in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
 the stats, the logging and `frontProcesses`), as it is given to the server once when it starts.
 
 ### Checking the configuration

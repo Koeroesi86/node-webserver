@@ -1,4 +1,5 @@
 import createServer from './create-server';
+import createFrontReload from './create-front-reload';
 import type { RunningServer } from './create-server';
 import { createFrontSignals, fingerprintConfiguration, getReleaseChange, isPrimaryMessage, readServerVersion } from '../cluster';
 import { getDate } from '../utils';
@@ -31,6 +32,8 @@ const startFront = async (
 ): Promise<Cluster> => {
   const signals = processHooks ? createFrontSignals() : undefined;
   let running: RunningServer | undefined;
+  let rounds: ReturnType<typeof createFrontReload> | undefined;
+  const requestReload = () => void send({ nodeWebserver: 'reload-request' });
   const exit = () => {
     logger.flush();
     process.exit(0);
@@ -38,7 +41,9 @@ const startFront = async (
   const stop = () => (running ? running.stop() : Promise.resolve());
   const obey: Record<PrimaryMessage['nodeWebserver'], (message: PrimaryMessage) => unknown> = {
     signal: (message) => message.nodeWebserver === 'signal' && signals?.receive(message.signal),
-    reload: () => running?.reload(),
+    prepare: (message) => message.nodeWebserver === 'prepare' && rounds?.prepare(message.round),
+    commit: (message) => message.nodeWebserver === 'commit' && rounds?.commit(message.round),
+    discard: (message) => message.nodeWebserver === 'discard' && rounds?.discard(message.round),
     stop: () => stop().then(exit),
   };
   process.on('message', (message) => isPrimaryMessage(message) && obey[message.nodeWebserver](message));
@@ -58,11 +63,12 @@ const startFront = async (
   };
   // a port that cannot be listened on is an error of the server that nothing catches
   process.once('uncaughtException', fail);
-  running = await createServer(configuration, logger, { processHooks, front, signals, stoppable: true }).catch(fail);
+  running = await createServer(configuration, logger, { processHooks, front, signals, stoppable: true, requestReload }).catch(fail);
   process.off('uncaughtException', fail);
-  await send({ nodeWebserver: 'ready', release });
+  rounds = createFrontReload(running, send, logger);
+  await send({ nodeWebserver: 'ready', release, ...running.report() });
 
-  return { role: 'front', frontCount: front.count, reload: running.reload, stop, removeProcessHooks: running.removeProcessHooks };
+  return { role: 'front', frontCount: front.count, reload: requestReload, stop, removeProcessHooks: running.removeProcessHooks };
 };
 
 export default startFront;

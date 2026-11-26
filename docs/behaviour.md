@@ -33,11 +33,11 @@ What the server does when things get busy, break or change. Defaults are the one
 | A front is at its share of `maxConnections` | its new connections are dropped, even while another front has room |
 | A reload would change the number of fronts | it is refused, the running servers are kept |
 
-Every front reloads on its own, so they can differ until the next change. Metrics and stats are those of the front that answers. `child` servers, `acme` and dynamic proxy targets need one front.
+All fronts reload together: the primary watches the files, every front prepares, and they serve the new servers only when all of them loaded the same, otherwise all keep what they run. Metrics and stats are those of the front that answers. `child` servers, `acme` and dynamic proxy targets need one front.
 
 ## On a reload
 
-Servers given as paths in `servers` are watched with their local files, the `root`, the route files and the index files under the `root` of their workers, the files of their lambdas, and certificates. Links are followed: a deploy that points a symlinked folder to a new release reloads the servers under it (keep at least two releases, as a draining worker can still load files from the old one). A change is applied once everything loads; a file that does not load is logged and the servers keep running as they were.
+Servers given as paths in `servers` are watched with their local files, and certificates. For every server, also one written in the configuration, the `root`, the route files and the index files under the `root` of its workers and the files of its lambdas are watched. A change of only a module that a worker imports is not noticed, unless a deploy switches a link. Links are followed: a deploy that points a symlinked folder to a new release reloads the servers under it (keep at least two releases, as a draining worker can still load files from the old one). A change is applied once everything loads; a file that does not load is logged and the servers keep running as they were.
 Unchanged servers keep their workers and processes, changed ones finish their requests (up to 30 s) while a new one starts next to them, and the listening sockets stay open. The configuration itself needs a restart.
 `watchServers: false` turns watching off, `reloadOnSighup: true` reloads on `SIGHUP`.
 

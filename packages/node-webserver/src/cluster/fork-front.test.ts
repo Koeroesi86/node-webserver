@@ -22,11 +22,11 @@ describe('forkFront', () => {
 
   it('sends the messages to a front that is connected only', () => {
     const connected = fake();
-    connected.handle.send({ nodeWebserver: 'reload' });
+    connected.handle.send({ nodeWebserver: 'stop' });
     const gone = fake({ connected: false });
-    gone.handle.send({ nodeWebserver: 'reload' });
+    gone.handle.send({ nodeWebserver: 'stop' });
 
-    expect(connected.worker.send).toHaveBeenCalledWith({ nodeWebserver: 'reload' }, expect.any(Function));
+    expect(connected.worker.send).toHaveBeenCalledWith({ nodeWebserver: 'stop' }, expect.any(Function));
     expect(gone.worker.send).not.toHaveBeenCalled();
   });
 
