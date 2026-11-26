@@ -104,3 +104,9 @@ export const FRONT_STOP_MARGIN = 2000;
 
 /** how far apart the same signal from the process and from the primary still counts as one, in milliseconds */
 export const SIGNAL_PAIR_WINDOW = 2000;
+
+/** how long a front may take to load its servers for a reload before it is replaced, in milliseconds */
+export const RELOAD_ROUND_TIMEOUT = 30000;
+
+/** how often a reload is tried again at once when the fronts did not load the same, as files were being written, before it waits for the next change */
+export const RELOAD_ROUND_RETRIES = 3;

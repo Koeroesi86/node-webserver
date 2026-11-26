@@ -9,22 +9,41 @@ import { setupSecureContexts } from '../tls';
 import { validateServers } from '../configuration';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
-import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger } from '../types';
+import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger, ServerConfig } from '../types';
 
 type Candidate = Omit<LoadedInstance, 'handler' | 'close'> | LoadedInstance;
 
 const isLoaded = (candidate: Candidate): candidate is LoadedInstance => 'handler' in candidate;
 
+/**
+ * the files of the workers and lambdas of a server, which run in other processes and are not in the require graph. None for settings of the wrong type,
+ * which the check of the servers reports.
+ */
+const findEntryFiles = (instance: ServerConfig) => {
+  try {
+    return getEntryFiles(instance);
+  } catch {
+    return [];
+  }
+};
+
+const withFingerprint = (candidate: Omit<Candidate, 'fingerprint' | 'runtime'>): Candidate => ({
+  ...candidate,
+  runtime: {},
+  fingerprint: readFingerprint(candidate.files),
+});
+
 /** the server of the entry as it is now: the one that runs when its files did not change, otherwise the definition loaded again, or nothing when its file is gone */
 const findCandidate = (source: Configuration['servers'][number], previous: LoadedInstance[]): Candidate[] => {
   const running = previous.find((loaded) => loaded.source === source);
 
-  if (typeof source !== 'string') {
-    return [running ?? { source, instance: applyAcmeFiles(source), runtime: {}, files: [] }];
-  }
-
   if (running && readFingerprint(running.files) === running.fingerprint) {
     return [running];
+  }
+
+  // a definition in the configuration itself stays as it is, only its workers and lambdas can change
+  if (typeof source !== 'string') {
+    return [withFingerprint({ source, instance: applyAcmeFiles(source), files: findEntryFiles(source) })];
   }
 
   const loaded = loadInstanceModule(source);
@@ -33,10 +52,10 @@ const findCandidate = (source: Configuration['servers'][number], previous: Loade
     return [];
   }
 
-  // the module as it is given, as it can be reached through a link, and the files of its workers and lambdas, which run in other processes and are not in the require graph
-  const files = Array.from(new Set([path.resolve(source), ...loaded.files, ...getEntryFiles(loaded.instance)]));
+  // the module as it is given, as it can be reached through a link
+  const files = Array.from(new Set([path.resolve(source), ...loaded.files, ...findEntryFiles(loaded.instance)]));
 
-  return [{ source, ...loaded, files, instance: applyAcmeFiles(loaded.instance), runtime: {}, fingerprint: readFingerprint(files) }];
+  return [withFingerprint({ source, instance: applyAcmeFiles(loaded.instance), files })];
 };
 
 interface Shared {
@@ -73,7 +92,8 @@ const check = (candidates: Candidate[], logger: Logger, { configuration = {}, fr
 };
 
 /**
- * The servers of the configuration, keeping the ones of `previous` whose files did not change, with their workers, lambdas and child processes.
+ * The servers of the configuration, keeping the ones of `previous` whose files did not change, with their workers, lambdas and child processes. A server defined in the configuration
+ * itself changes with the files of its workers and lambdas.
  * Everything is loaded and checked before anything is started (an error lists every problem of the servers), and what was started is stopped again when a server fails to start: on an error
  * this throws, and the servers of `previous` are left as they are.
  */

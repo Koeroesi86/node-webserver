@@ -1,11 +1,11 @@
 import isPrimaryMessage from './is-primary-message';
 
 describe('isPrimaryMessage', () => {
-  it.each([[{ nodeWebserver: 'signal', signal: 'SIGTERM' }], [{ nodeWebserver: 'reload' }], [{ nodeWebserver: 'stop' }]])('takes %j', (message) => {
+  it.each(['signal', 'prepare', 'commit', 'discard', 'stop'].map((nodeWebserver) => [{ nodeWebserver }]))('takes %j', (message) => {
     expect(isPrimaryMessage(message)).toBe(true);
   });
 
-  it.each([['reload'], [null], [{}], [{ nodeWebserver: 'ready' }]])('leaves out %j', (message) => {
+  it.each([['stop'], [null], [{}], [{ nodeWebserver: 'ready' }]])('leaves out %j', (message) => {
     expect(isPrimaryMessage(message)).toBe(false);
   });
 });

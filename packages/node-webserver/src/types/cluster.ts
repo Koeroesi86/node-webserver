@@ -25,22 +25,50 @@ export interface FrontProcess extends FrontShare {
   expected?: FrontRelease;
 }
 
+/** the servers a front runs: the files whose change the primary watches for, and a fingerprint of what was loaded, the same in fronts that loaded the same */
+export interface LoadReport {
+  files: string[];
+  fingerprint: string;
+}
+
 /** what the primary sends to a front */
 export type PrimaryMessage =
   | { nodeWebserver: 'signal'; signal: NodeJS.Signals }
-  | { nodeWebserver: 'reload' }
+  /** load the servers and start what is new, without serving from it */
+  | { nodeWebserver: 'prepare'; round: number }
+  /** serve what was prepared in the round, and retire what it replaces */
+  | { nodeWebserver: 'commit'; round: number }
+  /** close what was prepared in the round, and keep serving */
+  | { nodeWebserver: 'discard'; round: number }
   /** stop softly and end the process, also without process hooks */
   | { nodeWebserver: 'stop' };
+
+/** what a front sends to the primary about the loading of its servers */
+export type FrontReloadMessage =
+  | { nodeWebserver: 'prepared'; round: number; fingerprint: string }
+  | { nodeWebserver: 'prepare-failed'; round: number; reason: string }
+  /** the files to watch, after every load */
+  | { nodeWebserver: 'files'; files: string[] }
+  /** something in the front asks for the servers to be loaded again */
+  | { nodeWebserver: 'reload-request' };
 
 /** what a front sends to the primary */
 export type FrontMessage =
   /** the front listens for the messages of the primary from here on */
   | { nodeWebserver: 'hello' }
   /** the servers of the front listen */
-  | { nodeWebserver: 'ready'; release: FrontRelease }
+  | ({ nodeWebserver: 'ready'; release: FrontRelease } & LoadReport)
   | { nodeWebserver: 'failed'; reason: string }
   /** a replacement that found another configuration or version, and ends */
-  | { nodeWebserver: 'stale'; reason: string };
+  | { nodeWebserver: 'stale'; reason: string }
+  | FrontReloadMessage;
+
+/** what is told about the fronts of a server as they serve, say something about their servers, and end */
+export interface FrontListener {
+  serving: (index: number, report: LoadReport) => void;
+  message: (index: number, message: FrontReloadMessage) => void;
+  exited: (index: number) => void;
+}
 
 /** a front process as the primary sees it */
 export interface FrontHandle {
@@ -68,7 +96,7 @@ export interface Cluster {
   role: 'single' | 'primary' | 'front';
   /** how many fronts serve the ports */
   frontCount: number;
-  /** loads the servers again: of every front from the primary, of this one from a front */
+  /** loads the servers again, of every front together, whether it is asked of the primary or of a front */
   reload: () => void;
   /** stops softly, within `shutdownTimeout`, and resolves once it did: every front from the primary, this one from a front */
   stop: () => Promise<void>;
@@ -87,8 +115,8 @@ export interface PrimaryHookOptions {
   reloadOnSighup: boolean;
   shutdownTimeout: number;
   logger: Logger;
-  /** passes a message on to every front */
-  send: (message: PrimaryMessage) => void;
+  /** loads the servers of every front again */
+  reload: () => void;
   /** asks the fronts to leave, kills the ones that are there after `timeout` milliseconds and resolves once all of them ended */
   stop: (message: PrimaryMessage, timeout: number) => Promise<void>;
 }

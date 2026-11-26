@@ -10,7 +10,9 @@ jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createFron
 describe('startFront', () => {
   const logger = createMockLogger();
   const signals = { on: jest.fn(), once: jest.fn(), off: jest.fn(), detach: jest.fn(), receive: jest.fn() };
-  const running = { reload: jest.fn(), stop: jest.fn(async () => undefined), removeProcessHooks: jest.fn() };
+  const prepared = { instances: [], commit: jest.fn(), discard: jest.fn() };
+  const report = { files: ['a.js'], fingerprint: 'running' };
+  const running = { stop: jest.fn(async () => undefined), removeProcessHooks: jest.fn(), prepare: jest.fn(() => prepared), report: () => report };
   const configuration = { portHttp: 80 };
   const release = { configuration: fingerprintConfiguration(configuration), version: readServerVersion() };
   const originalSend = process.send;
@@ -40,21 +42,41 @@ describe('startFront', () => {
   it('serves with its share and the signals of both sides, and tells the primary once it does', async () => {
     const front = await startFront({ index: 1, count: 2 }, configuration, logger, {});
 
-    expect(createServer).toHaveBeenCalledWith(configuration, logger, { processHooks: true, front: { index: 1, count: 2 }, signals, stoppable: true });
-    expect(sent()).toEqual([{ nodeWebserver: 'hello' }, { nodeWebserver: 'ready', release }]);
-    expect(front).toMatchObject({ role: 'front', frontCount: 2, reload: running.reload });
+    expect(createServer).toHaveBeenCalledWith(configuration, logger, {
+      processHooks: true,
+      front: { index: 1, count: 2 },
+      signals,
+      stoppable: true,
+      requestReload: expect.any(Function),
+    });
+    expect(sent()).toEqual([{ nodeWebserver: 'hello' }, { nodeWebserver: 'ready', release, ...report }]);
+    expect(front).toMatchObject({ role: 'front', frontCount: 2 });
+  });
+
+  it('asks the primary to load the servers of all fronts, whether the program or the server asks for it', async () => {
+    const front = await startFront({ index: 0, count: 2 }, configuration, logger, {});
+
+    front.reload();
+    jest.mocked(createServer).mock.calls[0][2]?.requestReload?.();
+
+    expect(sent().slice(2)).toEqual([{ nodeWebserver: 'reload-request' }, { nodeWebserver: 'reload-request' }]);
   });
 
   it('does what the primary tells it', async () => {
     await startFront({ index: 0, count: 2 }, configuration, logger, {});
 
-    channel.emit('message', { nodeWebserver: 'reload' });
+    channel.emit('message', { nodeWebserver: 'prepare', round: 1 });
+    channel.emit('message', { nodeWebserver: 'commit', round: 1 });
+    channel.emit('message', { nodeWebserver: 'prepare', round: 2 });
+    channel.emit('message', { nodeWebserver: 'discard', round: 2 });
     channel.emit('message', { nodeWebserver: 'signal', signal: 'SIGTERM' });
     channel.emit('message', 'reload');
     channel.emit('message', { nodeWebserver: 'stop' });
     await new Promise(process.nextTick);
 
-    expect(running.reload).toHaveBeenCalledTimes(1);
+    expect(running.prepare).toHaveBeenCalledTimes(2);
+    expect(prepared.commit).toHaveBeenCalledTimes(1);
+    expect(prepared.discard).toHaveBeenCalledTimes(1);
     expect(signals.receive).toHaveBeenCalledWith('SIGTERM');
     expect(running.stop).toHaveBeenCalledTimes(1);
     expect(exit).toHaveBeenCalledWith(0);

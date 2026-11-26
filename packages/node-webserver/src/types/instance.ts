@@ -26,3 +26,12 @@ export interface LoadedInstance extends InstanceHandler, ServerState {
   /** of the content of the files, to tell whether they changed */
   fingerprint?: string;
 }
+
+/** servers that were loaded and started, and serve nothing yet */
+export interface PreparedServers {
+  instances: LoadedInstance[];
+  /** serves them from now on, and retires the ones they replace */
+  commit: () => void;
+  /** closes what was started for them, and leaves the running ones as they are */
+  discard: () => void;
+}

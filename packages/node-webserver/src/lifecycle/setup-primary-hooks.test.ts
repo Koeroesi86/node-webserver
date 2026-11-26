@@ -27,11 +27,11 @@ describe('setupPrimaryHooks', () => {
   const setup = (reloadOnSighup = false) => {
     let finish = () => {};
     const stopped = new Promise<void>((resolve) => (finish = resolve));
-    const send = jest.fn();
+    const reload = jest.fn();
     const stop = jest.fn(() => stopped);
-    const remove = setupPrimaryHooks(true, { reloadOnSighup, shutdownTimeout: 100, logger, send, stop });
+    const remove = setupPrimaryHooks(true, { reloadOnSighup, shutdownTimeout: 100, logger, reload, stop });
 
-    return { send, stop, remove, finish: () => finish() };
+    return { reload, stop, remove, finish: () => finish() };
   };
 
   it('passes a signal on to the fronts, and ends with it once they did, after the log is written', async () => {
@@ -61,20 +61,20 @@ describe('setupPrimaryHooks', () => {
   });
 
   it('stops on SIGHUP without reloadOnSighup', () => {
-    const { stop, send } = setup();
+    const { stop, reload } = setup();
 
     target.emit('SIGHUP', 'SIGHUP');
 
     expect(stop).toHaveBeenCalledTimes(1);
-    expect(send).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
   });
 
-  it('passes SIGHUP on to reload with reloadOnSighup', () => {
-    const { stop, send } = setup(true);
+  it('reloads on SIGHUP with reloadOnSighup', () => {
+    const { stop, reload } = setup(true);
 
     target.emit('SIGHUP', 'SIGHUP');
 
-    expect(send).toHaveBeenCalledWith({ nodeWebserver: 'signal', signal: 'SIGHUP' });
+    expect(reload).toHaveBeenCalledTimes(1);
     expect(stop).not.toHaveBeenCalled();
   });
 
@@ -87,7 +87,7 @@ describe('setupPrimaryHooks', () => {
   });
 
   it('adds nothing when it is disabled', () => {
-    const remove = setupPrimaryHooks(false, { reloadOnSighup: true, shutdownTimeout: 1, logger, send: jest.fn(), stop: jest.fn() });
+    const remove = setupPrimaryHooks(false, { reloadOnSighup: true, shutdownTimeout: 1, logger, reload: jest.fn(), stop: jest.fn() });
 
     remove();
 

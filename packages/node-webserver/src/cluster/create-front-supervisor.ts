@@ -1,5 +1,5 @@
 import { FRONT_MIN_UPTIME, FRONT_STOP_MARGIN } from '../constants';
-import type { FrontHandle, FrontMessage, FrontProcess, FrontRelease, Logger, PrimaryMessage } from '../types';
+import type { FrontHandle, FrontListener, FrontMessage, FrontProcess, FrontRelease, Logger, PrimaryMessage } from '../types';
 import { getDate } from '../utils';
 import getRestartDelay from './get-restart-delay';
 import isFrontMessage from './is-front-message';
@@ -13,6 +13,8 @@ interface SupervisorOptions {
   logger: Logger;
   /** called when no front is left and none is going to be started */
   onLost: () => void;
+  /** what is told about the fronts */
+  listener: FrontListener;
 }
 
 /** one of the places for a front, which the front that replaces another one takes over with its share of the limits */
@@ -39,7 +41,7 @@ interface Start {
 const isSameRelease = (first: FrontRelease, second: FrontRelease) => first.configuration === second.configuration && first.version === second.version;
 
 /** Starts the fronts, replaces the ones that end, and stops them. It serves nothing itself. */
-const createFrontSupervisor = ({ count, release, fork, logger, onLost }: SupervisorOptions) => {
+const createFrontSupervisor = ({ count, release, fork, logger, onLost, listener }: SupervisorOptions) => {
   const slots: Slot[] = Array.from({ length: count }, (_, index) => ({ index, startedAt: 0, failures: 0, stale: false }));
   const stopped: Array<() => void> = [];
   /** set until all the first fronts serve */
@@ -52,7 +54,9 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost }: Supervi
 
   const name = ({ index, handle }: Slot) => `Front ${index + 1} (pid ${handle?.pid})`;
 
-  const send = (message: PrimaryMessage) => slots.forEach(({ handle }) => handle?.send(message));
+  /** to one front, or to all of them */
+  const send = (message: PrimaryMessage, index?: number) =>
+    slots.filter((slot) => index === undefined || slot.index === index).forEach(({ handle }) => handle?.send(message));
 
   const finishStop = () => {
     if (slots.some(({ handle }) => handle)) return;
@@ -82,16 +86,18 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost }: Supervi
     resolve();
   };
 
-  const serve = (slot: Slot, found: FrontRelease) => {
+  const serve = (slot: Slot, { release: found, files, fingerprint }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
     logger.system(`[${getDate()}] ${name(slot)} is serving`);
+    listener.serving(slot.index, { files, fingerprint });
     starting?.releases.push(found);
     if (starting?.releases.length === count) settleStart(starting);
   };
 
   const receive = (slot: Slot, message: FrontMessage) => {
-    if (message.nodeWebserver === 'ready') return serve(slot, message.release);
+    if (message.nodeWebserver === 'ready') return serve(slot, message);
     // a front that is started while the others are stopped is told once it listens
     if (message.nodeWebserver === 'hello') return stopping && slot.handle?.send(stopping);
+    if (message.nodeWebserver !== 'failed' && message.nodeWebserver !== 'stale') return listener.message(slot.index, message);
 
     slot.reason = message.reason;
     slot.stale = message.nodeWebserver === 'stale';
@@ -125,6 +131,7 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost }: Supervi
 
   const exited = (slot: Slot, status: string) => {
     slot.handle = undefined;
+    listener.exited(slot.index);
     if (stopping) return finishStop();
     if (starting) return failStart(starting, slot, status);
 
@@ -140,6 +147,8 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost }: Supervi
       }),
     send,
     stop,
+    /** ends the front at once, which another one replaces */
+    kill: (index: number) => slots[index]?.handle?.kill(),
   };
 };
 

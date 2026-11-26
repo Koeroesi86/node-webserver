@@ -40,6 +40,13 @@ const frontServers = [
   worker('upload.localhost', { options: { root: resolve(__dirname, '../../examples/upload'), index: ['exampleWorker.js'], handOffRequests: 1024 } }),
 ];
 
+// servers whose files the test of the reload changes, in a folder of its own: two defined here, one in a file
+const versionedServers = (folder) => [
+  worker('inline-worker.localhost', { options: { root: resolve(folder, 'worker'), index: ['worker.js'] } }),
+  lambda('inline-lambda.localhost', resolve(folder, 'lambda.js')),
+  resolve(folder, 'server.js'),
+];
+
 // a child server and a proxy with a dynamic target work with one front only
 const worksWithSeveralFronts = ({ type, proxyOptions }) => fronts === 1 || (type !== 'child' && !(proxyOptions && proxyOptions.dynamic));
 
@@ -94,6 +101,7 @@ const configuration = {
     // a server in a file of its own, which the test of the reload changes
     ...(process.env.RELOADED_SERVER ? [process.env.RELOADED_SERVER] : []),
     ...(process.env.FRONT_PROCESSES ? frontServers : []),
+    ...(process.env.VERSIONED_SERVERS ? versionedServers(process.env.VERSIONED_SERVERS) : []),
   ],
 };
 

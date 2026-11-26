@@ -176,6 +176,16 @@ describeWithCores('the server with several front processes', () => {
     await until(server, () => ['[front-1]', '[front-2]'].every((front) => new RegExp(`\\${front}.*Servers loaded again`).test(server.output())));
   });
 
+  itWithSignals('loads the servers again once, in every front, on a SIGHUP that reaches every process, also without watching files', async () => {
+    const server = await start({ SYSTEM_LOGS: 'true', RELOAD_ON_SIGHUP: 'true' }, { ownGroup: true });
+
+    server.signalAll('SIGHUP');
+
+    await until(server, () => server.output().includes('The servers were loaded again in 2 fronts'));
+    expect(await answering(server)).not.toHaveLength(0);
+    expect(server.output().split('The servers were loaded again')).toHaveLength(2);
+  });
+
   it('hands big responses and request bodies over to the workers', async () => {
     const server = await start();
     const upload = randomBytes(2 * MIB);
