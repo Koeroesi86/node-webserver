@@ -35,6 +35,18 @@
     "portHttps": {
       "$ref": "#/definitions/port"
     },
+    "frontProcesses": {
+      "description": "how many front processes serve the ports, from 1 to 4 or the available cores, whichever is lower, or auto for that maximum",
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "auto"
+        }
+      ]
+    },
     "http2": {
       "description": "serve HTTP/2 on the https port to the clients that offer it",
       "type": "boolean"

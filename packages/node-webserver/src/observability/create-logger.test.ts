@@ -93,6 +93,20 @@ describe('createLogger', () => {
     expect(consoleLog).toHaveBeenCalledWith('only here');
   });
 
+  it('puts the front of a process in the names of its files and in front of its lines', () => {
+    jest.doMock('../cluster', () => ({ getFrontProcess: () => ({ index: 1, count: 2 }) }));
+    const { logger, fs, content, finishWrites } = load();
+
+    logger.info('%s of a front', 'a line');
+    logger.flush();
+    finishWrites();
+    jest.dontMock('../cluster');
+
+    expect(path.basename(fs.openSync.mock.calls[0][0])).toMatch(/^[0-9]+\.front-2\.info\.log$/);
+    expect(content('info')).toBe('[front-2] %s of a front, a line\n');
+    expect(consoleLog).toHaveBeenCalledWith('[front-2] a line of a front');
+  });
+
   it('refuses a configuration without fileLogPath', () => {
     expect(() => load({ fileLogPath: undefined })).toThrow('fileLogPath');
   });

@@ -10,6 +10,7 @@ const { join } = require('path');
 const checkout = join(__dirname, '../../../..');
 writeFileSync(join(checkout, 'server.pid'), String(process.pid));
 writeFileSync(join(checkout, 'setting.txt'), process.env.FAKE_SETTING ?? '');
+writeFileSync(join(checkout, 'fronts.txt'), process.env.FRONT_PROCESSES ?? '');
 http.createServer((request, response) => {
   appendFileSync(join(checkout, 'requests.log'), [request.headers.host, request.method, request.url].join(' ') + '\\n');
   request.resume();

@@ -30,6 +30,23 @@ describe('startServer', () => {
     listen.mockRestore();
   });
 
+  it.each([
+    [2, 1],
+    ['auto' as const, 1],
+    [1, 0],
+  ])('warns that it runs one front when frontProcesses asks for more: %s', async (frontProcesses, warnings) => {
+    // enough cores for what is asked for, on any machine
+    jest.spyOn(os, 'availableParallelism').mockReturnValue(8);
+    const listen = jest.spyOn(net.Server.prototype, 'listen');
+    const logger = createMockLogger();
+
+    await startServer({ ...configuration, frontProcesses }, logger, { processHooks: false });
+    await Promise.all(listen.mock.contexts.map((server: net.Server) => new Promise((resolve) => server.close(resolve))));
+    jest.restoreAllMocks();
+
+    expect(logger.warning.mock.calls.filter(([line]) => String(line).includes('use startCluster'))).toHaveLength(warnings);
+  });
+
   it('gives every call apps of its own', async () => {
     // the call does not hand its servers back, so the ones that listen are closed through the spy
     const listen = jest.spyOn(net.Server.prototype, 'listen');

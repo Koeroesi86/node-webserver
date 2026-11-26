@@ -54,10 +54,10 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
   };
   const calls = () => readFileSync(join(folder, 'k6.log'), 'utf8').trim().split('\n');
 
-  it('runs the example scenario, the CPU bound one, the binary one, the one with new TLS connections, the lambda one, the routes one, the lambda routes one, the downloads one and the uploads one against the server, and passes when all do', async () => {
+  it('runs the example scenario, the CPU bound one, the binary one, the one with new TLS connections, the lambda one, the routes one, the lambda routes one, the downloads one, the uploads one and the one of the fronts against the server, and passes when all do', async () => {
     expect(await run()).toBe(0);
 
-    const [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads, uploads] = calls();
+    const [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads, uploads, fronts] = calls();
     expect(example).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 -e DURATION=2s -e HTTPS_PORT=18454 .*example\.ts$/);
     expect(cpu).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*cpu\.ts$/);
     expect(binary).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*binary\.ts$/);
@@ -67,6 +67,7 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
     expect(lambdaRoutes).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*lambda-routes\.ts$/);
     expect(downloads).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*download\.ts$/);
     expect(uploads).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 .*big-upload\.ts$/);
+    expect(fronts).toMatch(/^run -e BASE_URL=http:\/\/localhost:18491 -e HTTPS_PORT=18454 .*fronts\.ts$/);
   });
 
   it('leaves the HTTPS routes and the TLS scenario out without a certificate', async () => {
@@ -84,6 +85,7 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
       expect.stringMatching(/lambda-routes\.ts$/),
       expect.stringMatching(/download\.ts$/),
       expect.stringMatching(/big-upload\.ts$/),
+      expect.stringMatching(/ -e BASE_URL=http:\/\/localhost:18491 [^ ]*fronts\.ts$/),
     ]);
   });
 
@@ -91,7 +93,15 @@ process.exit(args[args.length - 1].endsWith(process.env.FAKE_K6_FAIL || 'nothing
     process.env.FAKE_K6_FAIL = 'tls.ts';
 
     expect(await run()).toBe(1);
-    expect(calls()).toHaveLength(9);
+    expect(calls()).toHaveLength(10);
+  });
+
+  it('starts the server again with 2 front processes for the scenario of the fronts', async () => {
+    const root = createCheckout(folder, 'head', 1);
+
+    await runLoadTest({ root, duration: '2s', portHttp: '18491', portHttps: '18454', runner: 'native' });
+
+    expect(readFileSync(join(root, 'fronts.txt'), 'utf8')).toBe('2');
   });
 
   it('is 2 when neither k6 nor Docker can be used', async () => {

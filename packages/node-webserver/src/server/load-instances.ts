@@ -3,12 +3,13 @@ import createInstanceHandler from './create-instance-handler';
 import { applyAcmeFiles } from '../acme';
 import { getEntryFiles, readFingerprint } from '../reload';
 import { loadInstanceModule } from '../children';
+import { getFrontCount, splitServerLimits } from '../cluster';
 import { reportProblems } from '../problems';
 import { setupSecureContexts } from '../tls';
 import { validateServers } from '../configuration';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
-import type { CompressionBudget, Configuration, LoadedInstance, Logger } from '../types';
+import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger } from '../types';
 
 type Candidate = Omit<LoadedInstance, 'handler' | 'close'> | LoadedInstance;
 
@@ -44,16 +45,32 @@ interface Shared {
   compressionBudget?: CompressionBudget;
   /** the settings the servers are checked against, as a few of them depend on the others (the stats domain) */
   configuration?: Partial<Configuration>;
+  /** set in a front process, which runs its share of the limits of the servers */
+  front?: FrontShare;
 }
 
 const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger, shared: Shared): LoadedInstance => ({
   ...candidate,
-  ...createInstanceHandler(candidate.instance, candidate.runtime, {
+  // the definition is kept as it is, the share of the limits is only for what is started
+  ...createInstanceHandler(shared.front ? splitServerLimits(candidate.instance, shared.front) : candidate.instance, candidate.runtime, {
     logger,
     ...shared,
     previous: previous.find(({ source }) => source === candidate.source),
   }),
 });
+
+/** checks the servers, and in a front that they still run on as many fronts as the server was started with */
+const check = (candidates: Candidate[], logger: Logger, { configuration = {}, front }: Shared) => {
+  const instances = candidates.map(({ instance }) => instance);
+  const frontCount = front ? getFrontCount(configuration, instances) : 1;
+
+  // all the problems at once, before a certificate is read or anything is started
+  reportProblems(validateServers(candidates, configuration, frontCount), logger);
+
+  if (front && frontCount !== front.count) {
+    throw new Error(`The servers would run on ${frontCount} front processes instead of ${front.count}: restart the server to apply the change.`);
+  }
+};
 
 /**
  * The servers of the configuration, keeping the ones of `previous` whose files did not change, with their workers, lambdas and child processes.
@@ -62,8 +79,7 @@ const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger,
  */
 const loadInstances = (servers: Configuration['servers'], previous: LoadedInstance[], logger: Logger, shared: Shared = {}): LoadedInstance[] => {
   const candidates = servers.flatMap((source) => findCandidate(source, previous));
-  // all the problems at once, before a certificate is read or anything is started
-  reportProblems(validateServers(candidates, shared.configuration ?? {}), logger);
+  check(candidates, logger, shared);
   // the certificates are read again for every server, the running ones too, as they are renewed without the definition changing
   setupSecureContexts(candidates);
 

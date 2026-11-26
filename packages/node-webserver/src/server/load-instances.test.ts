@@ -215,3 +215,35 @@ describe('loadInstances', () => {
     expect(logger.warning).toHaveBeenCalledWith(expect.stringContaining('statsDomain'));
   });
 });
+
+describe('the servers of a front', () => {
+  const lambda: ServerConfig = {
+    hostname: 'lambda.localhost',
+    protocol: 'http',
+    type: 'lambda',
+    lambdaOptions: { lambda: __filename, limit: 2 },
+  };
+
+  beforeEach(() => jest.spyOn(os, 'availableParallelism').mockReturnValue(8));
+  afterEach(() => jest.restoreAllMocks());
+
+  it('load when they run on the fronts the server was started with, and keep their definition as it is', async () => {
+    const [loaded] = loadInstances([lambda], [], createMockLogger(), { configuration: { frontProcesses: 2 }, front: { index: 0, count: 2 } });
+
+    await loaded.close(0);
+    expect(loaded.instance.lambdaOptions?.limit).toBe(2);
+  });
+
+  it('are refused when their limits would run them on another number of fronts', () => {
+    const shared = { configuration: { frontProcesses: 4 }, front: { index: 0, count: 4 } };
+
+    expect(() => loadInstances([lambda], [], createMockLogger(), shared)).toThrow('2 front processes instead of 4: restart the server');
+  });
+
+  it('are refused when one of them works with one front only', () => {
+    const proxy: ServerConfig = { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'a' } } };
+    const shared = { configuration: { frontProcesses: 2 }, front: { index: 0, count: 2 } };
+
+    expect(() => loadInstances([proxy], [], createMockLogger(), shared)).toThrow('works with one front process only');
+  });
+});

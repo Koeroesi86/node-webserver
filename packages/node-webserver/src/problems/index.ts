@@ -3,6 +3,8 @@ export { default as findChildProblems } from './find-child-problems';
 export { default as findDuplicateProblems } from './find-duplicate-problems';
 export type { ServerEntry } from './find-duplicate-problems';
 export { default as findErrorPageProblems } from './find-error-page-problems';
+export { default as findFrontProblems } from './find-front-problems';
+export { default as findFrontProcessesProblems } from './find-front-processes-problems';
 export { default as findLambdaProblems } from './find-lambda-problems';
 export { default as findMissingPaths } from './find-missing-paths';
 export type { PathEntry } from './find-missing-paths';

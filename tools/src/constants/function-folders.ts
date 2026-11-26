@@ -7,6 +7,7 @@ export const FUNCTION_FOLDERS = [
   // node-webserver
   'acme',
   'children',
+  'cluster',
   'compression',
   'configuration',
   'lifecycle',

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { k6Image } from '../constants/load-test';
 import type { LoadTestOptions } from '../types/k6';
@@ -25,7 +25,8 @@ const runVisible = ([command, ...args]: string[]) =>
 
 /**
  * Starts the example server, warms it up and runs the scenarios of the workflow against it (the example load test, then the CPU bound one, the one with big binary responses,
- * with a certificate the one with new TLS connections, the one with the lambdas that fail, the one of the table of routes, the one with big downloads and the one with big uploads, each on its own), with the installed k6 or else the official Docker image.
+ * with a certificate the one with new TLS connections, the one with the lambdas that fail, the one of the table of routes, the one with big downloads and the one with big uploads, each on its own),
+ * then starts it again with 2 front processes for the one of the fronts, which a single core leaves out, with the installed k6 or else the official Docker image.
  * Resolves with the exit code: 0 when the thresholds of all held.
  */
 export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner = chooseK6Runner() }: LoadTestOptions) => {
@@ -38,11 +39,14 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
   const secure = makeCertificate(join(root, 'packages/node-webserver/.certificates/localhost'));
   if (!secure) console.error('openssl is not available, so the HTTPS and secure websocket routes are left out.');
 
-  const logPath = join(mkdtempSync(join(tmpdir(), 'load-test-')), 'server.log');
-  const server = startProcess(['node', 'dist/scripts/load-test-server.js'], logPath, {
-    cwd: join(root, 'packages/node-webserver'),
-    env: { PORT_HTTP: portHttp, PORT_HTTPS: portHttps },
-  });
+  const logFolder = mkdtempSync(join(tmpdir(), 'load-test-'));
+  const logPath = join(logFolder, 'server.log');
+  const startServer = (log: string, env: Record<string, string> = {}) =>
+    startProcess(['node', 'dist/scripts/load-test-server.js'], log, {
+      cwd: join(root, 'packages/node-webserver'),
+      env: { PORT_HTTP: portHttp, PORT_HTTPS: portHttps, ...env },
+    });
+  let server = startServer(logPath);
   const interrupt = () => {
     stopProcess(server).finally(() => process.exit(130));
   };
@@ -75,8 +79,17 @@ export const runLoadTest = async ({ root, duration, portHttp, portHttps, runner 
     const lambdaRoutes = await scenario('lambda-routes.ts', []);
     const downloads = await scenario('download.ts', ['-e', 'REQUIRE_HANDOFF=1']);
     const uploads = await scenario('big-upload.ts', ['-e', 'REQUIRE_HANDOFF=1']);
+    const runFronts = async () => {
+      await stopProcess(server);
+      server = startServer(join(logFolder, 'server-fronts.log'), { FRONT_PROCESSES: '2' });
+      await waitForServer(portHttp);
+      await warmUpServer(portHttp);
 
-    return [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads, uploads].every((code) => code === 0) ? 0 : 1;
+      return scenario('fronts.ts', secure ? ['-e', `HTTPS_PORT=${portHttps}`] : []);
+    };
+    const fronts = availableParallelism() > 1 ? await runFronts() : 0;
+
+    return [example, cpu, binary, handshakes, lambda, routes, lambdaRoutes, downloads, uploads, fronts].every((code) => code === 0) ? 0 : 1;
   } finally {
     process.off('SIGINT', interrupt);
     process.off('SIGTERM', interrupt);

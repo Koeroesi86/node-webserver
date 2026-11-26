@@ -21,6 +21,7 @@ module.exports = {
 | `portHttp`, `portHttps` | the ports of the two servers | |
 | `http2` | serve HTTP/2 on the https port | off |
 | `servers` | server definitions, or paths of files that export one | |
+| `frontProcesses` | front processes of the command line, 1 to 4 (or the cores, if fewer), or `auto` | 1 |
 | `trustedProxies` | load balancers whose forwarding headers are believed (CIDRs, `loopback`, `linklocal`, `uniquelocal`, or `{ http, https }`) | nobody |
 | `keepAliveTimeout` | how long an idle connection stays open, in ms | 65000 |
 | `maxConnections` | open connections per server before new ones are dropped, 0 for no limit | 10000 |

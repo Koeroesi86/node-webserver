@@ -24,7 +24,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 
 | Folder | What it is |
 |---|---|
-| `packages/node-webserver` | front server: `src/server/start-server.ts` builds two express apps (http, https with SNI) from the configuration, `src/middlewares/` has the `lambda` and `proxy` middlewares (the static worker is the one of `node-worker-express`), access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one per server type, `integration/` the integration test |
+| `packages/node-webserver` | front server: `src/server/create-server.ts` builds two express apps (http, https with SNI) from the configuration, `start-cluster.ts` runs several of them behind a primary (`src/cluster/`), `src/middlewares/` has the `lambda` and `proxy` middlewares (the static worker is the one of `node-worker-express`), access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one per server type, `integration/` the integration test |
 | `packages/node-webserver-cli` | thin wrapper: command line runner and service generator (systemd, launchd or Task Scheduler) (`service add\|remove`) |
 | `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each lambda a worker of the pool of `node-worker` (`@koeroesi86/node-worker/pool`) that answers one request at a time |
 | `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node with the pool of worker processes on it in `src/pool/` (published as `@koeroesi86/node-worker/pool`: leases, framed channel, protocol, the side of the worker process) which the lambdas and the workers both run on, and the express middleware on the pool |
@@ -70,7 +70,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 - Prefer native Node APIs to packages (`fetch`, `node:*`, `crypto.randomInt`). `fetch` does not throw on non-2xx: check `response.ok` and throw.
 - Keep conditions and loops flat (early returns, `filter().map()`); no variable used once unless its name explains something.
 - Comments say why, not what, in lower case sentences like the ones around them. No commented-out code.
-- The front process is a single, cheap proxy (design in `README.md`). Do nothing per request there that can be done behind it, and measure with the load test when you touch that path. Do not propose several front servers, and do not serve files from it: that is the static worker's job. Rank performance work by what was measured, not guessed.
+- The front is a cheap proxy (design in `README.md`), one process or up to four with `frontProcesses` (`node:cluster`, see #296). Do nothing per request there that can be done behind it, and measure with the load test when you touch that path. Do not propose more fronts or another way to share the ports without new measurements, nor several servers behind a balancer, and do not serve files from it: that is the static worker's job. Rank performance work by what was measured, not guessed.
 - After a refactor or dependency swap, check changed files for lost behaviour before calling it done.
 
 ## Context

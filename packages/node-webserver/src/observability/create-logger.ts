@@ -2,12 +2,20 @@ import { existsSync, mkdirSync } from 'fs';
 import type { Logger, LoggerConfiguration, LogLevels } from '../types';
 import createConsoleBatcher from './create-console-batcher';
 import createFileSink from './create-file-sink';
+import { getFrontProcess } from '../cluster';
+
+const getFrontName = () => {
+  const front = getFrontProcess();
+
+  return front && `front-${front.index + 1}`;
+};
 
 /**
  * A logger that writes a file per level, in the folder of `fileLogPath`, and the console. Nothing is touched but that folder, and the lines that wait are written
  * when `flush` is called: the one who creates it decides when that is, for example when the process exits.
+ * `name` tells the processes of a server apart, in the names of the files and in front of the lines: a front is `front-1` and so on without being given one.
  */
-const createLogger = ({ logLevels, fileLogPath, fileLogFlushInterval = 100 }: LoggerConfiguration): Logger => {
+const createLogger = ({ logLevels, fileLogPath, fileLogFlushInterval = 100 }: LoggerConfiguration, name = getFrontName()): Logger => {
   if (fileLogPath === undefined) {
     throw new Error('Please define fileLogPath in configuration.');
   }
@@ -16,8 +24,8 @@ const createLogger = ({ logLevels, fileLogPath, fileLogFlushInterval = 100 }: Lo
     mkdirSync(fileLogPath, { recursive: true });
   }
 
-  const consoleBatcher = createConsoleBatcher();
-  const fileSink = fileLogPath ? createFileSink({ folder: fileLogPath, startedAt: Date.now(), flushInterval: fileLogFlushInterval }) : undefined;
+  const consoleBatcher = createConsoleBatcher(name ? `[${name}] ` : '');
+  const fileSink = fileLogPath ? createFileSink({ folder: fileLogPath, startedAt: Date.now(), flushInterval: fileLogFlushInterval, name }) : undefined;
 
   /** whether lines of the level are logged, to spare building the lines that would be dropped. The levels do not change while the server runs. */
   const isEnabled = (level: keyof LogLevels) => !(logLevels && logLevels[level] === false);

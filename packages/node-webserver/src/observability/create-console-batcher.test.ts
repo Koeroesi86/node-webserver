@@ -28,6 +28,16 @@ describe('createConsoleBatcher', () => {
     expect(consoleLog).toHaveBeenCalledWith('a\nb 1');
   });
 
+  it('puts the prefix in front of every line, after its placeholders are filled', () => {
+    const batcher = createConsoleBatcher('[a] ');
+
+    batcher.log(['%s is %i', 'one', 1]);
+    batcher.log(['two']);
+    batcher.flush();
+
+    expect(consoleLog).toHaveBeenCalledWith('[a] one is 1\n[a] two');
+  });
+
   it('writes the lines of the next turn in another write', async () => {
     const batcher = createConsoleBatcher();
 

@@ -16,12 +16,14 @@ export interface RequestOptions {
   method?: string;
   body?: string;
   headers?: http.OutgoingHttpHeaders;
+  /** gives the request up */
+  signal?: AbortSignal;
 }
 
 /** a request to the loopback address with the host name of the virtual host, as names below localhost are not resolved everywhere */
-export const request = ({ port, host, path = '/', method = 'GET', body, headers = {} }: RequestOptions): Promise<Reply> =>
+export const request = ({ port, host, path = '/', method = 'GET', body, headers = {}, signal }: RequestOptions): Promise<Reply> =>
   new Promise((resolve, reject) => {
-    const outgoing = http.request({ host: '127.0.0.1', port, path, method, headers: { ...headers, Host: host }, agent: false }, (response) => {
+    const outgoing = http.request({ host: '127.0.0.1', port, path, method, headers: { ...headers, Host: host }, agent: false, signal }, (response) => {
       const parts: Buffer[] = [];
       response.on('data', (part: Buffer) => parts.push(part));
       response.on('error', reject);

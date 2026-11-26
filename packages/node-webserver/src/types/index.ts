@@ -1,4 +1,5 @@
 export * from './acme';
+export * from './cluster';
 export * from './logger';
 export * from './proxy';
 export * from './lambda';

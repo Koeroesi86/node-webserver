@@ -23,6 +23,18 @@ What the server does when things get busy, break or change. Defaults are the one
 - A proxy target that is missing gives `503`, one that cannot be reached `502`, one that stays silent `504` (`proxyTimeout`, 60 s).
 - A lambda that fails gives `502`, one that is too slow `504`, as API Gateway does.
 
+## With several front processes
+
+| Situation | What happens |
+|---|---|
+| A front ends | it is replaced, at once the first time, then after 100 ms doubling up to 10 s; the others keep serving |
+| A replacement finds another configuration or server version | it ends, the log says that a restart is needed; with no front left the server ends with an error |
+| The primary dies | the fronts and their workers exit |
+| A front is at its share of `maxConnections` | its new connections are dropped, even while another front has room |
+| A reload would change the number of fronts | it is refused, the running servers are kept |
+
+Every front reloads on its own, so they can differ until the next change. Metrics and stats are those of the front that answers. `child` servers, `acme` and dynamic proxy targets need one front.
+
 ## On a reload
 
 Servers given as paths in `servers` are watched with their local files, the `root`, the route files and the index files under the `root` of their workers, the files of their lambdas, and certificates. Links are followed: a deploy that points a symlinked folder to a new release reloads the servers under it (keep at least two releases, as a draining worker can still load files from the old one). A change is applied once everything loads; a file that does not load is logged and the servers keep running as they were.

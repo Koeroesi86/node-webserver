@@ -20,6 +20,12 @@ export interface RunningServer {
   /** loads the servers again, as `reload` of `startServer` does, which works on every platform unlike a signal */
   reload: () => void;
   signal: (signal: NodeJS.Signals) => void;
+  /** signals every process of the server, as systemd and Ctrl+C do. For a server started with `ownGroup`, not on Windows. */
+  signalAll: (signal: NodeJS.Signals) => void;
+  /** stops the server as SIGTERM does, which works on every platform */
+  requestStop: () => void;
+  /** the processor time the process of the server (the primary with several fronts) used so far, in milliseconds */
+  cpuTime: () => Promise<number>;
   /** whether the process ended */
   hasExited: () => boolean;
   /** resolves once the process ended */
@@ -81,23 +87,28 @@ const makeCertificate = (folder: string) => {
   return { key, cert, certificate: made.stdout };
 };
 
-/** starts the built server with the servers of the fixtures in a process of its own, and resolves once it accepts connections. `env` goes to the configuration of the fixtures. */
-export const startServer = async (env: Record<string, string> = {}): Promise<RunningServer> => {
+/**
+ * starts the built server with the servers of the fixtures in a process of its own, and resolves once it accepts connections. `env` goes to the configuration of the fixtures.
+ * With `ownGroup` its processes are a group of their own, for `signalAll`.
+ */
+export const startServer = async (env: Record<string, string> = {}, { ownGroup = false } = {}): Promise<RunningServer> => {
   const [port, httpsPort, childPortFrom, closedPort] = await Promise.all([getFreePort(), getFreePort(), getFreePortRangeStart(), getFreePort()]);
   const certificateFolder = fs.mkdtempSync(join(os.tmpdir(), 'node-webserver-integration-'));
   const { key, cert, certificate } = makeCertificate(certificateFolder);
   const child = spawn(process.execPath, [resolve(__dirname, '../fixtures/run-server.js')], {
     env: {
       ...process.env,
-      ...env,
       PORT_HTTP: `${port}`,
       PORT_HTTPS: `${httpsPort}`,
       PORT_CHILD_FROM: `${childPortFrom}`,
       PORT_CLOSED: `${closedPort}`,
+      // after the ports, for a test that listens on one of them itself
+      ...env,
       TLS_KEY: key,
       TLS_CERT: cert,
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    detached: ownGroup,
   });
   let output = '';
   let exitCode: number | null | undefined;
@@ -127,8 +138,10 @@ export const startServer = async (env: Record<string, string> = {}): Promise<Run
     throw new Error(`The server did not start (exit code ${exitCode}):\n${output}`);
   };
 
-  // the https port is bound by its own server, so the http port accepting connections does not mean this one does
-  const isStarted = async () => (await Promise.all([port, httpsPort].map(isListening))).every(Boolean);
+  // the https port is bound by its own server, so the http port accepting connections does not mean this one does. Several fronts listen one after the other,
+  // so with those it is the server that says when all of them do
+  const isStarted = async () =>
+    (!env.FRONT_PROCESSES || output.includes('The server is up.')) && (await Promise.all([port, httpsPort].map(isListening))).every(Boolean);
 
   while (!(await isStarted())) {
     await assertStarting();
@@ -143,6 +156,14 @@ export const startServer = async (env: Record<string, string> = {}): Promise<Run
     output: () => output,
     reload: () => child.send('reload'),
     signal: (signal) => child.kill(signal),
+    // a negative process id names the group
+    signalAll: (signal) => child.pid && process.kill(-child.pid, signal),
+    requestStop: () => child.send('stop'),
+    cpuTime: () =>
+      new Promise((done) => {
+        child.once('message', (usage: NodeJS.CpuUsage) => done((usage.user + usage.system) / 1000));
+        child.send('cpu');
+      }),
     hasExited: () => exitCode !== undefined,
     exited,
     get: (host, path, options) => request({ ...options, port, host, path }),

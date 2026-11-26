@@ -208,7 +208,7 @@ The client address workers get (`remoteAddress`) does not follow `trustedProxies
 
 ### Metrics for workers
 
-A worker can ask the server how it is doing with `event.getMetrics()`, which makes it easy to add a health or metrics endpoint. The server is one process and the workers are others, so this is a question over the channel to the server,
+A worker can ask the server how it is doing with `event.getMetrics()`, which makes it easy to add a health or metrics endpoint. The server and the workers are different processes (with [several front processes](#front-processes), the answer is of the one that runs the worker), so this is a question over the channel to the server,
 answered with a snapshot:
 
 ```javascript
@@ -482,7 +482,51 @@ TLS ends in the front process, on the thread that serves every other request too
 
 `keepAliveTimeout` (milliseconds, default 65000) is how long the server keeps an idle connection of a client open. Node closes them after 5 seconds, which is shorter than what load balancers and proxies keep theirs for (60 seconds is common),
 and a request that was sent over a connection that has just been closed fails. `maxConnections` (default 10000, 0 for no limit) is the number of open connections per server (http and https each) after which new ones are dropped,
-which the `connections:*` metrics count. Both are in the top level of the configuration, next to the ports.
+which the `connections:*` metrics count. Both are in the top level of the configuration, next to the ports. With [several front processes](#front-processes) the connections are split between them.
+
+### Front processes
+
+The front (parsing, TLS, routing, the messages to the workers, compression, access logs) runs on one core of one process. `frontProcesses`, at the top level of the configuration as the ports are shared, runs more of them
+with [`node:cluster`](https://nodejs.org/api/cluster.html): a number from 1 to the smaller of 4 and the available cores (anything above is an error), or `"auto"` for that maximum. It is 1 by default.
+Measure before turning it on: on a machine where the front was not the limit, more fronts only cost memory.
+
+`nws-cli` starts them, as does `startCluster(configuration, logger?, { processHooks })` for a program; `startServer` always runs one front, and warns when `frontProcesses` asks for more.
+
+```javascript
+const { startCluster } = require('@koeroesi86/node-webserver');
+
+const { role, frontCount, reload, stop } = await startCluster(require('./configuration'));
+```
+
+With one front it is a server in this process, as `startServer` makes it. With more, the process becomes the primary: it owns the ports, hands the connections to the fronts in turn (also on Windows) and supervises them, serving nothing itself.
+Every front is the same script run again with the same arguments, in which `startCluster` serves instead, so what comes before the call runs in each of them too. It resolves once all fronts serve, and rejects when one does not start
+(a problem of the configuration, a port in use), which stops the others. `role` is `single`, `primary` or `front`; `reload` and `stop` of the primary act on every front, those of a front on itself.
+
+**What is shared and what is not.** Each front is a server of its own: its own worker and lambda pools (a path that has a worker in one front starts another one in the next), caches, metrics and [stats](#metrics-for-workers), so an answer of
+`event.getMetrics()` or the stats domain shows one front only. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
+
+**Limits** are the totals of the server, split between the fronts as evenly as possible (6 over 4 fronts: 2, 2, 1, 1): `workerLimit`, `maxConnections`, `limit` and `limitPerPath` of a worker server, `limit` of a lambda server and its routes,
+their defaults included. No more fronts run than the smallest limit that is set allows, without a message about it: with `limit: 2` on one lambda route there are 2 fronts at most, with a limit of 1 there is one, behind the primary.
+`limitPerPath` as a function is the exception, every front gets at least 1 of what it returns, so the total can be higher. Per front, and not split: the `concurrency` of the compression, `limitQueue`, `limitWebSocketConnections`, and the workers
+of `warmPaths` (`warmWorkersPerPath` in every front, within its share of the limits). The connections are spread, not the requests: a front can be full while another has room, so requests wait, or get a 503, earlier than with one front.
+A connection over the share of `maxConnections` of a front is closed, also while another front has room, which long lived connections can lead to.
+
+**Not with several fronts yet:** `child` servers, `acme` and `proxy` servers with a `dynamic` target work with one front only, as every front would start the application, order the certificate or know the target on its own.
+More than one front with them is an error at the start, on a reload and in the [check](#checking-the-configuration), whether the number comes from `frontProcesses` or from `"auto"`.
+
+**When a front ends** another one takes its place and its share, at once the first time, then after 100 ms doubling up to 10 s as long as they end within 5 seconds, like a [worker that crashes](#workers-that-crash). The others keep serving.
+A connection the primary hands to a front in the instant it dies is not answered, and its client gives up on its own. A replacement that loads another configuration than the one the server runs, or finds another version of the package installed,
+ends instead of serving, and the log says that a restart is needed; with no front left the server ends with an error, which has a service manager start it again. A configuration that loads differently every time (a value made while it is loaded)
+is not compared. When the primary dies, its fronts and their workers exit.
+
+**Stopping** works as below. The primary passes `SIGINT`, `SIGTERM` and `SIGHUP` on to the fronts over the channel to them, as a signal to the primary alone does not reach them (and Windows would end them at once);
+systemd and Ctrl+C signal every process, and a front takes the same signal from both as one. The primary ends once the fronts did, and kills the ones that are still there 2 seconds after `shutdownTimeout`.
+
+**Reloading** works as below, in every front on its own: each watches the files and loads them, so they switch at slightly different moments, and a front that reads a file while it is written keeps the old servers until the next change while the others
+take the new ones. `SIGHUP` is passed on with `reloadOnSighup`. A change of a limit that would change the number of fronts is refused, the running servers are kept and the log says that a restart is needed.
+
+**Logs.** Each front writes files of its own, `<start>.front-<n>.<level>.log`, and puts `[front-<n>]` in front of its lines. The primary logs the fronts it starts, loses and replaces, in files of its own: `<start>.primary.<level>.log`
+with the logger `startCluster` makes, or where the logger it is given writes.
 
 ### Reloading the servers
 
@@ -509,7 +553,7 @@ one that is added in a folder that has none is found at the next reload, not by 
 
 `watchServers: false` in the configuration turns watching off, `reloadOnSighup: true` loads the servers again on `SIGHUP` instead of stopping, for deployments that prefer to say when.
 What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the servers defined in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
-the stats and the logging), as it is given to the server once when it starts.
+the stats, the logging and `frontProcesses`), as it is given to the server once when it starts.
 
 ### Checking the configuration
 
@@ -522,6 +566,7 @@ It prints every problem with its server (the host name, and the file when the se
 - the certificates: an https server needs a key and a certificate, which have to belong together; a certificate that expired is an error, one that expires within 14 days a warning
 - the routes: `pattern` has to be a regular expression with its `flags`
 - the servers together: a host name served twice over the same protocol is an error, a host that is the `statsDomain` is a warning, and `portHttp` and `portHttps` cannot be the same
+- `frontProcesses` above what the machine runs, and a `child` server, `acme` or a dynamic proxy target while [more than one front](#front-processes) would run
 - a `proxy` server has either a `target` that is a URL or a `dynamic` one with a token, a `child` server with arguments needs `%PORT%` in them unless `proxyOptions.port` is set, and a lambda server needs a `lambda` or `routes`
 
 An error stops the start, with all the problems in the message, and on a reload it is what is logged while the running servers are kept. A server file that does not exist is a warning, as a reload leaves it out.

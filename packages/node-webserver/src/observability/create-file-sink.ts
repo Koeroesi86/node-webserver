@@ -11,13 +11,17 @@ interface FileSinkOptions {
   startedAt: number;
   /** 0 writes every line right away */
   flushInterval: number;
+  /** of the process that writes, part of the file names and in front of every line: processes that share a folder have files of their own */
+  name?: string;
 }
 
 /**
  * A file per level in the folder. The lines wait in a buffer per level and are written behind, one chunk at a time for each file, so the thread that serves the
  * requests does not wait for the disk. `flush` writes what waits and blocks, for the exit.
  */
-const createFileSink = ({ folder, startedAt, flushInterval }: FileSinkOptions) => {
+const createFileSink = ({ folder, startedAt, flushInterval, name }: FileSinkOptions) => {
+  const fileName = (level: keyof LogLevels) => [startedAt, name, level, 'log'].filter((part) => part !== undefined).join('.');
+  const prefix = name ? `[${name}] ` : '';
   /** the lines waiting to be written, per level, which is per file */
   const buffers = new Map<keyof LogLevels, string[]>();
   const logFiles = new Map<keyof LogLevels, LogFile>();
@@ -30,7 +34,7 @@ const createFileSink = ({ folder, startedAt, flushInterval }: FileSinkOptions) =
     if (cached) return cached;
 
     // opened once, for reading and writing and created when it is missing: only a file that is not in append mode honours the position of a write
-    const fd = openSync(resolve(folder, `./${startedAt}.${level}.log`), constants.O_RDWR | constants.O_CREAT);
+    const fd = openSync(resolve(folder, fileName(level)), constants.O_RDWR | constants.O_CREAT);
     const file: LogFile = { fd, offset: fstatSync(fd).size };
     logFiles.set(level, file);
     return file;
@@ -151,7 +155,7 @@ const createFileSink = ({ folder, startedAt, flushInterval }: FileSinkOptions) =
       return;
     }
 
-    const line = `${args.join(', ')}\n`;
+    const line = `${prefix}${args.join(', ')}\n`;
     const lines = buffers.get(level) ?? [];
     lines.push(line);
     buffers.set(level, lines);
