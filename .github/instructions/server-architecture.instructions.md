@@ -4,7 +4,7 @@ applyTo: "packages/node-webserver/**,packages/node-worker/**,packages/node-worke
 
 # Server architecture instructions
 
-- The front process is a single, cheap proxy. Do not move request-path work there when it can be done behind the proxy.
+- The front is a cheap proxy (one process, or up to four with `frontProcesses`). Do not move request-path work there when it can be done behind the proxy.
 - Do not serve static files from the front process; static hosting belongs to the static worker.
 - Read the design section in the relevant package README before changing the request path, routing logic, worker boundaries, or proxy behavior.
 - Prefer the existing worker/lambda/proxy patterns instead of introducing unneeded abstractions.

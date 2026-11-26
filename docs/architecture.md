@@ -3,13 +3,24 @@
 ## Processes
 
 ```
-client ──► front server (one Node process) ──┬─► worker pool       one pool per worker file
+client ──► front server (a Node process)   ──┬─► worker pool       one pool per worker file
                                              ├─► lambda processes  one process per lambda, one request at a time
                                              ├─► child process     any application, proxied to
                                              └─► proxy target      an application that runs on its own
 ```
 
-The front server listens on the http and the https port (HTTP/2 and SNI optional), finds the server definition for the `Host` of a request, and hands the request to what runs behind it. It is a single process on purpose.
+The front server listens on the http and the https port (HTTP/2 and SNI optional), finds the server definition for the `Host` of a request, and hands the request to what runs behind it.
+
+By default it is a single process. With `frontProcesses` the command line runs several of them with `node:cluster`:
+
+```
+primary          owns the ports, hands the connections to the fronts in turn, supervises them, serves no request
+ ├─ front 1      the front server as above: http, https, express, pools of its own
+ ├─ front 2
+ └─ front N
+```
+
+A front gets a connection before a byte of it is read, so TLS, HTTP and routing all run in the fronts. See [front processes](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#front-processes).
 
 ## The request path
 
@@ -18,7 +29,7 @@ The front server listens on the http and the https port (HTTP/2 and SNI optional
 3. The middleware of the server type takes over: the worker pool of `node-worker` behind `node-worker-express`, the `lambda` middleware (which runs on the same pool), or the `proxy` middleware (`packages/node-webserver/src/middlewares/`).
 4. Access logs are written when the response is complete, and compression is applied if the server has it on.
 
-`server/start-server.ts` builds two express apps from the configuration, one for http and one for https with SNI. With `http2` on, the https port also serves a separate app for HTTP/2 requests.
+`server/create-server.ts` builds two express apps from the configuration, one for http and one for https with SNI. With `http2` on, the https port also serves a separate app for HTTP/2 requests.
 
 ## Rules for the front process
 

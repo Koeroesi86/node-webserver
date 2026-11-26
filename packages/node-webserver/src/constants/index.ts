@@ -86,3 +86,21 @@ export const ACME_REQUEST_TIMEOUT = 30000;
 
 /** the content type of a page by its extension, for the files of `errorPages` and `unknownHostPage`; anything else is plain text */
 export const PAGE_TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8', '.json': 'application/json' };
+
+/** the most front processes a server runs: with more of them the throughput got worse where it was measured */
+export const MAX_FRONT_PROCESSES = 4;
+
+/** the environment variable a front is told its place among the fronts in */
+export const FRONT_PROCESS_ENV = 'NODE_WEBSERVER_FRONT';
+
+/** a front that ends sooner than this after it started counts towards the delay of the next replacement, in milliseconds, as a worker that crashes does */
+export const FRONT_MIN_UPTIME = 5000;
+
+/** a front that ended too soon twice in a row is replaced after this long, doubling with every further time until the maximum, in milliseconds */
+export const FRONT_RESTART_BACKOFF = { base: 100, max: 10000 };
+
+/** how much longer than it was asked to take the primary waits for a front to stop before it kills it, in milliseconds */
+export const FRONT_STOP_MARGIN = 2000;
+
+/** how far apart the same signal from the process and from the primary still counts as one, in milliseconds */
+export const SIGNAL_PAIR_WINDOW = 2000;

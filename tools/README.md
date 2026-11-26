@@ -83,7 +83,7 @@ pnpm load-test 30s       # a longer example run (15s by default)
 ```
 
 `scripts/load-test.ts` (`pnpm load-test` builds first) does what the workflow does, on one machine: it makes the certificate for `https://secure.localhost` (needs `openssl`, the HTTPS routes are left out without it),
-starts the server on `PORT_HTTP` / `PORT_HTTPS` (8080 and 8443), warms it up, runs `example.ts`, `cpu.ts`, `binary.ts` and, with the certificate, `tls.ts`, and stops the server. The exit code is 1 when a threshold fails.
+starts the server on `PORT_HTTP` / `PORT_HTTPS` (8080 and 8443), warms it up, runs `example.ts`, `cpu.ts`, `binary.ts`, with the certificate `tls.ts`, and the scenarios below, each on its own, then starts the server again with 2 front processes for `fronts.ts`, and stops it. The exit code is 1 when a threshold fails.
 The k6 summary is printed, and the log of the server is in a temporary folder, whose path is printed first.
 
 It uses **the installed k6** when there is one, and otherwise **Docker** with the official [`grafana/k6`](https://hub.docker.com/r/grafana/k6) image (the version of the workflow, `k6Image` in `constants/load-test.ts`).
@@ -243,6 +243,19 @@ k6 run -e REQUIRE_HANDOFF=1 tools/src/k6/big-upload.ts
 
 Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
 
+### Several front processes
+
+`fronts.ts` runs against a server with 2 front processes (`FRONT_PROCESSES=2`, see `frontProcesses` in the [README of the server](../packages/node-webserver/README.md#front-processes)): the worker and lambda routes, and with a certificate the https one,
+on connections that are kept and on new ones, which the primary hands to the fronts in turn. It fails on a failed request, like the others. Its p95 limit (`MAX_P95_MS`, 500 ms, times `P95_FACTOR` in the workflow) only catches a collapse:
+how the throughput scales with the fronts does not show on the runners, which have too few cores, and is measured on a larger machine. The workflow and `pnpm load-test` stop the server of the other scenarios and start it again for this one, and leave it out of the comparison with the base.
+
+With more than one front the load test configuration leaves out the `child` server, which works with one front only, so nothing is behind `proxied.localhost`.
+
+```sh
+FRONT_PROCESSES=2 pnpm --filter @koeroesi86/node-webserver start:load-test &
+k6 run -e HTTPS_PORT=8443 tools/src/k6/fronts.ts
+```
+
 ### CPU bound worker
 
 `cpu.ts` sends requests at a fixed rate to `examples/cpu/exampleWorker.js`, a worker that hashes in a loop, about 9 ms of a core per request. The rate is higher than one worker can follow
@@ -259,6 +272,7 @@ k6 run tools/src/k6/cpu.ts
 | --- | --- | --- | --- |
 | server | `PORT_HTTP`, `PORT_HTTPS` | 8080, 8443 | ports of the server |
 | server | `WORKERS_PER_PATH` | CPU cores | workers started per path, 1 reproduces the single worker bottleneck |
+| server | `FRONT_PROCESSES` | 1 | front processes, more than 1 leaves out the `child` server |
 | server | `ACCESS_LOGS` | not set | `1` turns the access logs on (the `info` and `success` levels), to measure the logger on the path of every request |
 | k6 | `BASE_URL` | `http://localhost:8080` | |
 | k6 | `HTTPS_PORT` | not set | enables the HTTPS and secure websocket routes |

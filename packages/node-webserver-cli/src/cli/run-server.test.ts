@@ -1,12 +1,12 @@
 import { resolve } from 'path';
 import runServer from './run-server';
 
-const startServer = jest.fn();
+const startCluster = jest.fn();
 const checkConfiguration = jest.fn();
 
 jest.mock('@koeroesi86/node-webserver', () => ({
   __esModule: true,
-  default: (...args: unknown[]) => startServer(...args),
+  startCluster: (...args: unknown[]) => startCluster(...args),
   checkConfiguration: (...args: unknown[]) => checkConfiguration(...args),
   formatProblems: (problems: { message: string }[]) => problems.map(({ message }) => message).join('\n'),
 }));
@@ -15,7 +15,7 @@ const configPath = resolve(__dirname, '../../configuration.example.js');
 
 describe('runServer', () => {
   beforeEach(() => {
-    startServer.mockReset();
+    startCluster.mockReset();
     checkConfiguration.mockReset();
   });
 
@@ -27,13 +27,13 @@ describe('runServer', () => {
   it('starts the server with the configuration of the path', async () => {
     await runServer(configPath, false);
 
-    expect(startServer).toHaveBeenCalledTimes(1);
-    expect(startServer).toHaveBeenCalledWith(require(configPath));
+    expect(startCluster).toHaveBeenCalledTimes(1);
+    expect(startCluster).toHaveBeenCalledWith(require(configPath));
     expect(checkConfiguration).not.toHaveBeenCalled();
   });
 
   it('rejects when the server does not start, so the caller can exit with an error', async () => {
-    startServer.mockRejectedValue(new Error('port in use'));
+    startCluster.mockRejectedValue(new Error('port in use'));
 
     await expect(runServer(configPath, false)).rejects.toThrow('port in use');
   });
@@ -45,7 +45,7 @@ describe('runServer', () => {
     await runServer(configPath, true);
 
     expect(checkConfiguration).toHaveBeenCalledWith(require(configPath));
-    expect(startServer).not.toHaveBeenCalled();
+    expect(startCluster).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(`${configPath} is valid.`);
     expect(process.exitCode).toBe(0);
   });

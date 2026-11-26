@@ -1,4 +1,4 @@
-import { startServer } from '../server';
+import { startCluster } from '../server';
 import { createLogger } from '../observability';
 import { findPorts } from '../utils';
 import Configuration from '../configuration.example';
@@ -12,7 +12,7 @@ const run = async () => {
     await findPorts(Configuration.portLookup);
   }
 
-  await startServer(Configuration, logger);
+  await startCluster(Configuration, logger);
 };
 
 run().catch((error) => logger.error(error));

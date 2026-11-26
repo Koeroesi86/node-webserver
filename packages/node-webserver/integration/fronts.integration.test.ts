@@ -1,0 +1,263 @@
+import { createHash, randomBytes } from 'crypto';
+import { once } from 'events';
+import http from 'http';
+import net from 'net';
+import os from 'os';
+import { until } from './helpers/reloaded-folder';
+import { startServer } from './helpers/start-server';
+import { connectWebSocket } from './helpers/websocket-client';
+import type { RunningServer } from './helpers/start-server';
+
+// a single core runs one front, whatever is asked for
+const describeWithCores = os.availableParallelism() < 2 ? describe.skip : describe;
+// a signal cannot be sent to a group of processes, nor handled, on Windows
+const itWithSignals = process.platform === 'win32' ? it.skip : it;
+
+const MIB = 1024 * 1024;
+
+interface Processes {
+  worker: number;
+  front: number;
+}
+
+const isAlive = (pid: number) => {
+  try {
+    return process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+};
+
+const refuses = (port: number) =>
+  new Promise<boolean>((resolve) => {
+    const socket = net.connect(port, '127.0.0.1');
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => resolve(true));
+  });
+
+/**
+ * the processes that answer a few requests, each on a connection of its own, without the ones that fail. A request is given up after a while: a connection that the primary
+ * hands to a front as it dies is never answered, which node does not recover from
+ */
+const answering = async (server: RunningServer) => {
+  const get = () => server.get('front.localhost', '/', { signal: AbortSignal.timeout(5000) });
+  const replies = await Promise.allSettled(Array.from({ length: 8 }, get));
+
+  return replies.flatMap((reply) => (reply.status === 'fulfilled' && reply.value.status === 200 ? [reply.value.json() as Processes] : []));
+};
+
+const frontsOf = (processes: Processes[]) => Array.from(new Set(processes.map(({ front }) => front)));
+
+/** a request that stays open, so that the connection is not closed after it, on an agent of its own */
+const keepAlive = (server: RunningServer, host: string, options: http.RequestOptions = {}, body?: Buffer) => {
+  const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+
+  return new Promise<{ status?: number; headers: http.IncomingHttpHeaders; body: Buffer; agent: http.Agent }>((resolve, reject) => {
+    const outgoing = http.request({ host: '127.0.0.1', port: server.port, headers: { Host: host }, agent, ...options }, (response) => {
+      const parts: Buffer[] = [];
+      response.on('data', (part: Buffer) => parts.push(part));
+      response.on('error', reject);
+      response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(parts), agent }));
+    });
+    outgoing.on('error', reject);
+    outgoing.end(body);
+  });
+};
+
+/** a request that the server is answering, with what it answers in the end */
+const inFlight = (server: RunningServer, host: string, path: string) =>
+  new Promise<{ finished: Promise<string> }>((resolve, reject) => {
+    const outgoing = http.get({ host: '127.0.0.1', port: server.port, path, headers: { Host: host }, agent: false }, (response) => {
+      let text = '';
+      const finished = new Promise<string>((done, fail) => {
+        response.on('end', () => done(text));
+        response.on('error', fail);
+      });
+      response.on('data', (part: Buffer) => (text += part));
+      response.once('data', () => resolve({ finished }));
+    });
+    outgoing.on('error', reject);
+  });
+
+/** what the server answered on a new connection until it was closed */
+const answerUntilClosed = async (port: number) => {
+  const socket = net.connect(port, '127.0.0.1');
+  let answer = '';
+  socket.on('data', (data: Buffer) => (answer += data));
+  // a connection that is dropped can be reset, which `once` of events would reject for
+  socket.on('error', () => {});
+  socket.write('GET / HTTP/1.1\r\nHost: front.localhost\r\n\r\n');
+  await new Promise((resolve) => socket.once('close', resolve));
+
+  return answer;
+};
+
+describeWithCores('the server with several front processes', () => {
+  const servers: RunningServer[] = [];
+  const cleanups: Array<() => Promise<unknown> | void> = [];
+
+  const start = async (env: Record<string, string> = {}, options: Parameters<typeof startServer>[1] = {}) => {
+    const server = await startServer({ FRONT_PROCESSES: '2', WATCH_SERVERS: 'false', ...env }, options);
+    servers.push(server);
+    return server;
+  };
+
+  /** all the processes of the fronts and of their workers that answered, once both fronts did */
+  const processesOf = async (server: RunningServer) => {
+    let seen: Processes[] = [];
+    await until(server, async () => {
+      seen = [...seen, ...(await answering(server))];
+      return frontsOf(seen).length === 2;
+    });
+
+    return Array.from(new Set(seen.flatMap(({ worker, front }) => [worker, front])));
+  };
+
+  const gone = (server: RunningServer, pids: number[]) => until(server, () => !pids.some(isAlive));
+
+  afterEach(async () => {
+    await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
+    await Promise.all(servers.splice(0).map((server) => server.stop()));
+  });
+
+  it('answers requests with more than one front', async () => {
+    const server = await start();
+
+    expect(await processesOf(server)).not.toContain(undefined);
+    expect(server.output()).toContain('[front-1]');
+  });
+
+  it('replaces a front that is killed, while the other one keeps serving', async () => {
+    const server = await start({ SYSTEM_LOGS: 'true' });
+    await processesOf(server);
+    const [killed, other] = frontsOf(await answering(server));
+
+    process.kill(killed, 'SIGKILL');
+    let fronts: number[] = [];
+    await until(server, async () => {
+      fronts = frontsOf(await answering(server));
+      return fronts.length === 2 && !fronts.includes(killed);
+    });
+
+    expect(fronts).toContain(other);
+    expect(server.output()).toContain('another one is started');
+  });
+
+  it('closes the connections over the limit of the fronts, while the primary stays idle', async () => {
+    // one connection for each front
+    const server = await start({ MAX_CONNECTIONS: '2' });
+    const held: Array<Awaited<ReturnType<typeof keepAlive>>> = [];
+    // a connection of the start of the server may still count for a moment
+    await until(server, async () => {
+      const reply = await keepAlive(server, 'front.localhost').catch(() => undefined);
+      held.push(...(reply ? [reply] : []));
+      return held.length === 2;
+    });
+    cleanups.push(() => held.forEach(({ agent }) => agent.destroy()));
+
+    const before = await server.cpuTime();
+    const answers = await Promise.all([answerUntilClosed(server.port), answerUntilClosed(server.port)]);
+    // the window the processor time is measured over: a primary that hands a connection from front to front takes all of it
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const used = (await server.cpuTime()) - before;
+
+    expect(answers).toEqual(['', '']);
+    expect(used).toBeLessThan(500);
+  });
+
+  it('loads the servers again in every front', async () => {
+    const server = await start({ SYSTEM_LOGS: 'true' });
+
+    server.reload();
+
+    await until(server, () => ['[front-1]', '[front-2]'].every((front) => new RegExp(`\\${front}.*Servers loaded again`).test(server.output())));
+  });
+
+  it('hands big responses and request bodies over to the workers', async () => {
+    const server = await start();
+    const upload = randomBytes(2 * MIB);
+
+    const downloaded = await keepAlive(server, 'download.localhost', { path: '/?mib=4' });
+    const uploaded = await keepAlive(
+      server,
+      'upload.localhost',
+      { method: 'POST', headers: { Host: 'upload.localhost', 'Content-Length': upload.length } },
+      upload
+    );
+    cleanups.push(() => [downloaded, uploaded].forEach(({ agent }) => agent.destroy()));
+
+    // a connection that was handed over is closed after the response
+    expect([downloaded.headers.connection, uploaded.headers.connection]).toEqual(['close', 'close']);
+    expect(downloaded.body.length).toBe(4 * MIB);
+    expect(JSON.parse(uploaded.body.toString())).toEqual({ size: upload.length, sha256: createHash('sha256').update(upload).digest('hex') });
+  });
+
+  it('finishes the requests in flight when it is stopped, closes websockets with 1001 and leaves no process behind', async () => {
+    const server = await start();
+    const processes = await processesOf(server);
+    const client = await connectWebSocket({ port: server.port, host: 'websocket.localhost' });
+    client.send('hello');
+    expect((await client.next()).payload.toString()).toBe('hello');
+    const request = await inFlight(server, 'front.localhost', '/?wait=2000');
+
+    // the signal goes to the primary alone, on Windows it cannot be sent
+    if (process.platform === 'win32') server.requestStop();
+    else server.signal('SIGTERM');
+
+    const message = await client.next();
+    expect([message.opcode, message.payload.readUInt16BE(0)]).toEqual([8, 1001]);
+    await until(server, () => refuses(server.port));
+    expect(await request.finished).toBe('started\nfinished\n');
+    await server.exited;
+    await gone(server, processes);
+  });
+
+  itWithSignals('takes the signal of a service stop, which reaches every process, as one', async () => {
+    // the application is not a process of the server, so the signal does not reach it, unlike a worker
+    const held: http.ServerResponse[] = [];
+    const application = http.createServer((request, response) => {
+      response.writeHead(200, { 'Content-Length': '5' });
+      response.write('hel');
+      held.push(response);
+    });
+    application.listen(0, '127.0.0.1');
+    await once(application, 'listening');
+    cleanups.push(() => application.closeAllConnections());
+    cleanups.push(() => new Promise((resolve) => application.close(resolve)));
+    const address = application.address() as net.AddressInfo;
+    const server = await start({ PORT_CLOSED: `${address.port}` }, { ownGroup: true });
+    const processes = await processesOf(server);
+    const request = await inFlight(server, 'proxy-down.localhost', '/');
+
+    server.signalAll('SIGTERM');
+    await until(server, () => refuses(server.port));
+    expect(server.hasExited()).toBe(false);
+    held.forEach((response) => response.end('lo'));
+
+    expect(await request.finished).toBe('hello');
+    await server.exited;
+    await gone(server, processes);
+  });
+
+  it('takes the fronts and their workers with it when the primary is killed', async () => {
+    const server = await start();
+    const processes = await processesOf(server);
+
+    server.signal('SIGKILL');
+
+    await server.exited;
+    await gone(server, processes);
+  });
+
+  it('does not start, and says why, when a front cannot listen', async () => {
+    const taken = net.createServer().listen(0);
+    await once(taken, 'listening');
+    cleanups.push(() => new Promise((resolve) => taken.close(resolve)));
+    const { port } = taken.address() as net.AddressInfo;
+
+    await expect(start({ PORT_HTTPS: `${port}` })).rejects.toThrow(/Front [12] did not start: .*EADDRINUSE/);
+  });
+});

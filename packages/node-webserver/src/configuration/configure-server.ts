@@ -10,7 +10,8 @@ import type { Configuration } from '../types';
  */
 const configureServer = (
   // a server of HTTP/2 has the timeouts of HTTP/1 only when it falls back to it, which its types do not know of
-  server: net.Server & Partial<Pick<http.Server, 'keepAliveTimeout' | 'headersTimeout'>>,
+  // `dropMaxConnection` is missing in the types of node
+  server: net.Server & Partial<Pick<http.Server, 'keepAliveTimeout' | 'headersTimeout'>> & { dropMaxConnection?: boolean },
   name: string,
   { keepAliveTimeout = DEFAULT_KEEP_ALIVE_TIMEOUT, maxConnections = DEFAULT_MAX_CONNECTIONS }: Pick<Configuration, 'keepAliveTimeout' | 'maxConnections'>
 ) => {
@@ -19,6 +20,8 @@ const configureServer = (
   server.headersTimeout = Math.max(server.headersTimeout ?? 0, keepAliveTimeout + 1000);
   // node counts 0 as a limit that no connection fits under
   server.maxConnections = maxConnections > 0 ? maxConnections : Infinity;
+  // a front of a cluster would hand a connection over its limit to another one otherwise, round and round while all of them are full, which takes a core of the primary
+  server.dropMaxConnection = true;
 
   let open = 0;
   let dropped = 0;

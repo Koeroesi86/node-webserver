@@ -1,6 +1,8 @@
 // The configuration of the servers the integration tests start, one of each type. The ports come from the environment, as the tests pick free ones.
 const { resolve } = require('path');
 
+const fronts = Number(process.env.FRONT_PROCESSES || 1);
+
 const worker = (hostname, extra = {}) => ({
   hostname,
   protocol: 'http',
@@ -24,14 +26,27 @@ const lambdaRoutes = (hostname) => ({
   lambdaOptions: {
     routes: [
       { path: '/orders', lambda: resolve(__dirname, 'lambda-routes.js'), handler: 'list' },
-      { pattern: '/orders/(?<id>[0-9]+)', lambda: resolve(__dirname, 'lambda-routes.js'), handler: 'get', limit: 1 },
+      // one for every front: a smaller limit would run fewer fronts
+      { pattern: '/orders/(?<id>[0-9]+)', lambda: resolve(__dirname, 'lambda-routes.js'), handler: 'get', limit: fronts },
       { pattern: '/other/.*', lambda: resolve(__dirname, 'lambda.js') },
     ],
   },
 });
 
-module.exports = {
+// the servers for the tests with several front processes: one that tells which front answered, and the big bodies that the fronts hand over to their workers
+const frontServers = [
+  worker('front.localhost', { options: { root: resolve(__dirname, 'front'), index: ['worker.js'] } }),
+  worker('download.localhost', { options: { root: resolve(__dirname, '../../examples/download'), index: ['exampleWorker.js'], handOffResponses: 1024 } }),
+  worker('upload.localhost', { options: { root: resolve(__dirname, '../../examples/upload'), index: ['exampleWorker.js'], handOffRequests: 1024 } }),
+];
+
+// a child server and a proxy with a dynamic target work with one front only
+const worksWithSeveralFronts = ({ type, proxyOptions }) => fronts === 1 || (type !== 'child' && !(proxyOptions && proxyOptions.dynamic));
+
+const configuration = {
   fileLogPath: false,
+  ...(process.env.FRONT_PROCESSES && { frontProcesses: fronts }),
+  ...(process.env.MAX_CONNECTIONS && { maxConnections: Number(process.env.MAX_CONNECTIONS) }),
   // the tests of the reload read the lines of the system log
   logLevels: { system: process.env.SYSTEM_LOGS === 'true', info: false, success: false, error: true, warning: true },
   portHttp: Number(process.env.PORT_HTTP),
@@ -78,5 +93,8 @@ module.exports = {
     ...(process.env.WARM_MARKER ? [worker('warm.localhost', { options: { root: resolve(__dirname, 'warm'), index: ['worker.js'], warmPaths: ['/'] } })] : []),
     // a server in a file of its own, which the test of the reload changes
     ...(process.env.RELOADED_SERVER ? [process.env.RELOADED_SERVER] : []),
+    ...(process.env.FRONT_PROCESSES ? frontServers : []),
   ],
 };
+
+module.exports = { ...configuration, servers: configuration.servers.filter((server) => typeof server === 'string' || worksWithSeveralFronts(server)) };

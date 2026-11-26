@@ -1,11 +1,11 @@
-import startServer, { checkConfiguration, formatProblems } from '@koeroesi86/node-webserver';
+import { checkConfiguration, formatProblems, startCluster } from '@koeroesi86/node-webserver';
 
-/** starts the server of the configuration, or with `check` only says whether it would start, in the exit status */
+/** starts the server of the configuration, with the front processes it asks for, or with `check` only says whether it would start, in the exit status */
 const runServer = async (configPath: string, check: boolean): Promise<void> => {
-  const configuration: Parameters<typeof startServer>[0] = require(configPath);
+  const configuration: Parameters<typeof startCluster>[0] = require(configPath);
 
   if (!check) {
-    await startServer(configuration);
+    await startCluster(configuration);
     return;
   }
 

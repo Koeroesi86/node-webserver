@@ -144,6 +144,8 @@ const withHandOff = (server: ServerConfig): ServerConfig =>
 const withHandOffRequests = (server: ServerConfig): ServerConfig =>
   server.options ? { ...server, options: { ...server.options, handOffRequests: Number(process.env.HAND_OFF_REQUESTS ?? 8 * 1024 * 1024) } } : server;
 
+const frontProcesses = Number(process.env.FRONT_PROCESSES ?? 1);
+
 /**
  * Example configuration without per-request access logs by default and on unprivileged ports,
  * so load tests measure the server instead of log file I/O.
@@ -161,6 +163,8 @@ const withHandOffRequests = (server: ServerConfig): ServerConfig =>
  * WORKERS_PER_PATH overrides the number of workers started per path.
  * HAND_OFF_RESPONSES overrides the size in bytes from which the worker writes a response to the client itself (0 turns it off), to compare the server with and without it.
  * HAND_OFF_REQUESTS overrides the size in bytes from which the worker reads a request body from the client itself (0 turns it off), 8 MiB by default here.
+ * FRONT_PROCESSES runs that many front processes (`frontProcesses`, 1 by default). With more than one there is no `child` server, which works with one front only,
+ * so `proxied.localhost` has nothing behind it: the fronts scenario (`fronts.ts`) does not ask for it.
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {
@@ -183,7 +187,7 @@ const configuration = {
     uploadServer,
     healthServer,
     routesServer,
-    upstreamServer,
+    ...(frontProcesses > 1 ? [] : [upstreamServer]),
     proxiedServer,
     ...secureServers,
   ]
@@ -191,6 +195,7 @@ const configuration = {
     .map(withHandOff)
     .map(withHandOffRequests),
   http2: true,
+  frontProcesses,
   portHttp: Number(process.env.PORT_HTTP ?? 8080),
   portHttps: Number(process.env.PORT_HTTPS ?? 8443),
 } satisfies Configuration;

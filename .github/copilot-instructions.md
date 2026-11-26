@@ -23,10 +23,10 @@ If a check was not run, say so clearly under “Not verified”.
 
 ## Architecture and behavior
 
-- The front process is a single cheap proxy; do not add request-path work there that can be done behind it.
+- The front is a cheap proxy (one process, or up to four with `frontProcesses`); do not add request-path work there that can be done behind it.
 - Do not serve files from the front process; static hosting is the static worker’s job.
 - Read the design section in the package README before changing the request path or server flow.
-- Do not propose several front servers or broad architectural rewrites for a small fix.
+- Do not propose more front processes, several servers behind a balancer, or broad architectural rewrites for a small fix.
 - Use the existing worker/lambda/proxy patterns rather than inventing new request handling code.
 
 ## Code style

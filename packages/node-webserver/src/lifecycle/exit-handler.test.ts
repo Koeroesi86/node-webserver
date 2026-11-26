@@ -191,4 +191,26 @@ describe('addExitListeners', () => {
       expect(listeners.SIGHUP).toBeUndefined();
     });
   });
+
+  it('takes its signals from the source it is given, and detaches it before a signal is raised again', () => {
+    const order: string[] = [];
+    const source: Record<string, (signal: NodeJS.Signals) => void> = {};
+    const signals = {
+      on: jest.fn(),
+      once: jest.fn((signal: NodeJS.Signals, listener: (signal: NodeJS.Signals) => void) => {
+        source[signal] = listener;
+      }),
+      off: jest.fn(),
+      detach: () => {
+        order.push('detach');
+      },
+    };
+    kill.mockImplementation(() => order.push('kill') > 0);
+    addExitListeners(logger, () => [], { signals });
+
+    source.SIGTERM('SIGTERM');
+
+    expect(listeners.SIGTERM).toBeUndefined();
+    expect(order).toEqual(['detach', 'kill']);
+  });
 });

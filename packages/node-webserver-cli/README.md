@@ -20,6 +20,8 @@ npx nws-cli --config </path/to/config> --check
 
 It prints every problem with its server and setting, and exits with 1 when there is an error. What is checked is in the [README of the server](../node-webserver/README.md#checking-the-configuration).
 
+With `frontProcesses` in the configuration the command runs that many [front processes](../node-webserver/README.md#front-processes) behind a primary, which is the process of the command, and so of the service.
+
 `--config` falls back to the `NODE_WEBSERVER_CONFIG` environment variable. Without either the command fails, there is no example server to fall back to. A failed command exits with a non-zero code.
 
 ### As a service
