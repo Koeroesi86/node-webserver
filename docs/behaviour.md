@@ -28,18 +28,23 @@ What the server does when things get busy, break or change. Defaults are the one
 | Situation | What happens |
 |---|---|
 | A front ends | it is replaced, at once the first time, then after 100 ms doubling up to 10 s; the others keep serving |
-| A replacement finds another configuration or server version | it ends, the log says that a restart is needed; with no front left the server ends with an error |
+| A replacement finds another configuration or server version | it ends, and the primary applies the change; with no front left and none to start the server ends with an error |
 | The primary dies | the fronts and their workers exit |
 | A front is at its share of `maxConnections` | its new connections are dropped, even while another front has room |
-| A reload would change the number of fronts | it is refused, the running servers are kept |
+| A reload would change the number of fronts | new fronts replace the old ones |
 
 All fronts reload together: the primary watches the files, every front prepares, and they serve the new servers only when all of them loaded the same, otherwise all keep what they run. Metrics and stats are those of the front that answers. `child` servers, `acme` and dynamic proxy targets need one front.
 
 ## On a reload
 
 Servers given as paths in `servers` are watched with their local files, and certificates. For every server, also one written in the configuration, the `root`, the route files and the index files under the `root` of its workers and the files of its lambdas are watched. A change of only a module that a worker imports is not noticed, unless a deploy switches a link. Links are followed: a deploy that points a symlinked folder to a new release reloads the servers under it (keep at least two releases, as a draining worker can still load files from the old one). A change is applied once everything loads; a file that does not load is logged and the servers keep running as they were.
-Unchanged servers keep their workers and processes, changed ones finish their requests (up to 30 s) while a new one starts next to them, and the listening sockets stay open. The configuration itself needs a restart.
+Unchanged servers keep their workers and processes, changed ones finish their requests (up to 30 s) while a new one starts next to them, and the listening sockets stay open. A change of the configuration itself is applied as below.
 `watchServers: false` turns watching off, `reloadOnSighup: true` reloads on `SIGHUP`.
+
+## On a change of the configuration
+
+With the command line (or `startCluster` with `configurationFile`) the configuration file and the files it loads are watched. The new configuration is checked first, a wrong one keeps the running server. New fronts start next to the old ones, which stop once their requests are answered; limits can be exceeded meanwhile.
+The server restarts instead, refusing new connections meanwhile, when `frontProcesses` changes between one front and several, when it has a `child` server, `acme` or a dynamic proxy target, or when its version changed. A start that fails after a restart is tried again. Changes of environment variables are not seen.
 
 ## On a stop
 

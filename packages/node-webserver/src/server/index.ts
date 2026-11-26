@@ -1,10 +1,13 @@
 export { default as createFrontReload } from './create-front-reload';
 export { default as createInstanceHandler } from './create-instance-handler';
 export { default as createServer } from './create-server';
+export { default as createServerPlan } from './create-server-plan';
 export type { RunningServer, ServerOptions } from './create-server';
 export { default as loadInstances } from './load-instances';
 export { default as startCluster } from './start-cluster';
 export { default as startFront } from './start-front';
+export { default as startLauncher } from './start-launcher';
+export { default as startPlan } from './start-plan';
 export { default as startPrimary } from './start-primary';
 export { default as startServer } from './start-server';
 export type { StartOptions } from './start-server';

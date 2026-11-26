@@ -20,7 +20,9 @@ npx nws-cli --config </path/to/config> --check
 
 It prints every problem with its server and setting, and exits with 1 when there is an error. What is checked is in the [README of the server](../node-webserver/README.md#checking-the-configuration).
 
-With `frontProcesses` in the configuration the command runs that many [front processes](../node-webserver/README.md#front-processes) behind a primary, which is the process of the command, and so of the service.
+The command is a small launcher: it runs the server as a process of its own, a primary with its [front processes](../node-webserver/README.md#front-processes) (one, unless `frontProcesses` says more). A change of the configuration file, and of the
+files it loads, is applied while the server runs, [without a pause for most changes](../node-webserver/README.md#changes-of-the-configuration), unless `watchServers` is `false`. `SIGINT`, `SIGTERM` and `SIGHUP` to the command reach the server, which
+ends the command the way it ends.
 
 `--config` falls back to the `NODE_WEBSERVER_CONFIG` environment variable. Without either the command fails, there is no example server to fall back to. A failed command exits with a non-zero code.
 
@@ -75,7 +77,7 @@ A Windows service needs the service control protocol in the process, which a Nod
 | Loaded with | `schtasks /create /xml` then `/run` | the same |
 | Starts | at boot, as `SYSTEM` | at the logon of the user, without elevation |
 | Restarts | every minute after a failure, 999 times | the same |
-| Stop | `schtasks /end` (ends the process, the requests in flight are lost) | the same |
+| Stop | `schtasks /end` (ends the processes, the requests in flight are lost) | the same |
 | Output | none, Task Scheduler does not keep it | none |
 
 * `serviceUser` is not supported on Windows (a task needs the password of another user), and `fileLogPath` has no effect: log from the server itself.

@@ -11,8 +11,8 @@ interface SupervisorOptions {
   release: FrontRelease;
   fork: (front: FrontProcess) => FrontHandle;
   logger: Logger;
-  /** called when no front is left and none is going to be started */
-  onLost: () => void;
+  /** called when a replacement found something else than what runs, and none is started in its place */
+  onStale: () => void;
   /** what is told about the fronts */
   listener: FrontListener;
 }
@@ -41,7 +41,7 @@ interface Start {
 const isSameRelease = (first: FrontRelease, second: FrontRelease) => first.configuration === second.configuration && first.version === second.version;
 
 /** Starts the fronts, replaces the ones that end, and stops them. It serves nothing itself. */
-const createFrontSupervisor = ({ count, release, fork, logger, onLost, listener }: SupervisorOptions) => {
+const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener }: SupervisorOptions) => {
   const slots: Slot[] = Array.from({ length: count }, (_, index) => ({ index, startedAt: 0, failures: 0, stale: false }));
   const stopped: Array<() => void> = [];
   /** set until all the first fronts serve */
@@ -86,9 +86,9 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost, listener 
     resolve();
   };
 
-  const serve = (slot: Slot, { release: found, files, fingerprint }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
+  const serve = (slot: Slot, { release: found, files, fingerprint, singleFrontOnly }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
     logger.system(`[${getDate()}] ${name(slot)} is serving`);
-    listener.serving(slot.index, { files, fingerprint });
+    listener.serving(slot.index, { files, fingerprint, singleFrontOnly });
     starting?.releases.push(found);
     if (starting?.releases.length === count) settleStart(starting);
   };
@@ -97,6 +97,8 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost, listener 
     if (message.nodeWebserver === 'ready') return serve(slot, message);
     // a front that is started while the others are stopped is told once it listens
     if (message.nodeWebserver === 'hello') return stopping && slot.handle?.send(stopping);
+    // a plan comes from a process of its own, which is no front
+    if (message.nodeWebserver === 'plan') return undefined;
     if (message.nodeWebserver !== 'failed' && message.nodeWebserver !== 'stale') return listener.message(slot.index, message);
 
     slot.reason = message.reason;
@@ -110,8 +112,8 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost, listener 
   };
 
   const giveUp = (slot: Slot) => {
-    logger.error(`[${getDate()}] Front ${slot.index + 1} is not replaced: ${slot.reason}. Restart the server to apply the change.`);
-    if (slots.every(({ handle, timer }) => !handle && !timer)) onLost();
+    logger.system(`[${getDate()}] Front ${slot.index + 1} is not replaced, as ${slot.reason}`);
+    onStale();
   };
 
   const launch = (slot: Slot) => {
@@ -147,6 +149,8 @@ const createFrontSupervisor = ({ count, release, fork, logger, onLost, listener 
       }),
     send,
     stop,
+    /** whether no front runs and none is going to be started */
+    isEmpty: () => slots.every(({ handle, timer }) => !handle && !timer),
     /** ends the front at once, which another one replaces */
     kill: (index: number) => slots[index]?.handle?.kill(),
   };

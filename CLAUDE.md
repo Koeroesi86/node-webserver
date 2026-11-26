@@ -13,7 +13,7 @@ pnpm fallow             # unused files/exports/dependencies, duplication, comple
 pnpm quality            # fallow with test coverage for exact CRAP scores, as the pipeline runs it (`.fallowrc.ci.jsonc`)
 pnpm test               # unit tests
 pnpm test:coverage      # coverage: html per package in `packages/*/coverage/lcov-report`, merged `coverage/report.md` and `report.json` in the root; `pnpm coverage:merge` writes `coverage/coverage-final.json` for `pnpm quality`
-pnpm test:integration   # starts the built server with one server of every type
+pnpm test:integration   # starts the built server with one server of every type, and the command line with its launcher
 pnpm docs:build         # the site of `docs/` (VitePress) in `docs/.vitepress/dist`; `pnpm docs:dev` serves it, a dead link fails the build
 pnpm load-test          # k6 against the example server, needs k6 or Docker
 ```
@@ -24,8 +24,8 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 
 | Folder | What it is |
 |---|---|
-| `packages/node-webserver` | front server: `src/server/create-server.ts` builds two express apps (http, https with SNI) from the configuration, `start-cluster.ts` runs several of them behind a primary (`src/cluster/`), `src/middlewares/` has the `lambda` and `proxy` middlewares (the static worker is the one of `node-worker-express`), access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one per server type, `integration/` the integration test |
-| `packages/node-webserver-cli` | thin wrapper: command line runner and service generator (systemd, launchd or Task Scheduler) (`service add\|remove`) |
+| `packages/node-webserver` | front server: `src/server/create-server.ts` builds two express apps (http, https with SNI) from the configuration, `start-cluster.ts` runs them behind a primary and the launcher of `start-launcher.ts` (`src/cluster/`), `src/middlewares/` has the `lambda` and `proxy` middlewares (the static worker is the one of `node-worker-express`), access logs and compression, `src/scripts/` the entries (`server.ts`, `load-test-server.ts`), `examples/` one per server type, `integration/` the integration test |
+| `packages/node-webserver-cli` | thin wrapper: command line runner and service generator (systemd, launchd or Task Scheduler) (`service add\|remove`), `integration/` the tests of the launcher and of an installed service (the latter with `SERVICE_INTEGRATION=1`, which the pipeline sets: it installs a real service) |
 | `packages/node-lambda-invoke` | runs AWS Lambda style handlers locally, each lambda a worker of the pool of `node-worker` (`@koeroesi86/node-worker/pool`) that answers one request at a time |
 | `packages/node-worker`, `node-worker-express` | WebWorker-like API for Node with the pool of worker processes on it in `src/pool/` (published as `@koeroesi86/node-worker/pool`: leases, framed channel, protocol, the side of the worker process) which the lambdas and the workers both run on, and the express middleware on the pool |
 | `tools/` | `@koeroesi86/tools`, never published: versioning for the pipeline and the k6 load tests (`tools/README.md`) |

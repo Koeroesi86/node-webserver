@@ -24,7 +24,7 @@ npx nws-cli service <add|remove> --config <file> [--user]
 
 --config falls back to the NODE_WEBSERVER_CONFIG environment variable.
 
-  (none)          Starts the server in this process, what the service definitions run
+  (none)          Starts the server behind a launcher, what the service definitions run. A change of the configuration is applied while it runs
   --check         Validates the configuration and the server files it names, starts nothing
 
   service add     Installs, enables and starts the service (needs root, an administrator on Windows)

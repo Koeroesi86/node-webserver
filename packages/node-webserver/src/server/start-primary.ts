@@ -1,63 +1,74 @@
 import cluster from 'cluster';
-import { createFrontSupervisor, createReloadRounds, fingerprintConfiguration, forkFront, readServerVersion } from '../cluster';
-import { hydrateConfiguration, inspectConfiguration } from '../configuration';
+import createServerPlan from './create-server-plan';
+import { connectLauncher, createFrontSet, createFrontsManager, forkFront, getLauncherMode, readServerVersion, requestPlan } from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
 import { reportProblems } from '../problems';
-import { watchFiles } from '../reload';
-import { FRONT_STOP_MARGIN } from '../constants';
+import { readFingerprint, watchFiles } from '../reload';
+import { FRONT_STOP_MARGIN, RESTART_EXIT_CODE } from '../constants';
 import { getDate } from '../utils';
-import type { Cluster, Configuration, Logger, PrimaryMessage } from '../types';
-import type { StartOptions } from './start-server';
+import type { Cluster, ClusterOptions, Configuration, Logger } from '../types';
 
-/** The primary of a server with several fronts: it owns the ports, starts the fronts and supervises them, and serves no request itself. */
-const startPrimary = async (configuration: Partial<Configuration>, logger: Logger, { processHooks = true }: StartOptions): Promise<Cluster> => {
-  const { reloadOnSighup, shutdownTimeout, watchServers } = hydrateConfiguration(configuration);
+/**
+ * The primary of a server: it owns the ports, starts the fronts, supervises them and takes them through the changes of the configuration, and serves no request itself.
+ * With one front the front accepts the connections itself, so that it can be replaced without a pause. With several the primary does.
+ */
+const startPrimary = async (
+  configuration: Partial<Configuration>,
+  logger: Logger,
+  { processHooks = true, configurationFile }: ClusterOptions
+): Promise<Cluster> => {
   // everything that is wrong is said once, before a front is started
-  const { problems, frontCount } = inspectConfiguration(configuration);
-  reportProblems(problems, logger);
+  const plan = createServerPlan(configuration, configurationFile);
+  reportProblems(plan.problems, logger);
 
-  // the primary accepts the connections and hands them to the fronts in turn: left to the system, they would pile up on a few. Before the first front, also for Windows
-  cluster.schedulingPolicy = cluster.SCHED_RR;
-  const rounds = createReloadRounds({
+  // handed to the fronts in turn, left to the system they would pile up on a few of several. Set before the first front, also for Windows, and for as long as the primary runs
+  cluster.schedulingPolicy = plan.balanced ? cluster.SCHED_RR : cluster.SCHED_NONE;
+  const launcher = getLauncherMode() ? connectLauncher() : undefined;
+  const exit = (code: number) => {
+    logger.flush();
+    process.exit(code);
+  };
+  const manager = createFrontsManager({
     logger,
-    send: (message, index) => supervisor.send(message, index),
-    kill: (index) => supervisor.kill(index),
-    watch: watchServers ? watchFiles : undefined,
-  });
-  const supervisor = createFrontSupervisor({
-    listener: rounds,
-    count: frontCount,
-    release: { configuration: fingerprintConfiguration(configuration), version: readServerVersion() },
-    fork: forkFront,
-    logger,
+    version: plan.release.version,
+    createSet: (next, events) => createFrontSet({ plan: next, fork: forkFront, logger, watch: watchFiles, ...events }),
+    requestPlan,
+    watch: watchFiles,
+    fingerprint: readFingerprint,
+    restart: launcher && (() => exit(RESTART_EXIT_CODE)),
     onLost: () => {
       logger.error(`[${getDate()}] No front is left to serve.`);
       logger.flush();
       process.exitCode = 1;
-      // with an error, so that a service manager starts the server again, which loads what the replacements found
+      // with an error, so that a service manager starts the server again
       if (processHooks) process.exit();
     },
   });
-  const stop = (message: PrimaryMessage, timeout: number) => {
-    rounds.stop();
-    return supervisor.stop(message, timeout);
-  };
-  const removeProcessHooks = setupPrimaryHooks(processHooks, { reloadOnSighup, shutdownTimeout, logger, reload: rounds.request, stop });
+  const settings = () => (manager.getPlan() ?? plan).settings;
+  const removeProcessHooks = setupPrimaryHooks(processHooks, {
+    signals: launcher?.signals,
+    settings,
+    logger,
+    reload: manager.reload,
+    stop: manager.stop,
+  });
 
-  logger.system(`[${getDate()}] Starting the front processes: ${frontCount}`);
-  await supervisor.start().catch((error) => {
-    rounds.stop();
+  logger.system(`[${getDate()}] Starting the front processes: ${plan.frontCount}`);
+  await manager.start(plan).catch(async (error) => {
+    await manager.stop({ nodeWebserver: 'stop' }, FRONT_STOP_MARGIN);
     removeProcessHooks();
     logger.flush();
     throw error;
   });
-  rounds.start();
+  await launcher?.serving();
 
   return {
     role: 'primary',
-    frontCount,
-    reload: rounds.request,
-    stop: () => stop({ nodeWebserver: 'stop' }, shutdownTimeout + FRONT_STOP_MARGIN),
+    get frontCount() {
+      return (manager.getPlan() ?? plan).frontCount;
+    },
+    reload: manager.reload,
+    stop: () => manager.stop({ nodeWebserver: 'stop' }, settings().shutdownTimeout + FRONT_STOP_MARGIN),
     removeProcessHooks,
   };
 };

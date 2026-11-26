@@ -6,8 +6,9 @@ import { getFrontProcess } from '../cluster';
 
 const getFrontName = () => {
   const front = getFrontProcess();
+  if (!front) return undefined;
 
-  return front && `front-${front.index + 1}`;
+  return front.plan ? 'plan' : `front-${front.index + 1}`;
 };
 
 /**

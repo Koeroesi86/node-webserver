@@ -24,6 +24,7 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "test": "jest",
+    "test:integration": "jest -c integration/jest.config.js",
     "start": "node dist/scripts/cli.js --config configuration.example.js"
   },
   "dependencies": {

@@ -11,13 +11,14 @@ client ──► front server (a Node process)   ──┬─► worker pool    
 
 The front server listens on the http and the https port (HTTP/2 and SNI optional), finds the server definition for the `Host` of a request, and hands the request to what runs behind it.
 
-By default it is a single process. With `frontProcesses` the command line runs several of them with `node:cluster`:
+`startServer` runs it in one process. The command line runs it behind a primary and a launcher, one front by default and several with `frontProcesses`, with `node:cluster`:
 
 ```
-primary          owns the ports, hands the connections to the fronts in turn, supervises them and has them reload together, serves no request
- ├─ front 1      the front server as above: http, https, express, pools of its own
- ├─ front 2
- └─ front N
+launcher             starts the server again when it asks for that, otherwise ends the way it ends
+ └─ primary          owns the ports, supervises the fronts, has them reload together and replaces them on a change of the configuration, serves no request
+     ├─ front 1      the front server as above: http, https, express, pools of its own
+     ├─ front 2      with several the primary accepts the connections and hands them out in turn, one front accepts them itself
+     └─ front N
 ```
 
 A front gets a connection before a byte of it is read, so TLS, HTTP and routing all run in the fronts. See [front processes](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#front-processes).

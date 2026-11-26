@@ -2,21 +2,10 @@ import fs from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
 import type { ServerConfig } from '../types';
+import getModuleFiles from './get-module-files';
 
 /** the files each server module was loaded from the last time, also of a module whose file was removed since, as its file can come back */
 const loadedFiles = new Map<string, string[]>();
-
-/** the packages are left out, a change of the configuration does not touch them */
-const isLocal = (file: string) => !file.split(path.sep).includes('node_modules');
-
-const collectFiles = (module: NodeJS.Module, files = new Set<string>()): Set<string> => {
-  if (files.has(module.filename) || !isLocal(module.filename)) return files;
-
-  files.add(module.filename);
-  module.children.forEach((child) => collectFiles(child, files));
-
-  return files;
-};
 
 const isServerConfig = (value: unknown): value is ServerConfig =>
   typeof value === 'object' &&
@@ -45,7 +34,7 @@ const loadInstanceModule = (configPath: string): { instance: ServerConfig; files
   [filename, ...(loadedFiles.get(filename) ?? [])].forEach((file) => delete load.cache[file]);
   const instance: unknown = load(filename);
   const module = load.cache[filename];
-  const files = module ? Array.from(collectFiles(module)) : [filename];
+  const files = module ? Array.from(getModuleFiles(module)) : [filename];
   loadedFiles.set(filename, files);
 
   if (!isServerConfig(instance)) {

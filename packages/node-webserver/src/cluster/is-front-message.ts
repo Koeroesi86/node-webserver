@@ -5,6 +5,7 @@ const TYPES: unknown[] = [
   'ready',
   'failed',
   'stale',
+  'plan',
   'prepared',
   'prepare-failed',
   'files',

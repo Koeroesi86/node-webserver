@@ -1,5 +1,6 @@
 import createFrontReload from './create-front-reload';
 import createMockLogger from '../observability/mock-logger.test-helper';
+import { FrontCountError } from '../cluster';
 
 describe('createFrontReload', () => {
   const logger = createMockLogger();
@@ -14,7 +15,7 @@ describe('createFrontReload', () => {
         prepared.push({ instances: [], commit: jest.fn(), discard: jest.fn() });
         return prepared[prepared.length - 1];
       }),
-      report: jest.fn((servers?: object) => ({ files: ['a.js'], fingerprint: servers ? 'new' : 'running' })),
+      report: jest.fn((servers?: object) => ({ files: ['a.js'], fingerprint: servers ? 'new' : 'running', singleFrontOnly: false })),
     };
     return { reload: createFrontReload(server, send, logger), server, prepared };
   };
@@ -37,7 +38,7 @@ describe('createFrontReload', () => {
     reload[how](1);
 
     expect(prepared[0][how]).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'files', files: ['a.js'] }]]);
+    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false }]]);
   });
 
   it('leaves the round it holds alone for another one', () => {
@@ -68,7 +69,21 @@ describe('createFrontReload', () => {
     reload.prepare(3);
     reload.commit(3);
 
-    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'prepare-failed', round: 3, reason: 'broken' }], [{ nodeWebserver: 'files', files: ['a.js'] }]]);
+    expect(send.mock.calls).toEqual([
+      [{ nodeWebserver: 'prepare-failed', round: 3, reason: 'broken' }],
+      [{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false }],
+    ]);
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('tells the primary when the servers need another number of fronts', () => {
+    const { reload, server } = create();
+    server.prepare.mockImplementation(() => {
+      throw new FrontCountError(1, 2);
+    });
+
+    reload.prepare(1);
+
+    expect(send.mock.calls[0][0]).toMatchObject({ nodeWebserver: 'prepare-failed', recount: true });
   });
 });

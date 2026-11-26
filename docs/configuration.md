@@ -1,6 +1,6 @@
 # Configuration
 
-A `configuration.js` (or `configuration.json`) exports the top level options and the list of servers. The command line takes `--config <path>` (`nws-cli`), and `--check` checks the configuration without starting the server (see [Checking the configuration](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#checking-the-configuration)). A working example per server type is in [`packages/node-webserver/examples/`](https://github.com/Koeroesi86/node-webserver/tree/master/packages/node-webserver/examples).
+A `configuration.js` (or `configuration.json`) exports the top level options and the list of servers. The command line takes `--config <path>` (`nws-cli`), applies changes of the file while it runs, and `--check` checks the configuration without starting the server (see [Checking the configuration](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#checking-the-configuration)). A working example per server type is in [`packages/node-webserver/examples/`](https://github.com/Koeroesi86/node-webserver/tree/master/packages/node-webserver/examples).
 
 ```javascript
 module.exports = {
