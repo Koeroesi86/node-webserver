@@ -19,6 +19,10 @@ describeService('an installed service', () => {
     return spawnSync(file, args, { encoding: 'utf8' });
   };
 
+  const succeeded = { status: 0, error: '' };
+  /** with what the command said when it failed */
+  const outcome = ({ status, stderr }: ReturnType<typeof service>) => ({ status, error: status === 0 ? '' : stderr });
+
   /** what the server wrote to its log files, and to the journal where there is one */
   const describeFailure = () => {
     const files = fs.readdirSync(logs).map((name) => `${name}:\n${fs.readFileSync(path.join(logs, name), 'utf8')}`);
@@ -50,7 +54,7 @@ describeService('an installed service', () => {
     service('remove');
     configure();
     const added = service('add');
-    expect([added.status, added.stderr]).toEqual([0, expect.any(String)]);
+    expect(outcome(added)).toEqual(succeeded);
     await until(async () => (await folder.get()).status === 200, describeFailure);
 
     configure(['added.localhost']);
@@ -60,7 +64,7 @@ describeService('an installed service', () => {
 
     const removed = service('remove');
 
-    expect([removed.status, removed.stderr]).toEqual([0, expect.any(String)]);
+    expect(outcome(removed)).toEqual(succeeded);
     await until(() => !processes.some(isAlive), describeFailure);
     await until(async () => (await folder.get()).status === 0, describeFailure);
   });
