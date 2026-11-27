@@ -16,6 +16,23 @@ export interface FrontShare {
   count: number;
 }
 
+/** what `node:cluster` itself sends between the primary and a front, as far as the connections it hands over are concerned. It is not part of the API of Node. */
+export interface ClusterInternalMessage {
+  cmd: 'NODE_CLUSTER';
+  /** what is asked for, none in an answer */
+  act?: string;
+  /** the number of the message, which its answer names */
+  seq?: number;
+  /** the number of the message that is answered */
+  ack?: number;
+  /** what is listened on */
+  key?: string;
+  /** why a front cannot listen */
+  errno?: number;
+  /** whether a front took the connection */
+  accepted?: boolean;
+}
+
 /** what a server was started from: a front that is started in place of another one has to find the same */
 export interface FrontRelease {
   /** of the configuration the front was given */

@@ -1,12 +1,17 @@
 import cluster from 'cluster';
 import { FRONT_PROCESS_ENV } from '../constants';
 import type { FrontHandle, FrontProcess } from '../types';
+import createConnectionHandover from './create-connection-handover';
+
+/** one for all fronts, as a connection one of them did not take goes to another one */
+const handOver = createConnectionHandover();
 
 /** starts a front: this script with the same arguments, as a worker of the cluster, which is told its place in the environment */
 const forkFront = (front: FrontProcess): FrontHandle => {
   const worker = cluster.fork({ [FRONT_PROCESS_ENV]: JSON.stringify(front) });
   // a front that cannot be reached any more ends, which its exit says
   worker.on('error', () => {});
+  handOver(worker);
 
   return {
     pid: worker.process.pid,
