@@ -4,12 +4,12 @@ import createWorkerCommand, { workerCommands } from './create-worker-command';
 describe('createWorkerCommand', () => {
   const invoke = path.resolve(__dirname, '../worker-invoke.js');
 
-  it('runs a JavaScript worker through the invoker', () => {
-    expect(createWorkerCommand('/app/worker.js')).toEqual(['node', '--expose-gc', invoke, '/app/worker.js']);
+  it('runs a JavaScript worker through the invoker, with the node of the process whatever the PATH has', () => {
+    expect(createWorkerCommand('/app/worker.js')).toEqual([process.execPath, '--expose-gc', invoke, '/app/worker.js']);
   });
 
   it('falls back to the JavaScript command for an extension without an entry', () => {
-    expect(createWorkerCommand('/app/worker.unknown')).toEqual(['node', '--expose-gc', invoke, '/app/worker.unknown']);
+    expect(createWorkerCommand('/app/worker.unknown')).toEqual([process.execPath, '--expose-gc', invoke, '/app/worker.unknown']);
   });
 
   it('keeps a path with spaces in one argument', () => {
