@@ -1,45 +1,88 @@
 import cluster from 'cluster';
 import os from 'os';
 import startPrimary from './start-primary';
-import { createFrontSupervisor, createReloadRounds, readServerVersion } from '../cluster';
-import { watchFiles } from '../reload';
+import { connectLauncher, createFrontSet, createFrontsManager, getLauncherMode, readServerVersion } from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
+import { watchFiles } from '../reload';
 import createMockLogger from '../observability/mock-logger.test-helper';
-import { FRONT_STOP_MARGIN } from '../constants';
+import { FRONT_STOP_MARGIN, RESTART_EXIT_CODE } from '../constants';
 
-jest.mock('cluster', () => ({ __esModule: true, default: { isWorker: false, SCHED_RR: 2, schedulingPolicy: 1 } }));
-jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createFrontSupervisor: jest.fn(), createReloadRounds: jest.fn() }));
+jest.mock('cluster', () => ({ __esModule: true, default: { isWorker: false, SCHED_RR: 2, SCHED_NONE: 1, schedulingPolicy: 0 } }));
+jest.mock('../cluster', () => ({
+  ...jest.requireActual('../cluster'),
+  connectLauncher: jest.fn(),
+  createFrontSet: jest.fn(),
+  createFrontsManager: jest.fn(),
+  getLauncherMode: jest.fn(),
+}));
 jest.mock('../lifecycle', () => ({ ...jest.requireActual('../lifecycle'), setupPrimaryHooks: jest.fn() }));
 
 describe('startPrimary', () => {
   const logger = createMockLogger();
-  const supervisor = { start: jest.fn(), send: jest.fn(), stop: jest.fn(), kill: jest.fn() };
-  const rounds = { start: jest.fn(), stop: jest.fn(), request: jest.fn(), serving: jest.fn(), message: jest.fn(), exited: jest.fn() };
+  const manager = { start: jest.fn(), stop: jest.fn(), reload: jest.fn(), getPlan: jest.fn() };
+  const launcher = { signals: {} as never, serving: jest.fn(async () => undefined) };
   const removeHooks = jest.fn();
   const configuration = { frontProcesses: 2, servers: [], portHttp: 0, portHttps: 0, shutdownTimeout: 100 };
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform') ?? {};
+  let exit: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(os, 'availableParallelism').mockReturnValue(8);
-    supervisor.start.mockResolvedValue(undefined);
-    jest.mocked(createFrontSupervisor).mockReturnValue(supervisor);
-    jest.mocked(createReloadRounds).mockReturnValue(rounds);
+    exit = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    manager.start.mockResolvedValue(undefined);
+    manager.stop.mockResolvedValue(undefined);
+    manager.getPlan.mockReturnValue(undefined);
+    jest.mocked(createFrontsManager).mockReturnValue(manager);
     jest.mocked(setupPrimaryHooks).mockReturnValue(removeHooks);
+    jest.mocked(connectLauncher).mockReturnValue(launcher);
+    jest.mocked(getLauncherMode).mockReturnValue(undefined);
   });
 
   afterEach(() => {
+    Object.defineProperty(process, 'platform', originalPlatform);
     jest.restoreAllMocks();
     process.exitCode = undefined;
   });
 
-  const options = () => jest.mocked(createFrontSupervisor).mock.calls[0][0];
+  const options = () => jest.mocked(createFrontsManager).mock.calls[0][0];
+  const hooks = () => jest.mocked(setupPrimaryHooks).mock.calls[0][1];
 
-  it('has the connections handed to the fronts in turn, and starts as many as the configuration and its limits say', async () => {
+  it.each<[number, NodeJS.Platform, number]>([
+    [1, 'linux', cluster.SCHED_NONE],
+    [2, 'linux', cluster.SCHED_RR],
+    [1, 'win32', cluster.SCHED_RR],
+  ])('with frontProcesses %i on %s has the connections accepted by the ones that serve, or in turn', async (frontProcesses, platform, policy) => {
+    Object.defineProperty(process, 'platform', { ...originalPlatform, value: platform });
+
+    await startPrimary({ ...configuration, frontProcesses }, logger, {});
+
+    expect(cluster.schedulingPolicy).toBe(policy);
+  });
+
+  it('starts the fronts of the configuration and its limits', async () => {
     const running = await startPrimary({ ...configuration, frontProcesses: 4, workerLimit: 3 }, logger, {});
 
-    expect(cluster.schedulingPolicy).toBe(cluster.SCHED_RR);
-    expect(options()).toMatchObject({ count: 3, release: { version: readServerVersion() } });
+    expect(manager.start).toHaveBeenCalledWith(expect.objectContaining({ frontCount: 3, balanced: true }));
+    expect(options().version).toBe(readServerVersion());
     expect(running).toMatchObject({ role: 'primary', frontCount: 3, removeProcessHooks: removeHooks });
+  });
+
+  it('says the number of fronts that serve now', async () => {
+    const running = await startPrimary(configuration, logger, {});
+    manager.getPlan.mockReturnValue({ frontCount: 4 });
+
+    expect(running.frontCount).toBe(4);
+  });
+
+  it('makes the sets of fronts that watch the files of their servers', async () => {
+    await startPrimary(configuration, logger, {});
+    const events = { onStale: jest.fn(), onRecount: jest.fn() };
+
+    options().createSet({ frontCount: 2 } as never, events);
+
+    expect(createFrontSet).toHaveBeenCalledWith(expect.objectContaining({ plan: { frontCount: 2 }, watch: watchFiles, ...events }));
+    expect(options().watch).toBe(watchFiles);
   });
 
   it('says what is wrong with the configuration before a front is started', async () => {
@@ -48,60 +91,57 @@ describe('startPrimary', () => {
     await expect(
       startPrimary({ ...configuration, servers: [{ ...child, proxyOptions: {}, serverOptions: { protocol: 'http' } }] }, logger, {})
     ).rejects.toThrow('a child server works with one front process only');
-    expect(createFrontSupervisor).not.toHaveBeenCalled();
+    expect(createFrontsManager).not.toHaveBeenCalled();
   });
 
-  it('takes its listeners off and rejects when the fronts do not start', async () => {
-    supervisor.start.mockRejectedValue(new Error('Front 1 did not start'));
+  it('stops what runs, takes its listeners off and rejects when the fronts do not start', async () => {
+    manager.start.mockRejectedValue(new Error('Front 1 did not start'));
 
     await expect(startPrimary(configuration, logger, {})).rejects.toThrow('Front 1 did not start');
+    expect(manager.stop).toHaveBeenCalled();
     expect(removeHooks).toHaveBeenCalled();
   });
 
-  it('reloads every front together, once they serve, and stops them and the reloads', async () => {
+  it('reloads and stops through the manager, with the settings of the configuration that runs', async () => {
     const running = await startPrimary(configuration, logger, {});
+    expect(hooks().settings()).toMatchObject({ shutdownTimeout: 100 });
+    manager.getPlan.mockReturnValue({ settings: { shutdownTimeout: 7 } });
 
     running.reload();
     await running.stop();
 
-    expect(rounds.start).toHaveBeenCalled();
-    expect(rounds.request).toHaveBeenCalled();
-    expect(rounds.stop).toHaveBeenCalled();
-    expect(supervisor.stop).toHaveBeenCalledWith({ nodeWebserver: 'stop' }, 100 + FRONT_STOP_MARGIN);
+    expect(manager.reload).toHaveBeenCalled();
+    expect(manager.stop).toHaveBeenCalledWith({ nodeWebserver: 'stop' }, 7 + FRONT_STOP_MARGIN);
   });
 
-  it('has the rounds hear about the fronts, and reach them', async () => {
+  it('cannot restart without a launcher', async () => {
     await startPrimary(configuration, logger, {});
-    const given = jest.mocked(createReloadRounds).mock.calls[0][0];
 
-    given.send({ nodeWebserver: 'prepare', round: 1 }, 1);
-    given.kill(0);
-
-    expect(options().listener).toBe(rounds);
-    expect(supervisor.send).toHaveBeenCalledWith({ nodeWebserver: 'prepare', round: 1 }, 1);
-    expect(supervisor.kill).toHaveBeenCalledWith(0);
+    expect(options().restart).toBeUndefined();
+    expect(connectLauncher).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [true, watchFiles],
-    [false, undefined],
-  ])('watches the files for the fronts unless watchServers is off (%s)', async (watchServers, watch) => {
-    await startPrimary({ ...configuration, watchServers }, logger, {});
+  it('takes the signals of its launcher, tells it that it serves, and ends for a restart with the exit code for that', async () => {
+    jest.mocked(getLauncherMode).mockReturnValue('start');
 
-    expect(jest.mocked(createReloadRounds).mock.calls[0][0].watch).toBe(watch);
+    await startPrimary(configuration, logger, {});
+    options().restart?.();
+
+    expect(hooks().signals).toBe(launcher.signals);
+    expect(launcher.serving).toHaveBeenCalled();
+    expect(logger.flush).toHaveBeenCalled();
+    expect(exit).toHaveBeenCalledWith(RESTART_EXIT_CODE);
   });
 
   it.each([
     [true, 1],
     [false, 0],
   ])('fails once no front is left, and ends the process when its hooks are on (%s)', async (processHooks, exits) => {
-    const exit = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     await startPrimary(configuration, logger, { processHooks });
 
     options().onLost();
 
     expect(process.exitCode).toBe(1);
-    expect(logger.flush).toHaveBeenCalled();
     expect(exit).toHaveBeenCalledTimes(exits);
   });
 });

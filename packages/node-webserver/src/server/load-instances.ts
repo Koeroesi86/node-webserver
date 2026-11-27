@@ -3,7 +3,7 @@ import createInstanceHandler from './create-instance-handler';
 import { applyAcmeFiles } from '../acme';
 import { getEntryFiles, readFingerprint } from '../reload';
 import { loadInstanceModule } from '../children';
-import { getFrontCount, splitServerLimits } from '../cluster';
+import { FrontCountError, getFrontCount, splitServerLimits } from '../cluster';
 import { reportProblems } from '../problems';
 import { setupSecureContexts } from '../tls';
 import { validateServers } from '../configuration';
@@ -87,7 +87,7 @@ const check = (candidates: Candidate[], logger: Logger, { configuration = {}, fr
   reportProblems(validateServers(candidates, configuration, frontCount), logger);
 
   if (front && frontCount !== front.count) {
-    throw new Error(`The servers would run on ${frontCount} front processes instead of ${front.count}: restart the server to apply the change.`);
+    throw new FrontCountError(frontCount, front.count);
   }
 };
 

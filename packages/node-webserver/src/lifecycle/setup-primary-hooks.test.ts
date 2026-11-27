@@ -29,9 +29,10 @@ describe('setupPrimaryHooks', () => {
     const stopped = new Promise<void>((resolve) => (finish = resolve));
     const reload = jest.fn();
     const stop = jest.fn(() => stopped);
-    const remove = setupPrimaryHooks(true, { reloadOnSighup, shutdownTimeout: 100, logger, reload, stop });
+    const settings = { reloadOnSighup, shutdownTimeout: 100, watchServers: true };
+    const remove = setupPrimaryHooks(true, { settings: () => settings, logger, reload, stop });
 
-    return { reload, stop, remove, finish: () => finish() };
+    return { reload, stop, remove, settings, finish: () => finish() };
   };
 
   it('passes a signal on to the fronts, and ends with it once they did, after the log is written', async () => {
@@ -78,6 +79,28 @@ describe('setupPrimaryHooks', () => {
     expect(stop).not.toHaveBeenCalled();
   });
 
+  it('takes the settings as they are when the signal comes', () => {
+    const { reload, stop, settings } = setup(false);
+    settings.reloadOnSighup = true;
+
+    target.emit('SIGHUP', 'SIGHUP');
+
+    expect(reload).toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('listens to the signals of the source it is given, which it detaches before it ends with one', async () => {
+    const source = Object.assign(new EventEmitter(), { detach: jest.fn() });
+    const settings = { reloadOnSighup: false, shutdownTimeout: 1, watchServers: true };
+    setupPrimaryHooks(true, { signals: source, settings: () => settings, logger, reload: jest.fn(), stop: async () => undefined });
+
+    source.emit('SIGTERM', 'SIGTERM');
+    await new Promise(process.nextTick);
+
+    expect(source.detach.mock.invocationCallOrder[0]).toBeLessThan(kill.mock.invocationCallOrder[0]);
+    expect(source.eventNames()).toEqual([]);
+  });
+
   it('takes every listener off again', () => {
     const { remove } = setup(true);
 
@@ -87,7 +110,7 @@ describe('setupPrimaryHooks', () => {
   });
 
   it('adds nothing when it is disabled', () => {
-    const remove = setupPrimaryHooks(false, { reloadOnSighup: true, shutdownTimeout: 1, logger, reload: jest.fn(), stop: jest.fn() });
+    const remove = setupPrimaryHooks(false, { settings: jest.fn(), logger, reload: jest.fn(), stop: jest.fn() });
 
     remove();
 

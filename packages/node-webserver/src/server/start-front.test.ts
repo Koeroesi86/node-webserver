@@ -1,17 +1,17 @@
 import { EventEmitter } from 'events';
 import startFront from './start-front';
 import createServer from './create-server';
-import { createFrontSignals, fingerprintConfiguration, readServerVersion } from '../cluster';
+import { createMergedSignals, fingerprintConfiguration, readServerVersion } from '../cluster';
 import createMockLogger from '../observability/mock-logger.test-helper';
 
 jest.mock('./create-server', () => ({ __esModule: true, default: jest.fn() }));
-jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createFrontSignals: jest.fn() }));
+jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createMergedSignals: jest.fn() }));
 
 describe('startFront', () => {
   const logger = createMockLogger();
   const signals = { on: jest.fn(), once: jest.fn(), off: jest.fn(), detach: jest.fn(), receive: jest.fn() };
   const prepared = { instances: [], commit: jest.fn(), discard: jest.fn() };
-  const report = { files: ['a.js'], fingerprint: 'running' };
+  const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false };
   const running = { stop: jest.fn(async () => undefined), removeProcessHooks: jest.fn(), prepare: jest.fn(() => prepared), report: () => report };
   const configuration = { portHttp: 80 };
   const release = { configuration: fingerprintConfiguration(configuration), version: readServerVersion() };
@@ -19,6 +19,9 @@ describe('startFront', () => {
   let channel: EventEmitter;
   let send: jest.Mock;
   let exit: jest.SpyInstance;
+  // a test process can have a channel of its own, to the one that runs the tests
+  const original = Object.getOwnPropertyDescriptor(process, 'channel');
+  const ref = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -28,11 +31,14 @@ describe('startFront', () => {
     const on = process.on.bind(process);
     jest.spyOn(process, 'on').mockImplementation((event, listener) => (event === 'message' ? channel.on(event, listener) && process : on(event, listener)));
     exit = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    jest.mocked(createFrontSignals).mockReturnValue(signals);
+    jest.mocked(createMergedSignals).mockReturnValue(signals);
     jest.mocked(createServer).mockResolvedValue(running as never);
+    Object.defineProperty(process, 'channel', { configurable: true, writable: true, value: { ref } });
   });
 
   afterEach(() => {
+    if (original) Object.defineProperty(process, 'channel', original);
+    else Reflect.deleteProperty(process, 'channel');
     process.send = originalSend;
     jest.restoreAllMocks();
   });
@@ -62,6 +68,12 @@ describe('startFront', () => {
     expect(sent().slice(2)).toEqual([{ nodeWebserver: 'reload-request' }, { nodeWebserver: 'reload-request' }]);
   });
 
+  it('has the channel to the primary keep it running from the start of the server', async () => {
+    await startFront({ index: 0, count: 2 }, configuration, logger, {});
+
+    expect(ref.mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(createServer).mock.invocationCallOrder[0]);
+  });
+
   it('does what the primary tells it', async () => {
     await startFront({ index: 0, count: 2 }, configuration, logger, {});
 
@@ -89,7 +101,7 @@ describe('startFront', () => {
     channel.emit('message', { nodeWebserver: 'stop' });
     await new Promise(process.nextTick);
 
-    expect(createFrontSignals).not.toHaveBeenCalled();
+    expect(createMergedSignals).not.toHaveBeenCalled();
     expect(exit).toHaveBeenCalledWith(0);
   });
 
@@ -123,7 +135,7 @@ describe('startFront', () => {
     expect(createServer).not.toHaveBeenCalled();
     expect(sent()).toContainEqual({ nodeWebserver: 'stale', reason: expect.stringContaining('version') });
     expect(exit).toHaveBeenCalledWith(0);
-    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('restart the server'));
+    expect(logger.system).toHaveBeenCalledWith(expect.stringContaining('the primary looks at the change'));
   });
 
   it('tells the primary why it does not start, and ends with an error', async () => {

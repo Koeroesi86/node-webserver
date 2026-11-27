@@ -59,7 +59,10 @@ jobs:
         run: |
           pnpm coverage:merge
           pnpm fallow:ci
-      # one server of every type, started from the bundle
+      # one server of every type, started from the bundle, and the command line with its launcher
       - name: Integration tests
         timeout-minutes: 5
+        env:
+          # also installs, uses and removes a real service, which needs root (the runners have sudo without a password) or an administrator: only for a machine that is thrown away
+          SERVICE_INTEGRATION: '1'
         run: pnpm test:integration

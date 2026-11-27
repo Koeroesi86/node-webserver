@@ -1,5 +1,6 @@
 import type { RunningServer } from './create-server';
 import { getDate } from '../utils';
+import { FrontCountError } from '../cluster';
 import type { FrontMessage, Logger, PreparedServers } from '../types';
 
 /**
@@ -9,7 +10,10 @@ import type { FrontMessage, Logger, PreparedServers } from '../types';
 const createFrontReload = (server: Pick<RunningServer, 'prepare' | 'report'>, send: (message: FrontMessage) => unknown, logger: Logger) => {
   let held: { round: number; servers: PreparedServers } | undefined;
 
-  const sendFiles = () => send({ nodeWebserver: 'files', files: server.report().files });
+  const sendFiles = () => {
+    const { files, singleFrontOnly } = server.report();
+    send({ nodeWebserver: 'files', files, singleFrontOnly });
+  };
 
   /** serves or closes what is held for the round, which may be nothing when this front failed to prepare it */
   const settle = (round: number, how: 'commit' | 'discard') => {
@@ -32,7 +36,8 @@ const createFrontReload = (server: Pick<RunningServer, 'prepare' | 'report'>, se
         send({ nodeWebserver: 'prepared', round, fingerprint: server.report(servers).fingerprint });
       } catch (error) {
         logger.error(`[${getDate()}] The servers could not be loaded again:`, error);
-        send({ nodeWebserver: 'prepare-failed', round, reason: error instanceof Error ? error.message : String(error) });
+        const reason = error instanceof Error ? error.message : String(error);
+        send({ nodeWebserver: 'prepare-failed', round, reason, ...(error instanceof FrontCountError && { recount: true }) });
         sendFiles();
       }
     },

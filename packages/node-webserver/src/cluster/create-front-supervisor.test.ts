@@ -4,11 +4,12 @@ import { createFakeFork } from './fake-front.test-helper';
 import { FRONT_MIN_UPTIME, FRONT_STOP_MARGIN } from '../constants';
 
 const release = { configuration: 'a', version: '1.0.0' };
-const ready = { nodeWebserver: 'ready' as const, release, files: ['a.js'], fingerprint: 'running' };
+const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false };
+const ready = { nodeWebserver: 'ready' as const, release, ...report };
 
 describe('createFrontSupervisor', () => {
   const logger = createMockLogger();
-  const onLost = jest.fn();
+  const onStale = jest.fn();
   const listener = { serving: jest.fn(), message: jest.fn(), exited: jest.fn() };
 
   beforeEach(() => {
@@ -20,7 +21,7 @@ describe('createFrontSupervisor', () => {
 
   const create = (count = 2) => {
     const { fork, fronts } = createFakeFork();
-    return { fronts, supervisor: createFrontSupervisor({ count, release, fork, logger, onLost, listener }) };
+    return { fronts, supervisor: createFrontSupervisor({ count, release, fork, logger, onStale, listener }) };
   };
 
   const started = async (count = 2) => {
@@ -112,21 +113,23 @@ describe('createFrontSupervisor', () => {
     expect(logger.warning).toHaveBeenCalled();
   });
 
-  it('does not replace a replacement that found something else, and tells when no front is left', async () => {
-    const { fronts } = await started();
+  it('does not replace a replacement that found something else, tells so, and says when no front is left', async () => {
+    const { supervisor, fronts } = await started();
 
     fronts.slice(0, 2).forEach((front) => front.exit(1));
+    expect(supervisor.isEmpty()).toBe(false);
     jest.advanceTimersByTime(0);
     fronts[2].say({ nodeWebserver: 'stale', reason: 'another version' });
     fronts[2].exit(0);
-    expect(onLost).not.toHaveBeenCalled();
+    expect(supervisor.isEmpty()).toBe(false);
     fronts[3].say({ nodeWebserver: 'stale', reason: 'another version' });
     fronts[3].exit(0);
     jest.runAllTimers();
 
     expect(fronts).toHaveLength(4);
-    expect(onLost).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('another version. Restart the server'));
+    expect(onStale).toHaveBeenCalledTimes(2);
+    expect(supervisor.isEmpty()).toBe(true);
+    expect(logger.system).toHaveBeenCalledWith(expect.stringContaining('another version'));
   });
 
   it('ignores the messages of others', async () => {
@@ -168,11 +171,11 @@ describe('createFrontSupervisor', () => {
   it('tells the listener when a front serves, what it says about its servers, and when it ends', async () => {
     const { fronts } = await started(1);
 
-    fronts[0].say({ nodeWebserver: 'files', files: [] });
+    fronts[0].say({ nodeWebserver: 'files', files: [], singleFrontOnly: false });
     fronts[0].exit(1);
 
-    expect(listener.serving).toHaveBeenCalledWith(0, { files: ['a.js'], fingerprint: 'running' });
-    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [] });
+    expect(listener.serving).toHaveBeenCalledWith(0, report);
+    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [], singleFrontOnly: false });
     expect(listener.exited).toHaveBeenCalledWith(0);
   });
 

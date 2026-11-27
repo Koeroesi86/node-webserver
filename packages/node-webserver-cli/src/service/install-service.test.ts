@@ -25,7 +25,7 @@ describe('installService and removeService', () => {
   it('writes the unit, then enables and starts it with systemd', async () => {
     await installService(definition, { platform: 'linux', writeFile, runCommand });
 
-    expect(writeFile).toHaveBeenCalledWith('/etc/systemd/system/nws.service', expect.stringContaining('ExecStart='));
+    expect(writeFile).toHaveBeenCalledWith('/etc/systemd/system/nws.service', expect.stringContaining('ExecStart='), 'utf8');
     expect(runCommand.mock.calls).toEqual([
       ['systemctl', ['daemon-reload']],
       ['systemctl', ['enable', '--now', 'nws']],
@@ -35,7 +35,7 @@ describe('installService and removeService', () => {
   it('writes the plist and bootstraps it with launchd', async () => {
     await installService(definition, { platform: 'darwin', writeFile, runCommand });
 
-    expect(writeFile).toHaveBeenCalledWith('/Library/LaunchDaemons/com.koeroesi86.nws.plist', expect.stringContaining('com.koeroesi86.nws'));
+    expect(writeFile).toHaveBeenCalledWith('/Library/LaunchDaemons/com.koeroesi86.nws.plist', expect.stringContaining('com.koeroesi86.nws'), 'utf8');
     expect(runCommand).toHaveBeenCalledWith('launchctl', ['bootstrap', 'system', '/Library/LaunchDaemons/com.koeroesi86.nws.plist']);
   });
 
@@ -87,7 +87,7 @@ describe('installService and removeService', () => {
     await installService(definition, { platform: 'win32', makeFolder, writeFile, runCommand }, { home: 'C:\\Users\\dev', uid: undefined, userName: 'dev' });
 
     expect(makeFolder).toHaveBeenCalledWith(expect.stringMatching(/nws-cli$/));
-    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/nws\.xml$/), expect.stringContaining('<BootTrigger>'));
+    expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/nws\.xml$/), expect.stringContaining('<BootTrigger>'), 'utf16le');
     expect(runCommand.mock.calls.map(([command, args]) => `${command} ${args[0]}`)).toEqual(['schtasks /create', 'schtasks /run']);
   });
 
@@ -102,7 +102,7 @@ describe('installService and removeService', () => {
       await installService(userDefinition, { platform: 'linux', makeFolder, writeFile, runCommand }, user);
 
       expect(makeFolder).toHaveBeenCalledWith('/home/dev/.config/systemd/user');
-      expect(writeFile).toHaveBeenCalledWith('/home/dev/.config/systemd/user/nws.service', expect.stringContaining('WantedBy=default.target'));
+      expect(writeFile).toHaveBeenCalledWith('/home/dev/.config/systemd/user/nws.service', expect.stringContaining('WantedBy=default.target'), 'utf8');
       expect(runCommand.mock.calls).toEqual([
         ['systemctl', ['--user', 'daemon-reload']],
         ['systemctl', ['--user', 'enable', '--now', 'nws']],

@@ -1,20 +1,20 @@
 import { EventEmitter } from 'events';
-import createFrontSignals from './create-front-signals';
+import createMergedSignals from './create-merged-signals';
 import { SIGNAL_PAIR_WINDOW } from '../constants';
 
-describe('createFrontSignals', () => {
+describe('createMergedSignals', () => {
   let time: number;
 
   const create = () => {
     const kill = jest.fn(() => true);
     const target = Object.assign(new EventEmitter(), { kill, pid: 7 });
-    const signals = createFrontSignals(target as unknown as NodeJS.Process, () => time);
+    const signals = createMergedSignals(target as unknown as NodeJS.Process, () => time);
     return { signals, kill, target };
   };
 
   beforeEach(() => (time = 0));
 
-  it('takes the same signal from the process and from the primary as one, whichever comes first', () => {
+  it('takes the same signal from the process and from the channel as one, whichever comes first', () => {
     const { signals, target } = create();
     const listener = jest.fn();
     signals.on('SIGTERM', listener);

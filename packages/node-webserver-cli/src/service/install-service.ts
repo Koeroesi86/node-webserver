@@ -9,7 +9,7 @@ export interface InstallDependencies {
   platform: NodeJS.Platform;
   /** the user folders of systemd and launchd and the folder of the task definition may not exist yet */
   makeFolder: (path: string) => Promise<void>;
-  writeFile: (path: string, content: string) => Promise<void>;
+  writeFile: (path: string, content: string, encoding: BufferEncoding) => Promise<void>;
   runCommand: (command: string, args: string[]) => Promise<void>;
 }
 
@@ -22,13 +22,13 @@ export const defaultDependencies: InstallDependencies = {
 
 const installService = async (definition: ServiceDefinition, dependencies: Partial<InstallDependencies> = {}, user?: UserContext): Promise<void> => {
   const deps = { ...defaultDependencies, ...dependencies };
-  const { filePath, folder, content, install } = getServiceFiles(deps.platform, definition, user);
+  const { filePath, folder, content, encoding = 'utf8', install } = getServiceFiles(deps.platform, definition, user);
 
   const folders = folder ? [folder] : [];
 
   try {
     await Promise.all(folders.map((path) => deps.makeFolder(path)));
-    await deps.writeFile(filePath, content);
+    await deps.writeFile(filePath, content, encoding);
   } catch (error) {
     throw explainPermissionError(error, `Installing the service writes ${filePath}, run this as root (sudo) or administrator.`);
   }

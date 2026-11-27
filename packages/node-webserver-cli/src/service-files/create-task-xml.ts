@@ -10,7 +10,7 @@ const quote = (value: string): string => `"${value}"`;
 /** a task that starts at boot as SYSTEM, or at the logon of the given user without elevation */
 const createTaskXml = ({ displayName, nodePath, scriptPath, configPath, workingDirectory, userService }: ServiceDefinition, userName: string): string =>
   [
-    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<?xml version="1.0" encoding="UTF-16"?>',
     '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
     `  <RegistrationInfo>${element('Description', displayName.replace(/\s+/g, ' '))}</RegistrationInfo>`,
     userService

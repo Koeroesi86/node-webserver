@@ -15,7 +15,9 @@ const getWindowsServiceFiles = (definition: ServiceDefinition, home: string, use
   return {
     filePath,
     folder,
-    content: createTaskXml(definition, userName),
+    // `schtasks` rejects a file in UTF-8 that declares it, the byte order mark says it is the UTF-16 its own exports are in
+    content: `\uFEFF${createTaskXml(definition, userName)}`,
+    encoding: 'utf16le',
     install: [
       ['schtasks', '/create', '/tn', name, '/xml', filePath, '/f'],
       ['schtasks', '/run', '/tn', name],

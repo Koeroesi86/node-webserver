@@ -282,7 +282,7 @@ describe('the servers of a front', () => {
   it('are refused when their limits would run them on another number of fronts', () => {
     const shared = { configuration: { frontProcesses: 4 }, front: { index: 0, count: 4 } };
 
-    expect(() => loadInstances([lambda], [], createMockLogger(), shared)).toThrow('2 front processes instead of 4: restart the server');
+    expect(() => loadInstances([lambda], [], createMockLogger(), shared)).toThrow('2 front processes instead of 4, which takes new ones');
   });
 
   it('are refused when one of them works with one front only', () => {

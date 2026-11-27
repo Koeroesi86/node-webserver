@@ -249,6 +249,8 @@ Options: `MIB`, `VUS`, `DURATION`, `MIN_MB_PER_S`, `REQUIRE_HANDOFF`.
 on connections that are kept and on new ones, which the primary hands to the fronts in turn. It fails on a failed request, like the others. Its p95 limit (`MAX_P95_MS`, 500 ms, times `P95_FACTOR` in the workflow) only catches a collapse:
 how the throughput scales with the fronts does not show on the runners, which have too few cores, and is measured on a larger machine. The workflow and `pnpm load-test` stop the server of the other scenarios and start it again for this one, and leave it out of the comparison with the base.
 
+The load test server runs behind a primary also with one front, the default of every other scenario, so the comparison with a base that ran it in one process shows what the primary costs.
+
 With more than one front the load test configuration leaves out the `child` server, which works with one front only, so nothing is behind `proxied.localhost`.
 
 ```sh

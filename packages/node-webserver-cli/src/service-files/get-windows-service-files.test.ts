@@ -25,6 +25,13 @@ describe('getWindowsServiceFiles', () => {
     expect(files.afterRemove).toEqual([]);
   });
 
+  it('writes the definition as UTF-16 with a byte order mark, which Task Scheduler reads', () => {
+    const { content, encoding } = getWindowsServiceFiles(definition, 'C:\\Users\\dev', 'dev');
+
+    expect(encoding).toBe('utf16le');
+    expect(content.startsWith('\uFEFF<?xml version="1.0" encoding="UTF-16"?>')).toBe(true);
+  });
+
   it('keeps the task of a user service in the local app data of the user', () => {
     const files = getWindowsServiceFiles({ ...definition, userService: true }, 'C:\\Users\\dev', 'dev');
 

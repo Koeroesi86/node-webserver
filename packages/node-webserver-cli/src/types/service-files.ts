@@ -5,6 +5,8 @@ export interface ServiceFiles {
   folder?: string;
   /** what goes into it */
   content: string;
+  /** of the file, UTF-8 when it is left out */
+  encoding?: BufferEncoding;
   /** the commands that load it, and unload it */
   install: string[][];
   /** to run before remove, a failure of them is nothing to stop */

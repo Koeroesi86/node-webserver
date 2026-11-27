@@ -13,7 +13,7 @@ import { createCompressionBudget } from '../compression';
 import { createHttpsServer } from '../tls';
 import { createLogger, registerServerMetrics, setupStatsHandler } from '../observability';
 import { createServerReloader, getLoadFingerprint } from '../reload';
-import { reportProblems } from '../problems';
+import { findFrontProblems, reportProblems } from '../problems';
 import { createServerStop, setupProcessHooks } from '../lifecycle';
 import loadInstances from './load-instances';
 import type { AcmeChallenges, Configuration, FrontShare, LoadReport, Logger, PreparedServers, SignalSource } from '../types';
@@ -139,6 +139,7 @@ const createServer = async (
   const report = (servers?: PreparedServers) => ({
     files: reloader.getWatchedFiles(),
     fingerprint: getLoadFingerprint(servers?.instances ?? reloader.getLoaded(), configuration.unknownHostPage),
+    singleFrontOnly: reloader.getLoaded().some(({ instance }) => findFrontProblems(instance, instance.hostname).length > 0),
   });
 
   return {

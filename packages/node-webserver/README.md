@@ -490,17 +490,20 @@ The front (parsing, TLS, routing, the messages to the workers, compression, acce
 with [`node:cluster`](https://nodejs.org/api/cluster.html): a number from 1 to the smaller of 4 and the available cores (anything above is an error), or `"auto"` for that maximum. It is 1 by default.
 Measure before turning it on: on a machine where the front was not the limit, more fronts only cost memory.
 
-`nws-cli` starts them, as does `startCluster(configuration, logger?, { processHooks })` for a program; `startServer` always runs one front, and warns when `frontProcesses` asks for more.
+`nws-cli` starts them, as does `startCluster(configuration, logger?, { processHooks, configurationFile })` for a program; `startServer` always runs one front, in its own process, and warns when `frontProcesses` asks for more.
 
 ```javascript
 const { startCluster } = require('@koeroesi86/node-webserver');
 
-const { role, frontCount, reload, stop } = await startCluster(require('./configuration'));
+const { role, frontCount, reload, stop } = await startCluster(require('./configuration'), undefined, { configurationFile: require.resolve('./configuration') });
 ```
 
-With one front it is a server in this process, as `startServer` makes it. With more, the process becomes the primary: it owns the ports, hands the connections to the fronts in turn (also on Windows) and supervises them, serving nothing itself.
-Every front is the same script run again with the same arguments, in which `startCluster` serves instead, so what comes before the call runs in each of them too. It resolves once all fronts serve, and rejects when one does not start
-(a problem of the configuration, a port in use), which stops the others. `role` is `single`, `primary` or `front`; `reload` and `stop` of the primary act on every front, those of a front on itself.
+`startCluster` always makes the process a primary, also for one front: the primary owns the ports, supervises the fronts and serves nothing itself. With `frontProcesses` of one the front accepts the connections itself. When it asks for more, the primary accepts them and hands them to the fronts in turn,
+also when a limit brings them down to one. On Windows the primary does that for one front too: a front that accepts itself would take a connection with it when it stops listening, and could not be
+[replaced without a failed request](#changes-of-the-configuration).
+Every front is the same script run again with the same arguments, in which `startCluster` serves instead, and so is the process that looks at a changed configuration, so what comes before the call runs in each of them too.
+It resolves once all fronts serve, and rejects when one does not start (a problem of the configuration, a port in use), which stops the others. `role` is `primary` or `front`; `reload` and `stop` of the primary act on every front,
+`reload` of a front asks the primary for it, `stop` of a front stops that one.
 
 **What is shared and what is not.** Each front is a server of its own: its own worker and lambda pools (a path that has a worker in one front starts another one in the next), caches, metrics and [stats](#metrics-for-workers), so an answer of
 `event.getMetrics()` or the stats domain shows one front only. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
@@ -516,21 +519,22 @@ More than one front with them is an error at the start, on a reload and in the [
 
 **When a front ends** another one takes its place and its share, at once the first time, then after 100 ms doubling up to 10 s as long as they end within 5 seconds, like a [worker that crashes](#workers-that-crash). The others keep serving.
 A connection the primary hands to a front in the instant it dies is not answered, and its client gives up on its own. A replacement that loads another configuration than the one the server runs, or finds another version of the package installed,
-ends instead of serving, and the log says that a restart is needed; with no front left the server ends with an error, which has a service manager start it again. A configuration that loads differently every time (a value made while it is loaded)
-is not compared. When the primary dies, its fronts and their workers exit.
+ends instead of serving, and the primary looks at the [change](#changes-of-the-configuration); with no front left and none to start the server ends with an error, which has a service manager start it again. A configuration that loads differently
+every time (a value made while it is loaded) is not compared. When the primary dies, its fronts and their workers exit.
 
 **Stopping** works as below. The primary passes `SIGINT`, `SIGTERM` and `SIGHUP` on to the fronts over the channel to them, as a signal to the primary alone does not reach them (and Windows would end them at once);
-systemd and Ctrl+C signal every process, and a front takes the same signal from both as one. The primary ends once the fronts did, and kills the ones that are still there 2 seconds after `shutdownTimeout`.
+systemd and Ctrl+C signal every process, and a front takes the same signal from both as one. The primary ends once the fronts did, and kills the ones that are still there 2 seconds after `shutdownTimeout`. A launcher passes the signals on
+to the primary in the same way, and ends the way the server ended.
 
 **Reloading** happens in all fronts together. The primary alone watches the files, which the fronts name to it after every load, and loads no server itself. On a change, a `SIGHUP` with `reloadOnSighup` (also with `watchServers` off),
 or `reload`, it asks every front to load the servers and to start what changed without serving it. Only when all of them did, and loaded the same, it tells them to serve it and retire the old servers. Otherwise every front keeps what it runs,
 and the log says why: a file that cannot be loaded or a problem of a server is tried again at the next change, fronts that read a file while it was written are asked again at once, up to 3 times. One reload runs at a time, a change during one
 starts another after it. A front that does not answer within 30 seconds is replaced. The fronts switch close to each other, not at the same instant, and while they do every front holds the old and the new workers, which takes more memory than with one front.
 A front that replaces another one loads the files as they are then; once it serves, all fronts are asked to load again, so that they run the same. While it cannot load them it is tried again with the delays above, and the others serve.
-A change of a limit that would change the number of fronts is refused, the running servers are kept and the log says that a restart is needed.
+A change of a limit that changes the number of fronts starts [new fronts](#changes-of-the-configuration).
 
-**Logs.** Each front writes files of its own, `<start>.front-<n>.<level>.log`, and puts `[front-<n>]` in front of its lines. The primary logs the fronts it starts, loses and replaces, in files of its own: `<start>.primary.<level>.log`
-with the logger `startCluster` makes, or where the logger it is given writes.
+**Logs.** Each front writes files of its own, `<start>.front-<n>.<level>.log`, and puts `[front-<n>]` in front of its lines, also when there is one front. The primary logs the fronts it starts, loses and replaces, in files of its own:
+`<start>.primary.<level>.log` with the logger `startCluster` makes, or where the logger it is given writes. It keeps the settings of the logs it started with.
 
 ### Reloading the servers
 
@@ -559,8 +563,32 @@ its processes keep the module they loaded until they are stopped.
 - With [several front processes](#front-processes) all of them load the servers again together.
 
 `watchServers: false` in the configuration turns watching off, `reloadOnSighup: true` loads the servers again on `SIGHUP` instead of stopping, for deployments that prefer to say when.
-What a reload does not change, and needs a restart: the configuration itself (the list of `servers`, the definitions of the servers written in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`,
-the stats, the logging and `frontProcesses`), as it is given to the server once when it starts.
+A reload does not change the configuration itself (the list of `servers`, the definitions of the servers written in it rather than in a file of their own, the ports, `keepAliveTimeout`, `maxConnections`, the stats, the logging and
+`frontProcesses`): a server started with `startServer` is given it once. `nws-cli` and `startCluster` with a `configurationFile` [apply its changes](#changes-of-the-configuration) with new front processes.
+
+### Changes of the configuration
+
+`nws-cli` (and `startCluster` with `configurationFile`, a file the script loads with `require` every time it runs) watches the configuration file and the local files it loads, unless `watchServers` is `false`. A change is first checked by a process
+of its own, which loads the configuration and the server files anew: a configuration that cannot be loaded or has a [problem](#checking-the-configuration) is logged, and the server keeps running as it was. With `reloadOnSighup`, `SIGHUP`
+applies a change too, also with `watchServers` off. A file that a change adds to the ones the configuration loads is watched once the change is applied, or was refused for a problem.
+
+**Without a pause**, a new set of front processes is started next to the running one, and once all of them listen the old ones stop as described under [Stopping the server](#stopping-the-server): they take no new connections, finish the requests
+in flight, close websockets with 1001 and are killed after `shutdownTimeout`. A set that does not start (a port in use) is dropped, and the old one keeps serving until the next change. The number of fronts is worked out anew, which a change of
+a limit in a server file does too. While old and new fronts run side by side, **the limits can be exceeded** (each set has its own), and a connection can reach either. A connection that is kept open stays on its old front until its request in
+flight is answered, then it is closed: a client that sends the next request in that instant has to send it again, as with any server that closes an idle connection.
+
+**With a pause**, by a restart of the whole server through the launcher: new connections are refused while the requests in flight finish and the new server starts. That happens when
+- `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started (not on Windows, where the primary always accepts them),
+- the server has a `child` server, `acme` or a dynamic proxy target, before or after the change: a second application on the same port, a second renewer, or a lost target,
+- the server was updated and a front finds another version than the one the primary runs.
+
+There is no old server to go back to then, so a server that does not start after a restart (a port in use) is tried again, at once and then after 100 ms doubling up to 10 s, and the log says so.
+
+**The launcher** is the process of `nws-cli`: it runs the command again as the server, starts it again when the server asks for that, passes `SIGINT`, `SIGTERM` and `SIGHUP` on, and otherwise ends the way the server ended, so a stop or a crash is
+what it was without it. The command of an installed service stays the same. When the launcher is gone, the server and everything it started exit. Without a launcher (`startCluster` of a program) the changes that need a restart are logged and not
+applied. The launcher itself is updated by a restart of the service only. `startServer` is never restarted.
+
+Only the files are watched: a change of an environment variable that the configuration reads is not seen until something else changes it or the server is restarted, and the server keeps the environment it was started with.
 
 ### Checking the configuration
 

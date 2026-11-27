@@ -8,7 +8,7 @@
     "packages/*/examples/**",
     "packages/*/example/**",
     "packages/*/src/example/**",
-    "packages/node-webserver/integration/**",
+    "packages/*/integration/**",
     // forked per lambda and per worker by their path, so no import leads to them
     "packages/node-lambda-invoke/src/middlewares/runner.ts",
     "packages/node-worker/src/pool/worker-invoke.ts",
@@ -61,7 +61,7 @@
   "typeAware": { "enabled": true, "projects": ["packages/node-worker/tsconfig.json", "packages/node-worker-express/tsconfig.json", "packages/node-lambda-invoke/tsconfig.json", "packages/node-webserver/tsconfig.json", "packages/node-webserver-cli/tsconfig.json", "tools/tsconfig.json"] },
   "health": {
     // run by node, a browser or k6 on their own and not measured by the unit tests, they are examples and test fixtures, not the product
-    "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
+    "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/*/integration/**", "tools/src/k6/**"],
     "thresholdOverrides": [
       {
         "files": ["packages/node-lambda-invoke/src/middlewares/http.ts"],
@@ -82,7 +82,7 @@
     // the socket pair helper of the tests of node-worker-express (get-read-stop) and of the pool of node-worker: a helper of tests is not published, so each package that tests with it keeps a copy
     "ignoredClones": ["dup:b6c38f85:3", "dup:88080b2d:2"],
     // examples, fixtures and k6 scenarios are standalone on purpose: each is run on its own, by a user, by a child process or by k6
-    "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/node-webserver/integration/**", "tools/src/k6/**"],
+    "ignore": ["packages/*/examples/**", "packages/*/example/**", "packages/*/integration/**", "tools/src/k6/**"],
     // nothing is duplicated now beyond the reviewed clones above; 0 would switch the limit off, so 1 % is the strictest limit, and duplication can not grow
     "threshold": 1
   }

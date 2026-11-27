@@ -110,3 +110,12 @@ export const RELOAD_ROUND_TIMEOUT = 30000;
 
 /** how often a reload is tried again at once when the fronts did not load the same, as files were being written, before it waits for the next change */
 export const RELOAD_ROUND_RETRIES = 3;
+
+/** the exit code a server ends with for its launcher to start it again, which any other end is passed on as */
+export const RESTART_EXIT_CODE = 75;
+
+/** the environment variable the launcher tells the server in how it started it */
+export const LAUNCHER_ENV = 'NODE_WEBSERVER_LAUNCHER';
+
+/** how long the process that loads a changed configuration may take before it is given up on, in milliseconds */
+export const PLAN_TIMEOUT = 30000;

@@ -3,10 +3,12 @@ import runServer from './run-server';
 
 const startCluster = jest.fn();
 const checkConfiguration = jest.fn();
+const startLauncher = jest.fn();
 
 jest.mock('@koeroesi86/node-webserver', () => ({
   __esModule: true,
   startCluster: (...args: unknown[]) => startCluster(...args),
+  startLauncher: () => startLauncher(),
   checkConfiguration: (...args: unknown[]) => checkConfiguration(...args),
   formatProblems: (problems: { message: string }[]) => problems.map(({ message }) => message).join('\n'),
 }));
@@ -17,6 +19,7 @@ describe('runServer', () => {
   beforeEach(() => {
     startCluster.mockReset();
     checkConfiguration.mockReset();
+    startLauncher.mockReset();
   });
 
   afterEach(() => {
@@ -24,12 +27,20 @@ describe('runServer', () => {
     jest.restoreAllMocks();
   });
 
-  it('starts the server with the configuration of the path', async () => {
+  it('starts the server with the configuration of the path, which it has watched', async () => {
     await runServer(configPath, false);
 
     expect(startCluster).toHaveBeenCalledTimes(1);
-    expect(startCluster).toHaveBeenCalledWith(require(configPath));
+    expect(startCluster).toHaveBeenCalledWith(require(configPath), undefined, { configurationFile: configPath });
     expect(checkConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('starts nothing in the process that became the launcher, which does not load the configuration', async () => {
+    startLauncher.mockReturnValue(true);
+
+    await runServer(resolve(__dirname, 'missing.js'), false);
+
+    expect(startCluster).not.toHaveBeenCalled();
   });
 
   it('rejects when the server does not start, so the caller can exit with an error', async () => {
@@ -46,6 +57,7 @@ describe('runServer', () => {
 
     expect(checkConfiguration).toHaveBeenCalledWith(require(configPath));
     expect(startCluster).not.toHaveBeenCalled();
+    expect(startLauncher).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(`${configPath} is valid.`);
     expect(process.exitCode).toBe(0);
   });

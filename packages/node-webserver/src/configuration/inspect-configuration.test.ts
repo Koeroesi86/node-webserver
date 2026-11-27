@@ -14,6 +14,10 @@ describe('inspectConfiguration', () => {
     expect(inspectConfiguration({ frontProcesses: 'auto', maxConnections: 3, servers: [] }).frontCount).toBe(3);
   });
 
+  it('says whether a server must not run twice', () => {
+    expect([inspectConfiguration({ servers }).singleFrontOnly, inspectConfiguration({ servers: [] }).singleFrontOnly]).toEqual([true, false]);
+  });
+
   it.each([[2 as const], ['auto' as const]])('refuses a child server with frontProcesses %s', (frontProcesses) => {
     expect(frontErrors({ frontProcesses, servers })).toHaveLength(1);
   });
