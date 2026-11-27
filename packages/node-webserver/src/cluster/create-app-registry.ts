@@ -20,7 +20,7 @@ interface App {
   /** set by the configuration, and not one of the pool */
   fixed: boolean;
   /** what to start once the port is free */
-  waiting?: { command: string; args: string[] };
+  waiting?: { hostname: string; command: string; args: string[] };
   child?: ChildProcess;
   /** a front said what to start, which the first one does */
   ordered?: boolean;
@@ -55,7 +55,7 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
 
   const giveBack = ({ fixed, number }: App) => number !== undefined && !fixed && ports.give(number);
 
-  const launch = (key: string, app: App, port: number, { command, args }: NonNullable<App['waiting']>) => {
+  const launch = (key: string, app: App, port: number, { hostname, command, args }: NonNullable<App['waiting']>) => {
     app.waiting = undefined;
     busy.add(port);
     const child = start(command, args, { stdio: 'pipe' });
@@ -63,7 +63,7 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
     started.set(child, key);
     tell();
     // reads what it writes, which would otherwise fill the pipe, and logs why it could not be started
-    setupChildListener(child, logger);
+    setupChildListener(child, hostname, logger);
     child.once('close', () => {
       app.child = undefined;
       busy.delete(port);
@@ -125,12 +125,12 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
     );
   };
 
-  const order = ({ key, command, args }: Extract<FrontServiceMessage, { nodeWebserver: 'app-start' }>) => {
+  const order = ({ key, hostname, command, args }: Extract<FrontServiceMessage, { nodeWebserver: 'app-start' }>) => {
     const app = apps.get(key);
     if (!app || app.ordered) return;
 
     app.ordered = true;
-    app.waiting = { command, args };
+    app.waiting = { hostname, command, args };
     startWaiting();
   };
 

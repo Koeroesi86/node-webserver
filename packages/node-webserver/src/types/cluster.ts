@@ -132,7 +132,7 @@ export type FrontServiceMessage =
   /** a server of the front wants the application, on the port of its configuration or one the primary picks from `lookup` */
   | { nodeWebserver: 'app-claim'; key: string; port?: number; lookup?: PortLookup }
   /** what to start for the application, on the port the front was told */
-  | { nodeWebserver: 'app-start'; key: string; command: string; args: string[] }
+  | { nodeWebserver: 'app-start'; key: string; hostname: string; command: string; args: string[] }
   /** no server of the front wants the application any more */
   | { nodeWebserver: 'app-release'; key: string }
   /** which front it is and its process, for the stats of the others */
@@ -208,7 +208,7 @@ export interface AppRegistry extends FrontService {
 export interface SharedApps {
   /** resolves with the port the application is to be reached on */
   claim: (key: string, wanted: { port?: number; lookup?: PortLookup }) => Promise<number>;
-  start: (key: string, command: string, args: string[]) => void;
+  start: (key: string, hostname: string, command: string, args: string[]) => void;
   release: (key: string) => void;
   /** of the application while it runs */
   pid: (key: string) => number | undefined;

@@ -1,31 +1,47 @@
 import type { ChildProcess } from 'child_process';
+import type { Readable } from 'stream';
+import createLineSplitter from './create-line-splitter';
 import { getDate } from '../utils';
 import type { Logger } from '../types';
 
 /** how to take the listeners off a child again, so that setting it up twice does not log a line twice */
 const detachers = new WeakMap<ChildProcess, () => void>();
 
-const setupChildListener = (child: ChildProcess, logger: Logger) => {
+/** reads an output of a child and logs it line by line, and returns how to stop that */
+const listenToOutput = (stream: Readable | null | undefined, enabled: boolean, log: (line: string) => void) => {
+  const lines = createLineSplitter(log);
+  // read also when the level is off, as the child would block on a full pipe, but no lines are built then
+  const listener = enabled ? lines.write : () => {};
+  stream?.on('data', listener);
+  stream?.on('end', lines.end);
+
+  return () => {
+    stream?.off('data', listener);
+    stream?.off('end', lines.end);
+  };
+};
+
+/** logs what the application of the `child` server of `hostname` writes, and what happens to its process, with the host in front of every line */
+const setupChildListener = (child: ChildProcess, hostname: string, logger: Logger) => {
   detachers.get(child)?.();
 
-  const outputListener = (data: Buffer | string) => logger.info(`[${getDate()}] ${data.toString().trim()}`);
-  const errorListener = (data: Buffer | string) => logger.error(`[${getDate()}] ${data.toString().trim()}`);
+  const label = (text: string) => `[${getDate()}] [${hostname}] ${text}`;
+  const detachOutput = listenToOutput(child.stdout, logger.isEnabled('info'), (line) => logger.info(label(line)));
+  const detachErrors = listenToOutput(child.stderr, logger.isEnabled('error'), (line) => logger.error(label(line)));
   // without a listener it would end the process, and with it the other servers
-  const failureListener = (error: Error) => logger.error(`[${getDate()}] ${child.spawnfile} could not be started:`, error);
+  const failureListener = (error: Error) => logger.error(label(`${child.spawnfile} could not be started:`), error);
   const closeListener = (code: number | null) => {
     if (code) {
-      logger.error(`[${getDate()}] child process exited with code ${code}`);
+      logger.error(label(`child process exited with code ${code}`));
     }
   };
 
-  child.stdout?.on('data', outputListener);
-  child.stderr?.on('data', errorListener);
   child.on('error', failureListener);
   child.on('close', closeListener);
 
   detachers.set(child, () => {
-    child.stdout?.off('data', outputListener);
-    child.stderr?.off('data', errorListener);
+    detachOutput();
+    detachErrors();
     child.off('error', failureListener);
     child.off('close', closeListener);
   });

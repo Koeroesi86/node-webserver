@@ -15,26 +15,68 @@ describe('setupChildListener', () => {
     jest.clearAllMocks();
   });
 
-  it('logs what the child writes to stdout as info, trimmed', () => {
+  it('logs every line the child writes to stdout as info, with the time and the host in front of it', () => {
     const { child, process } = createChild();
-    setupChildListener(process, logger);
-    child.stdout.emit('data', Buffer.from('hello\n'));
+    setupChildListener(process, 'app.localhost', logger);
+    child.stdout.emit('data', Buffer.from('hello\nwor'));
+    child.stdout.emit('data', Buffer.from('ld\n'));
 
-    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] hello$/));
+    expect(logger.info.mock.calls).toEqual([
+      [expect.stringMatching(/^\[[\d :.-]+\] \[app\.localhost\] hello$/)],
+      [expect.stringMatching(/^\[[\d :.-]+\] \[app\.localhost\] world$/)],
+    ]);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('logs what the child writes to stderr as an error', () => {
     const { child, process } = createChild();
-    setupChildListener(process, logger);
+    setupChildListener(process, 'app.localhost', logger);
     child.stderr.emit('data', 'broken\n');
 
-    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] broken$/));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] \[app\.localhost\] broken$/));
+  });
+
+  it('keeps the lines of stdout and stderr apart', () => {
+    const { child, process } = createChild();
+    setupChildListener(process, 'app.localhost', logger);
+    child.stdout.emit('data', 'out');
+    child.stderr.emit('data', 'err');
+    child.stdout.emit('data', 'put\n');
+    child.stderr.emit('data', 'or\n');
+
+    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/ output$/));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/ error$/));
+  });
+
+  it('logs what has no line break after it once the output ends', () => {
+    const { child, process } = createChild();
+    setupChildListener(process, 'app.localhost', logger);
+    child.stdout.emit('data', 'bye');
+    child.stderr.emit('data', 'crashed');
+    child.stdout.emit('end');
+    child.stderr.emit('end');
+
+    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/ bye$/));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/ crashed$/));
+  });
+
+  it('reads the output of a level that is off, without logging it', () => {
+    const { child, process } = createChild();
+    logger.isEnabled.mockImplementationOnce(() => false);
+    setupChildListener(process, 'app.localhost', logger);
+
+    expect(child.stdout.listenerCount('data')).toBe(1);
+    child.stdout.emit('data', 'dropped\n');
+    child.stdout.emit('end');
+    child.stderr.emit('data', 'kept\n');
+
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
   it('logs a failing exit code, and stays quiet about a clean exit', () => {
     const { child, process } = createChild();
-    setupChildListener(process, logger);
+    setupChildListener(process, 'app.localhost', logger);
     child.emit('close', 0);
     child.emit('close', null);
 
@@ -42,27 +84,27 @@ describe('setupChildListener', () => {
 
     child.emit('close', 3);
 
-    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('exited with code 3'));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[app.localhost] child process exited with code 3'));
   });
 
   it('logs why the command could not be started', () => {
     const { child, process } = createChild();
     const error = new Error('spawn app ENOENT');
-    setupChildListener(process, logger);
+    setupChildListener(process, 'app.localhost', logger);
     child.emit('error', error);
 
-    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] app could not be started:$/), error);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] \[app\.localhost\] app could not be started:$/), error);
   });
 
   it('copes with a child without output streams', () => {
-    expect(() => setupChildListener(new EventEmitter() as unknown as ChildProcess, logger)).not.toThrow();
+    expect(() => setupChildListener(new EventEmitter() as unknown as ChildProcess, 'app.localhost', logger)).not.toThrow();
   });
 
   it('does not log a line twice when the same child is set up twice', () => {
     const { child, process } = createChild();
-    setupChildListener(process, logger);
-    setupChildListener(process, logger);
-    child.stdout.emit('data', 'once');
+    setupChildListener(process, 'app.localhost', logger);
+    setupChildListener(process, 'app.localhost', logger);
+    child.stdout.emit('data', 'once\n');
     child.emit('error', new Error('once'));
 
     expect(logger.info).toHaveBeenCalledTimes(1);

@@ -32,7 +32,7 @@ const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime, logger:
 
   runtime.child = spawn(command, childArgs || [], { stdio: 'pipe' });
   // reads what it writes, which would otherwise fill the pipe, and logs why it could not be started
-  setupChildListener(runtime.child, logger);
+  setupChildListener(runtime.child, instance.hostname, logger);
 
   // the requests go the way those of a `proxy` server with a fixed target do (websockets, 502 and 504, forwarded headers), without a control path
   const proxy = proxyServerMiddleware({ ...instance, proxyOptions: { ...proxyOptions, target: serverOptions.proxyTarget, dynamic: undefined } }, logger);
