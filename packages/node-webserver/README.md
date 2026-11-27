@@ -248,6 +248,7 @@ on the thread that serves the requests. Lines of other code that write to the co
 
 What the application of a `child` server writes goes to the logs too, stdout to the info level and stderr to the error level, with the time in front of every piece that is read, which can be several lines or a part of one.
 The server reads it whatever the levels are, so that an application does not block on a full pipe. For a chatty one, `logLevels: { info: false }` leaves its stdout out, along with everything else that is logged as info.
+A `command` that is not found or may not be run is logged as an error, followed by the negative exit code of the attempt. The requests of that server fail with 502, and the other servers are not affected.
 
 ### Waiting for a worker
 

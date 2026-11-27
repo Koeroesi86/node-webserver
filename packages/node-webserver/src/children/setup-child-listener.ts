@@ -10,6 +10,8 @@ const setupChildListener = (child: ChildProcess, logger: Logger) => {
 
   const outputListener = (data: Buffer | string) => logger.info(`[${getDate()}] ${data.toString().trim()}`);
   const errorListener = (data: Buffer | string) => logger.error(`[${getDate()}] ${data.toString().trim()}`);
+  // without a listener it would end the process, and with it the other servers
+  const failureListener = (error: Error) => logger.error(`[${getDate()}] ${child.spawnfile} could not be started:`, error);
   const closeListener = (code: number | null) => {
     if (code) {
       logger.error(`[${getDate()}] child process exited with code ${code}`);
@@ -18,11 +20,13 @@ const setupChildListener = (child: ChildProcess, logger: Logger) => {
 
   child.stdout?.on('data', outputListener);
   child.stderr?.on('data', errorListener);
+  child.on('error', failureListener);
   child.on('close', closeListener);
 
   detachers.set(child, () => {
     child.stdout?.off('data', outputListener);
     child.stderr?.off('data', errorListener);
+    child.off('error', failureListener);
     child.off('close', closeListener);
   });
 };

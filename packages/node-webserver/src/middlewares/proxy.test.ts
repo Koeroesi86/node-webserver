@@ -59,6 +59,18 @@ describe('proxyMiddleware', () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('broken'));
   });
 
+  it('logs why the child could not be started, instead of ending the process', () => {
+    addPort(3005);
+    const logger = createMockLogger();
+    const runtime: ServerRuntime = {};
+    proxyMiddleware(instance(), runtime, logger);
+
+    // an `error` nothing listens to would be thrown
+    runtime.child?.emit('error', new Error('spawn node ENOENT'));
+
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('could not be started'), expect.any(Error));
+  });
+
   it('lets the arguments be made from the port', () => {
     addPort(3002);
     const server = instance({ childOptions: { command: 'node', args: (port) => [`--p=${port}`, '%PORT%'] } });

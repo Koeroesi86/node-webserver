@@ -62,9 +62,8 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
     app.child = child;
     started.set(child, key);
     tell();
-    // reads what it writes too, which would otherwise fill the pipe
+    // reads what it writes, which would otherwise fill the pipe, and logs why it could not be started
     setupChildListener(child, logger);
-    child.on('error', (error) => logger.error(`[${getDate()}] ${command} could not be started:`, error));
     child.once('close', () => {
       app.child = undefined;
       busy.delete(port);
