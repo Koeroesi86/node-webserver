@@ -1,3 +1,4 @@
+import describeVersionChange from './describe-version-change';
 import type { Decision, ServerPlan } from '../types';
 
 interface Change {
@@ -21,7 +22,8 @@ const decideChange = ({ running, next, version, force }: Change): Decision => {
   const changed = force || next.filesFingerprint !== running.filesFingerprint || next.frontCount !== running.frontCount || next.release.version !== version;
 
   if (!changed) return { action: 'keep' };
-  if (next.release.version !== version) return { action: 'restart', reason: `the server is version ${next.release.version} now, the running one ${version}` };
+  if (next.release.version !== version)
+    return { action: 'restart', reason: `the version of the installed server changed: ${describeVersionChange(version, next.release.version)}` };
   if (next.balanced !== running.balanced) return { action: 'restart', reason: 'frontProcesses changed between one front and several' };
 
   return { action: 'switch' };

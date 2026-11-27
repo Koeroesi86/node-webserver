@@ -34,6 +34,12 @@ export const CHALLENGE_TIMEOUT = 5000;
 export const METRICS_TIMEOUT = 1000;
 export const METRICS_ANSWER_TIMEOUT = 2000;
 
+/** how often a launched server looks for another installed version of itself, in milliseconds */
+export const RELEASE_CHECK_INTERVAL = 5000;
+/** how many more looks have to find the same versions before they are checked, and the most looks between two checks of the same ones */
+export const RELEASE_SETTLE_LOOKS = 2;
+export const RELEASE_MAX_GAP = 60;
+
 /** the path of a `proxy` host with a dynamic target that the server answers itself, for the service to register its target */
 export const DEFAULT_CONTROL_PATH = '/.well-known/node-webserver/proxy';
 

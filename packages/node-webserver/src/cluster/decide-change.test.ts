@@ -27,7 +27,7 @@ describe('decideChange', () => {
   });
 
   it.each([
-    ['another version of the server', { release: { configuration: 'a', version: '2.0.0' } }, {}, 'version 2.0.0'],
+    ['another version of the server', { release: { configuration: 'a', version: '2.0.0' } }, {}, '2.0.0 now, instead of 1.0.0'],
     ['one front where there were several', { filesFingerprint: 'new', balanced: false }, {}, 'between one front and several'],
   ])('restarts for %s', (_, change, extra, reason) => {
     expect(decide(change, extra)).toEqual({ action: 'restart', reason: expect.stringContaining(reason) });

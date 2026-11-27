@@ -1,4 +1,5 @@
 export { default as explainPermissionError } from './explain-permission-error';
+export { default as getServiceScriptPath } from './get-service-script-path';
 export { default as installService, defaultDependencies } from './install-service';
 export type { InstallDependencies } from './install-service';
 export { default as manageService } from './manage-service';

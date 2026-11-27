@@ -75,6 +75,15 @@ describe('createFrontsManager', () => {
     expect(sets[0].reload).toHaveBeenCalled();
   });
 
+  it('looks at a change when asked to, and loads nothing again without one', async () => {
+    const { manager, sets } = await started();
+
+    expect(await manager.check()).toBe(false);
+
+    expect(requestPlan).toHaveBeenCalled();
+    expect(sets[0].reload).not.toHaveBeenCalled();
+  });
+
   it('starts the fronts of the plan, and watches the files of the configuration', async () => {
     const { sets, watch, manager } = await started();
 

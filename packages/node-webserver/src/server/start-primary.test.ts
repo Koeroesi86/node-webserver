@@ -9,6 +9,7 @@ import {
   createPrimaryCertificates,
   getLauncherMode,
   readServerVersion,
+  watchRelease,
 } from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
 import { watchFiles } from '../reload';
@@ -23,15 +24,17 @@ jest.mock('../cluster', () => ({
   createFrontsManager: jest.fn(),
   createPrimaryCertificates: jest.fn(),
   createAppRegistry: jest.fn(),
+  watchRelease: jest.fn(),
   getLauncherMode: jest.fn(),
 }));
 jest.mock('../lifecycle', () => ({ ...jest.requireActual('../lifecycle'), setupPrimaryHooks: jest.fn() }));
 
 describe('startPrimary', () => {
   const logger = createMockLogger();
-  const manager = { start: jest.fn(), stop: jest.fn(), reload: jest.fn(), reloadFronts: jest.fn(), getPlan: jest.fn() };
+  const manager = { start: jest.fn(), stop: jest.fn(), reload: jest.fn(), reloadFronts: jest.fn(), check: jest.fn(), getPlan: jest.fn() };
   const certificates = { service: { join: jest.fn() }, start: jest.fn(), stop: jest.fn() };
   const apps = { join: jest.fn(), stop: jest.fn() };
+  const unwatchRelease = jest.fn();
   const launcher = { signals: {} as never, serving: jest.fn(async () => undefined) };
   const removeHooks = jest.fn();
   const configuration = { frontProcesses: 2, servers: [], portHttp: 0, portHttps: 0, shutdownTimeout: 100 };
@@ -48,6 +51,7 @@ describe('startPrimary', () => {
     jest.mocked(createFrontsManager).mockReturnValue(manager);
     jest.mocked(createPrimaryCertificates).mockReturnValue(certificates as never);
     jest.mocked(createAppRegistry).mockReturnValue(apps);
+    jest.mocked(watchRelease).mockReturnValue(unwatchRelease);
     jest.mocked(setupPrimaryHooks).mockReturnValue(removeHooks);
     jest.mocked(connectLauncher).mockReturnValue(launcher);
     jest.mocked(getLauncherMode).mockReturnValue(undefined);
@@ -150,6 +154,28 @@ describe('startPrimary', () => {
     options().onLost();
 
     expect(apps.stop).toHaveBeenCalledTimes(3);
+  });
+
+  it('looks for another installed version when it was launched, until it stops, and applies it unless watching is off', async () => {
+    jest.mocked(getLauncherMode).mockReturnValue('start');
+    const running = await startPrimary(configuration, logger, {});
+    const { running: version, read, onChange } = jest.mocked(watchRelease).mock.calls[0][0];
+
+    expect([version, read]).toEqual([readServerVersion(), readServerVersion]);
+    onChange();
+    expect(manager.check).toHaveBeenCalledTimes(1);
+    manager.getPlan.mockReturnValue({ settings: { watchServers: false, shutdownTimeout: 1 } });
+    onChange();
+    expect(manager.check).toHaveBeenCalledTimes(1);
+
+    await running.stop();
+    expect(unwatchRelease).toHaveBeenCalled();
+  });
+
+  it('does not look for another version without a launcher, which could not start it', async () => {
+    await startPrimary(configuration, logger, {});
+
+    expect(watchRelease).not.toHaveBeenCalled();
   });
 
   it('cannot restart without a launcher', async () => {

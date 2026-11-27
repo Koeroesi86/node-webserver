@@ -55,4 +55,12 @@ describe('forkServer', () => {
 
     expect(exit).toHaveBeenCalledWith(1, null);
   });
+
+  it('starts the script it is given', () => {
+    start();
+
+    forkServer('start', '/app/current/cli.js');
+
+    expect(fork).toHaveBeenLastCalledWith('/app/current/cli.js', process.argv.slice(2), expect.anything());
+  });
 });

@@ -1,7 +1,13 @@
 import startLauncher from './start-launcher';
-import { createLauncher, getFrontProcess, getLauncherMode } from '../cluster';
+import { createLauncher, forkServer, getFrontProcess, getLauncherMode, getStableScriptPath } from '../cluster';
 
-jest.mock('../cluster', () => ({ createLauncher: jest.fn(), forkServer: jest.fn(), getFrontProcess: jest.fn(), getLauncherMode: jest.fn() }));
+jest.mock('../cluster', () => ({
+  createLauncher: jest.fn(),
+  forkServer: jest.fn(),
+  getFrontProcess: jest.fn(),
+  getLauncherMode: jest.fn(),
+  getStableScriptPath: jest.fn(() => '/app/current/cli.js'),
+}));
 
 describe('startLauncher', () => {
   const start = jest.fn();
@@ -23,6 +29,15 @@ describe('startLauncher', () => {
 
     expect(start).toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith('[launcher] again');
+  });
+
+  it('starts the server by the path that leads to its next version, worked out before it starts any', () => {
+    startLauncher();
+    expect(getStableScriptPath).toHaveBeenCalledWith(process.argv[1]);
+
+    jest.mocked(createLauncher).mock.calls[0][0].fork('restart');
+
+    expect(forkServer).toHaveBeenCalledWith('restart', '/app/current/cli.js');
   });
 
   it.each([

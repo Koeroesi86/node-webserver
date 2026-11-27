@@ -44,7 +44,7 @@ Unchanged servers keep their workers and processes, changed ones finish their re
 ## On a change of the configuration
 
 With the command line (or `startCluster` with `configurationFile`) the configuration file and the files it loads are watched. The new configuration is checked first, a wrong one keeps the running server. New fronts start next to the old ones, which stop once their requests are answered; limits can be exceeded meanwhile.
-The server restarts instead, refusing new connections meanwhile, when `frontProcesses` changes between one front and several (not on Windows), or when its version changed. A start that fails after a restart is tried again. Changes of environment variables are not seen.
+The server restarts instead, refusing new connections meanwhile, when `frontProcesses` changes between one front and several (not on Windows), or when another version of the server is installed: the running one looks for it every few seconds, checks that it loads with the configuration, and keeps serving until it does. A start that fails after a restart is tried again. Changes of environment variables are not seen.
 
 ## On a stop
 

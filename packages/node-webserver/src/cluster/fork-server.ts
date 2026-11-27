@@ -2,9 +2,9 @@ import { fork } from 'child_process';
 import { LAUNCHER_ENV } from '../constants';
 import type { LauncherMode, PrimaryMessage } from '../types';
 
-/** starts the server for the launcher: this script with the same arguments, which is told that the launcher started it. Its output goes where the one of the launcher goes. */
-const forkServer = (mode: LauncherMode) => {
-  const child = fork(process.argv[1], process.argv.slice(2), { env: { ...process.env, [LAUNCHER_ENV]: mode } });
+/** starts the server for the launcher: the script with the arguments of this one, which is told that the launcher started it. Its output goes where the one of the launcher goes. */
+const forkServer = (mode: LauncherMode, script: string = process.argv[1]) => {
+  const child = fork(script, process.argv.slice(2), { env: { ...process.env, [LAUNCHER_ENV]: mode } });
 
   return {
     pid: child.pid,

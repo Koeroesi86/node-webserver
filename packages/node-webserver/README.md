@@ -600,7 +600,7 @@ flight is answered, then it is closed: a client that sends the next request in t
 
 **With a pause**, by a restart of the whole server through the launcher: new connections are refused while the requests in flight finish and the new server starts. That happens when
 - `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started (not on Windows, where the primary always accepts them),
-- the server was updated and a front finds another version than the one the primary runs.
+- [another version of the server](#updates-of-the-server) is installed.
 
 There is no old server to go back to then, so a server that does not start after a restart (a port in use) is tried again, at once and then after 100 ms doubling up to 10 s, and the log says so.
 
@@ -609,6 +609,20 @@ what it was without it. The command of an installed service stays the same. When
 applied. The launcher itself is updated by a restart of the service only. `startServer` is never restarted.
 
 Only the files are watched: a change of an environment variable that the configuration reads is not seen until something else changes it or the server is restarted, and the server keeps the environment it was started with.
+
+#### Updates of the server
+
+A server behind a launcher restarts into another version of itself once one is installed, unless `watchServers` is `false`. A version is the versions of `node-webserver-cli`, `node-webserver`, `node-lambda-invoke`, `node-worker-express`
+and `node-worker` together, as they are found from the script the server runs. An update of another dependency alone is not seen. A `startCluster` of a program is told apart the same way, without the command line.
+
+- Every 5 seconds the server reads the versions where the script it was started with leads **now**, links included, so both a package manager that writes over the installed packages and a deploy that points a link to a new release are seen.
+- Another version is acted on once it was the same for about 10 seconds, as an update writes one package after the other. A process of its own then loads the **new** code with the configuration and checks it. While that fails (the update is not
+  complete, the code does not load, the configuration has a [problem](#checking-the-configuration) for the new version) the old version keeps serving, and it is checked again after gaps that double up to 5 minutes.
+- A version that passes restarts the server: the requests in flight finish, new connections are refused until the new server serves, and the primary is replaced too. The check does not listen on the ports, so a version that fails only there
+  is tried again and again after the restart, with no way back to the old one.
+- A package manager that writes over the installed packages changes the files of the running server under it, which can fail what it loads until it restarts. A release of its own behind a link does not.
+- The launcher keeps its code until the service, or the command, is restarted. It starts the server by the path of the script it was started with, links included. The shims pnpm writes for the commands of a project run the file in its
+  store, a path that names the version: the launcher, and `service add`, take the link the project has to the package then (`getStableScriptPath` of this package).
 
 ### Checking the configuration
 
