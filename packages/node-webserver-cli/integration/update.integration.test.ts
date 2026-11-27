@@ -26,12 +26,22 @@ describe('an update of the installed server', () => {
     fs.copyFileSync(path.join(source, 'package.json'), path.join(target, 'package.json'));
   };
 
+  /** every dependency of the server linked on its own, as the links in a linked `node_modules` are not found through it on Windows */
+  const linkDependencies = (server: string) => {
+    const { dependencies }: { dependencies: Record<string, string> } = JSON.parse(fs.readFileSync(path.join(SERVER_PACKAGE, 'package.json'), 'utf8'));
+    Object.keys(dependencies).forEach((name) => {
+      const dependency = path.join(server, 'node_modules', name);
+      fs.mkdirSync(path.dirname(dependency), { recursive: true });
+      fs.symlinkSync(fs.realpathSync(path.join(SERVER_PACKAGE, 'node_modules', name)), dependency, 'junction');
+    });
+  };
+
   /** copies of the command line and the server, which find what they depend on where the ones of the repository do */
   const copyPackages = (cli: string, server: string, version: string) => {
     copy(CLI_PACKAGE, cli);
     copy(SERVER_PACKAGE, server);
     fs.copyFileSync(path.join(SERVER_PACKAGE, 'configuration.schema.json'), path.join(server, 'configuration.schema.json'));
-    fs.symlinkSync(path.join(SERVER_PACKAGE, 'node_modules'), path.join(server, 'node_modules'), 'junction');
+    linkDependencies(server);
     setVersion(server, version);
   };
 
@@ -88,7 +98,9 @@ describe('an update of the installed server', () => {
 
   afterEach(async () => {
     const pids = [launcher.pid ?? 0, ...folder.processes()];
-    const exited = new Promise((resolve) => launcher.once('exit', resolve));
+    // one that ended already, as after a failed start, has no exit left to wait for
+    const ended = () => launcher.exitCode !== null || launcher.signalCode !== null;
+    const exited = new Promise((resolve) => (ended() ? resolve(undefined) : launcher.once('exit', resolve)));
     // the launcher takes everything it started with it
     launcher.kill('SIGKILL');
     await exited;
