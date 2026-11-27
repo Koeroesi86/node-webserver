@@ -1,4 +1,8 @@
-import { createLauncher, forkServer, getFrontProcess, getLauncherMode, getStableScriptPath } from '../cluster';
+import createLauncher from './create-launcher';
+import forkServer from './fork-server';
+import getFrontProcess from './get-front-process';
+import getLauncherMode from './get-launcher-mode';
+import getStableScriptPath from './get-stable-script-path';
 
 /**
  * Makes this process the launcher of the server, unless it is one that a launcher or a primary started: then there is nothing to do. The launcher runs this script again with the same arguments

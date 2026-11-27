@@ -16,8 +16,8 @@ const itWithCores = os.availableParallelism() < 2 ? it.skip : it;
 const itWithRestart = process.platform === 'win32' || os.availableParallelism() < 2 ? it.skip : it;
 
 /** the command line with the configuration of the folder, which is the launcher of its server */
-const launch = (folder: ServerFolder) => {
-  const child = spawn(process.execPath, [CLI, '--config', folder.configurationFile], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+const launch = (folder: ServerFolder, nodeArguments: string[] = []) => {
+  const child = spawn(process.execPath, [...nodeArguments, CLI, '--config', folder.configurationFile], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let output = '';
   let ended: { code: number | null; signal: NodeJS.Signals | null } | undefined;
   child.stdout.on('data', (data: Buffer) => (output += data));
@@ -289,6 +289,22 @@ describe('the server of the command line', () => {
     await server.exited;
 
     expect(server.ended()?.code).toBe(1);
+  });
+
+  it('loads no more of the server than a launcher needs, so that it stays a small process', async () => {
+    // every process writes down what it loaded when it exits, the launcher too, which ends once the server could not load its configuration
+    const preload = path.join(folder.folder, 'loaded.js');
+    const written = "require('fs').writeFileSync(__dirname + '/loaded-' + process.pid + '.json', JSON.stringify(Object.keys(require.cache)))";
+    fs.writeFileSync(preload, `process.on('exit', () => ${written});`);
+    folder.write('module.exports = {');
+    server = launch(folder, ['--require', preload]);
+    await server.exited;
+
+    const loaded: string[] = JSON.parse(fs.readFileSync(path.join(folder.folder, `loaded-${server.child.pid}.json`), 'utf8'));
+    const ofThe = (pattern: RegExp) => Array.from(new Set(loaded.flatMap((file) => pattern.exec(file)?.[1] ?? []))).sort();
+
+    expect(ofThe(/[\\/]node-webserver[\\/]dist[\\/]([^\\/]+)/)).toEqual(['constants', 'index.js', 'launcher', 'utils']);
+    expect(ofThe(/[\\/]node_modules[\\/](?!\.pnpm)([^\\/]+)/)).toEqual(['find-free-port']);
   });
 
   it('leaves no process behind when the launcher is killed, the application of a child server neither', async () => {

@@ -1,7 +1,7 @@
 import startFront from './start-front';
 import startPlan from './start-plan';
 import startPrimary from './start-primary';
-import { getFrontProcess } from '../cluster';
+import { getFrontProcess } from '../launcher';
 import { hydrateConfiguration } from '../configuration';
 import { createLogger } from '../observability';
 import type { Cluster, ClusterOptions, Configuration, Logger } from '../types';

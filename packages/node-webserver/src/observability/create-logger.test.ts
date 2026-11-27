@@ -94,13 +94,13 @@ describe('createLogger', () => {
   });
 
   it('puts the front of a process in the names of its files and in front of its lines', () => {
-    jest.doMock('../cluster', () => ({ getFrontProcess: () => ({ index: 1, count: 2 }) }));
+    jest.doMock('../launcher', () => ({ getFrontProcess: () => ({ index: 1, count: 2 }) }));
     const { logger, fs, content, finishWrites } = load();
 
     logger.info('%s of a front', 'a line');
     logger.flush();
     finishWrites();
-    jest.dontMock('../cluster');
+    jest.dontMock('../launcher');
 
     expect(path.basename(fs.openSync.mock.calls[0][0])).toMatch(/^[0-9]+\.front-2\.info\.log$/);
     expect(content('info')).toBe('[front-2] %s of a front, a line\n');
@@ -108,12 +108,12 @@ describe('createLogger', () => {
   });
 
   it('tells the process that only looks at the configuration apart from the fronts', () => {
-    jest.doMock('../cluster', () => ({ getFrontProcess: () => ({ index: 0, count: 1, plan: true }) }));
+    jest.doMock('../launcher', () => ({ getFrontProcess: () => ({ index: 0, count: 1, plan: true }) }));
     const { logger, fs } = load();
 
     logger.info('a');
     logger.flush();
-    jest.dontMock('../cluster');
+    jest.dontMock('../launcher');
 
     expect(path.basename(fs.openSync.mock.calls[0][0])).toContain('.plan.info.log');
   });

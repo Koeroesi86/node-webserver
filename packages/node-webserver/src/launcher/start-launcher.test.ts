@@ -1,13 +1,15 @@
 import startLauncher from './start-launcher';
-import { createLauncher, forkServer, getFrontProcess, getLauncherMode, getStableScriptPath } from '../cluster';
+import createLauncher from './create-launcher';
+import forkServer from './fork-server';
+import getFrontProcess from './get-front-process';
+import getLauncherMode from './get-launcher-mode';
+import getStableScriptPath from './get-stable-script-path';
 
-jest.mock('../cluster', () => ({
-  createLauncher: jest.fn(),
-  forkServer: jest.fn(),
-  getFrontProcess: jest.fn(),
-  getLauncherMode: jest.fn(),
-  getStableScriptPath: jest.fn(() => '/app/current/cli.js'),
-}));
+jest.mock('./create-launcher', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('./fork-server', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('./get-front-process', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('./get-launcher-mode', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('./get-stable-script-path', () => ({ __esModule: true, default: jest.fn(() => '/app/current/cli.js') }));
 
 describe('startLauncher', () => {
   const start = jest.fn();

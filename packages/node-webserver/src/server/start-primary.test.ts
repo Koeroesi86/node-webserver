@@ -7,10 +7,10 @@ import {
   createAppRegistry,
   createFrontsManager,
   createPrimaryCertificates,
-  getLauncherMode,
   readServerVersion,
   watchRelease,
 } from '../cluster';
+import { getLauncherMode } from '../launcher';
 import { setupPrimaryHooks } from '../lifecycle';
 import { watchFiles } from '../reload';
 import createMockLogger from '../observability/mock-logger.test-helper';
@@ -25,8 +25,8 @@ jest.mock('../cluster', () => ({
   createPrimaryCertificates: jest.fn(),
   createAppRegistry: jest.fn(),
   watchRelease: jest.fn(),
-  getLauncherMode: jest.fn(),
 }));
+jest.mock('../launcher', () => ({ getLauncherMode: jest.fn() }));
 jest.mock('../lifecycle', () => ({ ...jest.requireActual('../lifecycle'), setupPrimaryHooks: jest.fn() }));
 
 describe('startPrimary', () => {
