@@ -36,6 +36,7 @@ const lambdaRoutes = (hostname) => ({
 // the servers for the tests with several front processes: one that tells which front answered, and the big bodies that the fronts hand over to their workers
 const frontServers = [
   worker('front.localhost', { options: { root: resolve(__dirname, 'front'), index: ['worker.js'] } }),
+  worker('health.localhost', { options: { root: resolve(__dirname, '../../examples/health'), index: ['exampleWorker.js'] } }),
   worker('download.localhost', { options: { root: resolve(__dirname, '../../examples/download'), index: ['exampleWorker.js'], handOffResponses: 1024 } }),
   worker('upload.localhost', { options: { root: resolve(__dirname, '../../examples/upload'), index: ['exampleWorker.js'], handOffRequests: 1024 } }),
 ];

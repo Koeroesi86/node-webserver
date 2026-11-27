@@ -33,7 +33,7 @@ What the server does when things get busy, break or change. Defaults are the one
 | A front is at its share of `maxConnections` | its new connections are dropped, even while another front has room |
 | A reload would change the number of fronts | new fronts replace the old ones |
 
-All fronts reload together: the primary watches the files, every front prepares, and they serve the new servers only when all of them loaded the same, otherwise all keep what they run. Metrics and stats are those of the front that answers. A target registered with a `proxy` server is the same in all fronts, the primary orders the certificates of `acme` for all of them, and starts the application of a `child` server once.
+All fronts reload together: the primary watches the files, every front prepares, and they serve the new servers only when all of them loaded the same, otherwise all keep what they run. Metrics and stats show every front, by its number. A target registered with a `proxy` server is the same in all fronts, the primary orders the certificates of `acme` for all of them, and starts the application of a `child` server once.
 
 ## On a reload
 

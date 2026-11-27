@@ -1,4 +1,5 @@
 import type { Logger } from './logger';
+import type { ServerMetrics } from '@koeroesi86/node-worker-express';
 import type { CertificateServer, ChallengeStore } from './acme';
 import type { ConfigurationProblem } from './problem';
 import type { PortLookup } from './configuration';
@@ -81,7 +82,13 @@ export type PrimaryMessage =
   /** the port of an application of a `child` server that the front claimed, or why it has none */
   | { nodeWebserver: 'app-port'; key: string; port?: number; error?: string }
   /** the processes of the applications that run: for the stats of the fronts, which end them when they find the primary gone */
-  | { nodeWebserver: 'apps'; running: RunningApp[] };
+  | { nodeWebserver: 'apps'; running: RunningApp[] }
+  /** asks for the metrics of the front, for one that wants those of all */
+  | { nodeWebserver: 'metrics-read'; query: number }
+  /** the metrics of the fronts that answered, each with the number of its front */
+  | { nodeWebserver: 'metrics'; id: number; answers: ServerMetrics[] }
+  /** the processes of the fronts, by their number, for the stats */
+  | { nodeWebserver: 'processes'; processes: Record<string, number> };
 
 /** an application of a `child` server that runs */
 export interface RunningApp {
@@ -110,7 +117,13 @@ export type FrontServiceMessage =
   /** what to start for the application, on the port the front was told */
   | { nodeWebserver: 'app-start'; key: string; command: string; args: string[] }
   /** no server of the front wants the application any more */
-  | { nodeWebserver: 'app-release'; key: string };
+  | { nodeWebserver: 'app-release'; key: string }
+  /** which front it is and its process, for the stats of the others */
+  | { nodeWebserver: 'process'; front: number; pid: number }
+  /** the front wants the metrics of all fronts */
+  | { nodeWebserver: 'metrics-wanted'; id: number }
+  /** the metrics the front was asked for */
+  | { nodeWebserver: 'metrics-read-done'; query: number; metrics: ServerMetrics };
 
 /** what a front sends to the primary */
 export type FrontMessage =

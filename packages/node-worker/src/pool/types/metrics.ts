@@ -12,4 +12,8 @@ export type ServerMetrics = {
   requests: { total: number; active: number; status: Record<StatusClass, number>; latencyMs: LatencySnapshot };
   /** what other parts of the server registered, by name: worker pools, connections, lambdas */
   sources: Record<string, unknown>;
+  /** for a server of several processes (the front processes of `node-webserver`), in what a worker is told: the one these numbers are of, which runs the worker, counted from 1 */
+  front?: number;
+  /** and the numbers of every one of them, by their number */
+  fronts?: Record<string, Omit<ServerMetrics, 'front' | 'fronts'>>;
 };

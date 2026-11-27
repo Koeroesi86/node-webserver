@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { WebSocketCloseCode } from '../constants';
 import type { createRequestHandOff, createResponseHandOff } from '../hand-off';
 import type { createWsConnection } from '../websocket';
-import { getServerMetrics } from '../metrics';
+import { answerMetrics } from '../metrics';
 
 interface WorkerMessageListenerParams {
   request: Request;
@@ -106,7 +106,7 @@ const createWorkerMessageListener = ({
 
     switch (responseEvent.type) {
       case WORKER_EVENT.METRICS_REQUEST:
-        lease.send({ type: WORKER_EVENT.METRICS, requestId, event: getServerMetrics() });
+        answerMetrics((metrics) => lease.send({ type: WORKER_EVENT.METRICS, requestId, event: metrics }));
         break;
       case WORKER_EVENT.REQUEST_BODY_ACKNOWLEDGE:
         onBodyPartTaken();

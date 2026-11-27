@@ -16,6 +16,16 @@ interface ChildUsage {
 interface Usages {
   overall: Partial<pidUsage.Status>;
   child: Record<string, ChildUsage>;
+  /** with several front processes: the one that answers, whose numbers `overall` and `child` are */
+  front?: number;
+  /** and the usage of every one of them, by their number */
+  fronts?: Record<string, pidUsage.Status>;
+}
+
+/** the front that answers, and the processes of all of them */
+interface Fronts {
+  front: number;
+  list: () => Record<string, number>;
 }
 
 const usages: Usages = {
@@ -56,8 +66,19 @@ function refreshInstanceStats({ instance, runtime }: ServerState) {
   }
 }
 
+function refreshFrontStats({ front, list }: Fronts) {
+  const processes = Object.entries(list());
+  if (!processes.length) return;
+
+  // one that ended meanwhile is left out
+  Promise.allSettled(processes.map(async ([number, pid]) => [number, await pidUsage(pid)] as const)).then((results) => {
+    usages.front = front;
+    usages.fronts = Object.fromEntries(results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : [])));
+  });
+}
+
 /** the servers are asked for every time, as they change when the configuration is loaded again */
-function refreshStats(getInstances: () => ServerState[], refreshInterval = 10000) {
+function refreshStats(getInstances: () => ServerState[], refreshInterval = 10000, fronts?: Fronts) {
   pidUsage(process.pid)
     .then((stats) => {
       usages.overall = stats;
@@ -65,14 +86,15 @@ function refreshStats(getInstances: () => ServerState[], refreshInterval = 10000
     .catch((err) => console.error(err));
 
   getInstances().forEach(refreshInstanceStats);
+  if (fronts) refreshFrontStats(fronts);
 
-  setTimeout(() => refreshStats(getInstances, refreshInterval), refreshInterval);
+  setTimeout(() => refreshStats(getInstances, refreshInterval, fronts), refreshInterval);
 }
 
-function setupStatsHandler(getInstances: () => ServerState[], httpApp: Express, Configuration: Partial<Configuration>, logger: Logger) {
+function setupStatsHandler(getInstances: () => ServerState[], httpApp: Express, Configuration: Partial<Configuration>, logger: Logger, fronts?: Fronts) {
   const { portHttp, statsDomain, statsRefreshInterval } = Configuration;
   if (statsDomain) {
-    refreshStats(getInstances, statsRefreshInterval);
+    refreshStats(getInstances, statsRefreshInterval, fronts);
 
     httpApp.set('json spaces', 4);
     httpApp.use(
