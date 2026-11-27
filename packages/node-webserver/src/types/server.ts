@@ -69,6 +69,8 @@ export interface ServerRuntime {
   url?: string;
   secureContext?: SecureContext;
   child?: ChildProcess;
+  /** logs what `child` wrote without a line break after it, for a process that ends before its output does */
+  flushChildOutput?: () => void;
   /** in a front, where the primary runs the application of a `child` server: its process while it runs */
   appPid?: () => number | undefined;
   /** the connections to the target of a `child` server, closed when it stops */

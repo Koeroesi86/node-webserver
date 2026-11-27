@@ -60,6 +60,29 @@ describe('setupChildListener', () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/ crashed$/));
   });
 
+  it('logs what waits for a line break when asked to, for a process that ends before the output does', () => {
+    const { child, process } = createChild();
+    const flush = setupChildListener(process, 'app.localhost', logger);
+    child.stdout.emit('data', 'bye');
+    child.stderr.emit('data', 'crashed');
+
+    flush();
+
+    expect(logger.info.mock.calls).toEqual([[expect.stringMatching(/ bye$/)]]);
+    expect(logger.error.mock.calls).toEqual([[expect.stringMatching(/ crashed$/)]]);
+  });
+
+  it('does not log a line again when the output ends after it was asked for, and logs what comes later as a line of its own', () => {
+    const { child, process } = createChild();
+    const flush = setupChildListener(process, 'app.localhost', logger);
+    child.stdout.emit('data', 'stopping');
+    flush();
+    child.stdout.emit('data', 'stopped');
+    child.stdout.emit('end');
+
+    expect(logger.info.mock.calls).toEqual([[expect.stringMatching(/ stopping$/)], [expect.stringMatching(/\] stopped$/)]]);
+  });
+
   it('reads the output of a level that is off, without logging it', () => {
     const { child, process } = createChild();
     logger.isEnabled.mockImplementationOnce(() => false);

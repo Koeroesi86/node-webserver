@@ -48,6 +48,17 @@ describe('addExitListeners', () => {
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  it.each(['SIGINT', 'SIGUSR2', 'uncaughtException', 'exit'])('logs the unfinished lines of the children before the log is written on %s', (reason) => {
+    const order: string[] = [];
+    const flushChildOutput = jest.fn(() => order.push('children'));
+    jest.mocked(logger.flush).mockImplementation(() => order.push('log'));
+    addExitListeners(logger, () => [{ instance: { hostname: 'a', protocol: 'http' }, runtime: { flushChildOutput } }]);
+
+    listeners[reason](reason);
+
+    expect(order).toEqual(['children', 'log']);
+  });
+
   it('does not raise a signal when the process is exiting anyway', () => {
     addExitListeners(logger, () => []);
 

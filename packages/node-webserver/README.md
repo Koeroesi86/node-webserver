@@ -247,7 +247,8 @@ The access logs and everything else that is logged go to the console in one writ
 on the thread that serves the requests. Lines of other code that write to the console directly can come out before the lines of the turn, by at most that turn. A level that is switched off costs nothing, its lines are not even built.
 
 What the application of a `child` server writes goes to the logs too, stdout to the info level and stderr to the error level, line by line, with the time and the host name of its server in front of every line
-(`[2026-01-31 12:00:00.00] [app.localhost] listening`). A line is logged once it ends (`\n`, `\r\n` or `\r`) or the output does, so one that is not ended while the application runs waits, and can be lost when the server ends.
+(`[2026-01-31 12:00:00.00] [app.localhost] listening`). A line is logged once it ends (`\n`, `\r\n` or `\r`) or the output does, so one that is not ended while the application runs waits. A server that stops before the output ends logs it
+as it is then, before it writes its logs; what the application writes after that is lost.
 Blank lines are left out, and a line of more than 16384 characters is logged in pieces of that length. The messages about the process (it could not be started, its exit code) name the host too.
 The server reads it whatever the levels are, so that an application does not block on a full pipe. For a chatty one, `logLevels: { info: false }` leaves its stdout out, along with everything else that is logged as info.
 A `command` that is not found or may not be run is logged as an error, followed by the negative exit code of the attempt. The requests of that server fail with 502, and the other servers are not affected.
@@ -256,6 +257,7 @@ Node throws some other failures to start a process instead, such as for a path t
 
 What workers and [lambdas](#lambdas) write is logged line by line in the same way, with the host name of their server: the stdout of a worker as info and its stderr as an error, both outputs of a lambda as info, and so is
 the exit code of a lambda that failed, which names the host too. Every process and output has lines of its own, so those of two workers are not mixed. The routes of a lambda server share the host name.
+Unlike those of `child` applications, their lines that are not ended can still be lost when the server ends.
 
 ### Waiting for a worker
 

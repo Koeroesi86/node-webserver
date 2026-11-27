@@ -25,19 +25,19 @@ function cleanTmp(logger: Logger) {
 }
 
 function exitHandler(hosts: ServerState[]) {
-  hosts.forEach(({ runtime: { child } }) => {
+  hosts.forEach(({ runtime: { child, flushChildOutput } }) => {
     if (child) {
       child.kill('SIGTERM');
     }
+    flushChildOutput?.();
   });
 }
 
 function exitListener(logger: Logger, getInstances: () => ServerState[], reason: ExitReason, event: unknown, signals: SignalSource) {
   logger.error(`${reason} triggered:\n`, event);
-  // the signal is raised again below, and a process ended by a signal does not run its exit handlers
-  logger.flush();
-
   exitHandler(getInstances());
+  // the signal is raised again below, and a process ended by a signal does not run its exit handlers. After the children, whose last lines are logged just before.
+  logger.flush();
 
   cleanTmp(logger);
 
