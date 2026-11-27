@@ -2,8 +2,6 @@ import { EventEmitter } from 'events';
 import type { ChildProcess } from 'child_process';
 import createMockLogger from '../observability/mock-logger.test-helper';
 import setupChildListener from './setup-child-listener';
-import setupChildListeners from './setup-child-listeners';
-import type { ServerState } from '../types';
 
 const createChild = () => {
   const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
@@ -58,23 +56,5 @@ describe('setupChildListener', () => {
     child.stdout.emit('data', 'once');
 
     expect(logger.info).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('setupChildListeners', () => {
-  const logger = createMockLogger();
-
-  it('sets up the instances that have a child, and skips the others', () => {
-    const { child, process } = createChild();
-    const instances = [
-      { instance: { hostname: 'a', protocol: 'http' }, runtime: { child: process } },
-      { instance: { hostname: 'b', protocol: 'http' }, runtime: {} },
-    ] satisfies ServerState[];
-
-    setupChildListeners(logger, instances);
-    child.stderr.emit('data', 'x');
-    setupChildListeners(logger);
-
-    expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,13 +2,15 @@ import { spawn } from 'child_process';
 import express from 'express';
 import http from 'http';
 import net from 'net';
-import { once } from 'events';
+import { EventEmitter, once } from 'events';
 import proxyMiddleware from './proxy';
 import { addPort, clearPorts } from '../utils';
 import createMockLogger from '../observability/mock-logger.test-helper';
 import type { ServerConfig, ServerRuntime } from '../types';
 
-jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spawn: jest.fn(() => ({ pid: 1 })) }));
+/** a process that does nothing, with the pipes the server reads */
+const fakeChild = () => Object.assign(new (jest.requireActual('events').EventEmitter)(), { pid: 1, stdout: new EventEmitter(), stderr: new EventEmitter() });
+jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spawn: jest.fn(() => fakeChild()) }));
 
 const instance = (extra: Partial<ServerConfig> = {}): ServerConfig => ({
   hostname: 'child.localhost',
@@ -41,7 +43,20 @@ describe('proxyMiddleware', () => {
     expect(spawn).toHaveBeenCalledWith('node', ['server.js', '--port', '3001'], { stdio: 'pipe' });
     expect(server.proxyOptions).toMatchObject({ hostname: 'localhost', port: [3001] });
     expect(server.serverOptions?.proxyTarget).toBe('http://localhost:3001');
-    expect(runtime.child).toEqual({ pid: 1 });
+    expect(runtime.child).toBe(jest.mocked(spawn).mock.results[0].value);
+  });
+
+  it('logs what the child writes, which would otherwise fill the pipe', () => {
+    addPort(3004);
+    const logger = createMockLogger();
+    const runtime: ServerRuntime = {};
+    proxyMiddleware(instance(), runtime, logger);
+
+    runtime.child?.stdout?.emit('data', 'listening');
+    runtime.child?.stderr?.emit('data', 'broken');
+
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('listening'));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('broken'));
   });
 
   it('lets the arguments be made from the port', () => {

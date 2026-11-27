@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import type { RequestHandler } from 'express';
 
 import { getFreePort } from '../utils';
+import { setupChildListener } from '../children';
 import { PROXY_PROTOCOLS } from '../constants';
 import proxyServerMiddleware from './proxy-server';
 import type { Logger, ServerConfig, ServerRuntime } from '../types';
@@ -30,6 +31,8 @@ const proxyMiddleware = (instance: ServerConfig, runtime: ServerRuntime, logger:
   }
 
   runtime.child = spawn(command, childArgs || [], { stdio: 'pipe' });
+  // reads what it writes too, which would otherwise fill the pipe
+  setupChildListener(runtime.child, logger);
 
   // the requests go the way those of a `proxy` server with a fixed target do (websockets, 502 and 504, forwarded headers), without a control path
   const proxy = proxyServerMiddleware({ ...instance, proxyOptions: { ...proxyOptions, target: serverOptions.proxyTarget, dynamic: undefined } }, logger);
