@@ -511,7 +511,7 @@ It resolves once all fronts serve, and rejects when one does not start (a proble
 `reload` of a front asks the primary for it, `stop` of a front stops that one.
 
 **What is shared and what is not.** Each front is a server of its own: its own worker and lambda pools (a path that has a worker in one front starts another one in the next), caches, metrics and [stats](#metrics-for-workers), so an answer of
-`event.getMetrics()` or the stats domain shows one front only. The [registered targets](#registering-a-dynamic-target) of `proxy` servers are the same in all of them. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
+`event.getMetrics()` or the stats domain shows one front only. The [registered targets](#registering-a-dynamic-target) of `proxy` servers and the applications of `child` servers are the same for all of them. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
 
 **Limits** are the totals of the server, split between the fronts as evenly as possible (6 over 4 fronts: 2, 2, 1, 1): `workerLimit`, `maxConnections`, `limit` and `limitPerPath` of a worker server, `limit` of a lambda server and its routes,
 their defaults included. No more fronts run than the smallest limit that is set allows, without a message about it: with `limit: 2` on one lambda route there are 2 fronts at most, with a limit of 1 there is one, behind the primary.
@@ -519,8 +519,12 @@ their defaults included. No more fronts run than the smallest limit that is set 
 of `warmPaths` (`warmWorkersPerPath` in every front, within its share of the limits). The connections are spread, not the requests: a front can be full while another has room, so requests wait, or get a 503, earlier than with one front.
 A connection over the share of `maxConnections` of a front is closed, also while another front has room, which long lived connections can lead to.
 
-**Not with several fronts yet:** `child` servers work with one front only, as every front would start the application on its own.
-More than one front with them is an error at the start, on a reload and in the [check](#checking-the-configuration), whether the number comes from `frontProcesses` or from `"auto"`.
+**`child` servers** have one application each, whatever the number of fronts: the primary starts it for the fronts that want it and stops it once none does, and when it ends itself. The fronts proxy to it.
+- Without `proxyOptions.port` the primary picks a free port from `portLookup` (3000 to 3010 on `localhost` without it) for `%PORT%` and an `args` function, which every process that runs the server calls to tell one application from another,
+  so it has to give the same arguments for the same port. A request that comes before the front was told the port waits for it, and fails with 500 when there is none left.
+- The same server keeps its application, through a reload, a change of the configuration and a replaced front. A changed one (its definition or files) gets another application next to it, which with the same fixed `port` starts
+  once the old one ended, so that requests fail with 502 in between.
+- The primary writes what the applications write in its own logs, and an application that ends on its own is not started again.
 
 **When a front ends** another one takes its place and its share, at once the first time, then after 100 ms doubling up to 10 s as long as they end within 5 seconds, like a [worker that crashes](#workers-that-crash). The others keep serving.
 A connection the primary hands to a front in the instant it dies is not answered, and its client gives up on its own. A replacement that loads another configuration than the one the server runs, or finds another version of the package installed,
@@ -584,7 +588,6 @@ flight is answered, then it is closed: a client that sends the next request in t
 
 **With a pause**, by a restart of the whole server through the launcher: new connections are refused while the requests in flight finish and the new server starts. That happens when
 - `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started (not on Windows, where the primary always accepts them),
-- the server has a `child` server, before or after the change: a second application on the same port. The [registered targets](#registering-a-dynamic-target) are lost by such a restart without `persistPath`,
 - the server was updated and a front finds another version than the one the primary runs.
 
 There is no old server to go back to then, so a server that does not start after a restart (a port in use) is tried again, at once and then after 100 ms doubling up to 10 s, and the log says so.
@@ -606,7 +609,7 @@ It prints every problem with its server (the host name, and the file when the se
 - the certificates: an https server needs a key and a certificate, which have to belong together; a certificate that expired is an error, one that expires within 14 days a warning
 - the routes: `pattern` has to be a regular expression with its `flags`
 - the servers together: a host name served twice over the same protocol is an error, a host that is the `statsDomain` is a warning, and `portHttp` and `portHttps` cannot be the same
-- `frontProcesses` above what the machine runs, and a `child` server while [more than one front](#front-processes) would run
+- `frontProcesses` above what the machine runs
 - a `proxy` server has either a `target` that is a URL or a `dynamic` one with a token, a `child` server with arguments needs `%PORT%` in them unless `proxyOptions.port` is set, and a lambda server needs a `lambda` or `routes`
 
 An error stops the start, with all the problems in the message, and on a reload it is what is logged while the running servers are kept. A server file that does not exist is a warning, as a reload leaves it out.

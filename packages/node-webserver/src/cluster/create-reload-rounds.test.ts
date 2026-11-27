@@ -23,8 +23,8 @@ describe('createReloadRounds', () => {
   /** rounds of two fronts that serve what the same files gave */
   const create = (options: Partial<Parameters<typeof createReloadRounds>[0]> = {}) => {
     const rounds = createReloadRounds({ logger, send, kill, watch, ...options });
-    rounds.serving(0, { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [], certificates: [] });
-    rounds.serving(1, { files: ['a.js', 'b.js'], fingerprint: 'running', singleFrontOnly: false, targets: [], certificates: [] });
+    rounds.serving(0, { files: ['a.js'], fingerprint: 'running', targets: [], certificates: [] });
+    rounds.serving(1, { files: ['a.js', 'b.js'], fingerprint: 'running', targets: [], certificates: [] });
     rounds.start();
     return rounds;
   };
@@ -44,7 +44,7 @@ describe('createReloadRounds', () => {
     const rounds = create();
     watch.mockClear();
 
-    rounds.message(0, { nodeWebserver: 'files', files: ['c.js'], singleFrontOnly: false, targets: [], certificates: [] });
+    rounds.message(0, { nodeWebserver: 'files', files: ['c.js'], targets: [], certificates: [] });
 
     expect(stopWatching).toHaveBeenCalled();
     expect(watch).toHaveBeenLastCalledWith(['c.js', 'a.js', 'b.js'], expect.any(Function));
@@ -55,7 +55,7 @@ describe('createReloadRounds', () => {
     watch.mockClear();
     stopWatching.mockClear();
 
-    rounds.message(0, { nodeWebserver: 'files', files: ['c.js'], singleFrontOnly: false, targets: [], certificates: [] });
+    rounds.message(0, { nodeWebserver: 'files', files: ['c.js'], targets: [], certificates: [] });
 
     expect(watch.mock.invocationCallOrder[0]).toBeLessThan(stopWatching.mock.invocationCallOrder[0]);
   });
@@ -151,7 +151,7 @@ describe('createReloadRounds', () => {
     expect(kill.mock.calls).toEqual([[1]]);
     expect(sent().slice(2)).toEqual(['discard 1 to 0', 'discard 1 to 1']);
     rounds.exited(1);
-    rounds.serving(1, { files: [], fingerprint: 'new', singleFrontOnly: false, targets: [], certificates: [] });
+    rounds.serving(1, { files: [], fingerprint: 'new', targets: [], certificates: [] });
     expect(sent().slice(4)).toEqual(['prepare 2 to 0', 'prepare 2 to 1']);
   });
 
@@ -169,15 +169,15 @@ describe('createReloadRounds', () => {
 
   it('runs a round once the first fronts serve when they did not load the same, or a change came while they started', () => {
     const differing = createReloadRounds({ logger, send, kill });
-    differing.serving(0, { files: [], fingerprint: 'one', singleFrontOnly: false, targets: [], certificates: [] });
-    differing.serving(1, { files: [], fingerprint: 'other', singleFrontOnly: false, targets: [], certificates: [] });
+    differing.serving(0, { files: [], fingerprint: 'one', targets: [], certificates: [] });
+    differing.serving(1, { files: [], fingerprint: 'other', targets: [], certificates: [] });
     expect(send).not.toHaveBeenCalled();
     differing.start();
     expect(sent()).toEqual(['prepare 1 to 0', 'prepare 1 to 1']);
 
     send.mockClear();
     const asked = createReloadRounds({ logger, send, kill });
-    asked.serving(0, { files: [], fingerprint: 'one', singleFrontOnly: false, targets: [], certificates: [] });
+    asked.serving(0, { files: [], fingerprint: 'one', targets: [], certificates: [] });
     asked.request();
     asked.start();
     expect(sent()).toEqual(['prepare 1 to 0']);
@@ -189,7 +189,7 @@ describe('createReloadRounds', () => {
 
     rounds.request();
     expect(send).not.toHaveBeenCalled();
-    rounds.serving(0, { files: [], fingerprint: 'new', singleFrontOnly: false, targets: [], certificates: [] });
+    rounds.serving(0, { files: [], fingerprint: 'new', targets: [], certificates: [] });
 
     expect(sent()).toEqual(['prepare 1 to 0']);
   });
@@ -220,14 +220,5 @@ describe('createReloadRounds', () => {
 
     expect(onRecount).toHaveBeenCalledTimes(1);
     expect(sent().slice(2)).toEqual(['discard 1 to 0', 'discard 1 to 1']);
-  });
-
-  it('says whether a server of one of the fronts must not run twice', () => {
-    const rounds = create();
-    expect(rounds.isSingleFrontOnly()).toBe(false);
-
-    rounds.message(1, { nodeWebserver: 'files', files: [], singleFrontOnly: true, targets: [], certificates: [] });
-
-    expect(rounds.isSingleFrontOnly()).toBe(true);
   });
 });

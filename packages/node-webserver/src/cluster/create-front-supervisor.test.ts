@@ -4,7 +4,7 @@ import { createFakeFork } from './fake-front.test-helper';
 import { FRONT_MIN_UPTIME, FRONT_STOP_MARGIN } from '../constants';
 
 const release = { configuration: 'a', version: '1.0.0' };
-const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [], certificates: [] };
+const report = { files: ['a.js'], fingerprint: 'running', targets: [], certificates: [] };
 const ready = { nodeWebserver: 'ready' as const, release, ...report };
 
 describe('createFrontSupervisor', () => {
@@ -173,11 +173,11 @@ describe('createFrontSupervisor', () => {
   it('tells the listener when a front serves, what it says about its servers, and when it ends', async () => {
     const { fronts } = await started(1);
 
-    fronts[0].say({ nodeWebserver: 'files', files: [], singleFrontOnly: false, targets: [], certificates: [] });
+    fronts[0].say({ nodeWebserver: 'files', files: [], targets: [], certificates: [] });
     fronts[0].exit(1);
 
     expect(listener.serving).toHaveBeenCalledWith(0, report);
-    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [], singleFrontOnly: false, targets: [], certificates: [] });
+    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [], targets: [], certificates: [] });
     expect(listener.exited).toHaveBeenCalledWith(0);
   });
 
@@ -249,7 +249,7 @@ describe('createFrontSupervisor', () => {
     fronts[0].say({ nodeWebserver: 'hello' });
     fronts[0].say({ nodeWebserver: 'target', change });
     fronts[0].say({ nodeWebserver: 'challenge-taken', token: 'a' });
-    fronts[0].say({ nodeWebserver: 'files', files: [], singleFrontOnly: false, targets: ['https a'], certificates: [] });
+    fronts[0].say({ nodeWebserver: 'files', files: [], targets: ['https a'], certificates: [] });
 
     expect(services.join).toHaveBeenCalledTimes(1);
     expect(member.hello).toHaveBeenCalled();

@@ -12,6 +12,8 @@ import type { Answer, ServerFolder } from './helpers/server-folder';
 const itWithSignals = process.platform === 'win32' ? it.skip : it;
 // a single core runs one front, whatever is asked for
 const itWithCores = os.availableParallelism() < 2 ? it.skip : it;
+// a change between one front and several takes a restart, other than on Windows
+const itWithRestart = process.platform === 'win32' || os.availableParallelism() < 2 ? it.skip : it;
 
 /** the command line with the configuration of the folder, which is the launcher of its server */
 const launch = (folder: ServerFolder) => {
@@ -38,18 +40,14 @@ const launch = (folder: ServerFolder) => {
   };
 };
 
-/** a server whose application only one front can start, on a port of its own. The application ends with the process that started it, which nothing else ends it after a failed start. */
-const childServer = (port: number) => ({
+/** a server with an application on a port of its own, which answers with its process, like a worker does */
+const childServer = (port: number, extra = '') => ({
   hostname: 'app.localhost',
   protocol: 'http',
   type: 'child',
   childOptions: {
     command: process.execPath,
-    args: [
-      '-e',
-      "process.stdin.on('end', () => process.exit()).resume(); require('http').createServer((_, res) => res.end()).listen(+process.argv[1])",
-      `${port}`,
-    ],
+    args: ['-e', "require('http').createServer((_, res) => res.end(JSON.stringify({ worker: process.pid }))).listen(+process.argv[1])", `${port}`, extra],
   },
   proxyOptions: { port },
   serverOptions: { protocol: 'http', proxyTarget: `http://localhost:${port}` },
@@ -205,18 +203,29 @@ describe('the server of the command line', () => {
     await serving('second.localhost');
   });
 
-  it('restarts, with a pause, for a setup that cannot run twice, and comes back', async () => {
-    await start();
+  it('keeps the application of a child server through a change of the configuration, and starts another one for a changed server', async () => {
     const { port, free } = await takePort();
     await free();
-
-    folder.configure({}, [childServer(port)]);
-
+    const application = async () => (await folder.get('app.localhost')).worker ?? 0;
+    await start({}, [childServer(port)]);
     await serving('app.localhost');
-    await serving();
-    expect(server.output()).toContain('The server restarts');
-    expect(server.output()).toContain('[launcher] Starting the server again');
-    expect(server.ended()).toBeUndefined();
+    const first = await application();
+    const [before] = await answering();
+
+    folder.configure({}, [childServer(port), folder.server('added.localhost')]);
+    await serving('added.localhost');
+    await eventually(() => !isAlive(before.front ?? 0));
+    expect(await application()).toBe(first);
+
+    // on the same port, which the new one gets once the old one ended
+    folder.configure({}, [childServer(port, 'changed')]);
+    await eventually(async () => ![0, first].includes(await application()));
+    expect(isAlive(first)).toBe(false);
+    const second = await application();
+
+    folder.configure();
+    await eventually(() => !isAlive(second));
+    expect(server.output()).not.toContain('The server restarts');
   });
 
   itWithCores('changes between one front and several, with a restart where the way of accepting connections changes', async () => {
@@ -248,18 +257,17 @@ describe('the server of the command line', () => {
     expect(server.output()).not.toContain('The server restarts');
   });
 
-  it('tries again when the server does not start after a restart', async () => {
+  itWithRestart('tries again when the server does not start after a restart', async () => {
     await start();
     const { port, free } = await takePort();
-    const app = await takePort();
-    await app.free();
 
-    folder.configure({ portHttps: port }, [childServer(app.port)]);
+    // from one front to several, which takes a restart
+    folder.configure({ frontProcesses: 2, portHttps: port }, [folder.server('added.localhost')]);
     await eventually(() => server.output().includes('did not start after its restart'));
     expect(server.ended()).toBeUndefined();
     await free();
 
-    await serving('app.localhost');
+    await serving('added.localhost');
   });
 
   it('ends with an error when its first start fails', async () => {
@@ -272,9 +280,12 @@ describe('the server of the command line', () => {
     expect(server.ended()?.code).toBe(1);
   });
 
-  it('leaves no process behind when the launcher is killed', async () => {
-    await start();
-    const pids = await processes();
+  it('leaves no process behind when the launcher is killed, the application of a child server neither', async () => {
+    const { port, free } = await takePort();
+    await free();
+    await start({}, [childServer(port)]);
+    await serving('app.localhost');
+    const pids = [...(await processes()), (await folder.get('app.localhost')).worker ?? 0];
 
     server.child.kill('SIGKILL');
 

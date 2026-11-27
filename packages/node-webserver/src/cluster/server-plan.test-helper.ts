@@ -5,7 +5,6 @@ export const createPlan = (change: Partial<ServerPlan> = {}): ServerPlan => ({
   problems: [],
   frontCount: 2,
   balanced: true,
-  singleFrontOnly: false,
   release: { configuration: 'a', version: '1.0.0' },
   files: ['configuration.js'],
   filesFingerprint: 'a',

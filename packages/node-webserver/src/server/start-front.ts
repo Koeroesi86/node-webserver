@@ -2,6 +2,7 @@ import createServer from './create-server';
 import createFrontReload from './create-front-reload';
 import type { RunningServer } from './create-server';
 import {
+  createFrontApps,
   createFrontTargets,
   createMergedSignals,
   fingerprintConfiguration,
@@ -40,6 +41,7 @@ const startFront = async (
   };
   const stop = () => (running ? running.stop() : Promise.resolve());
   const targets = createFrontTargets((message) => void send(message));
+  const apps = createFrontApps((message) => void send(message));
   /** of the orders of the primary, which the authority may ask any front for */
   const challenges: AcmeChallenges = new Map();
   let welcome = () => {};
@@ -63,11 +65,15 @@ const startFront = async (
       challenges.set(token, answer);
       void send({ nodeWebserver: 'challenge-taken', token });
     },
+    'app-port': (message) => message.nodeWebserver === 'app-port' && apps.receive(message),
+    apps: (message) => message.nodeWebserver === 'apps' && apps.runs(message.running),
   };
   // from here on the channel keeps the front running, which it does not until the server starts. Node does not take it back by itself once it was let go, and nothing else
   // may be there while a port is waited for
   process.channel?.ref();
   process.on('message', (message) => isPrimaryMessage(message) && obey[message.nodeWebserver](message));
+  // a primary that was killed leaves its applications behind: the channel closes then, and the front ends
+  process.on('exit', () => !process.connected && apps.endAll());
   await send({ nodeWebserver: 'hello' });
 
   const release = { configuration: fingerprintConfiguration(configuration), version: readServerVersion() };
@@ -93,6 +99,7 @@ const startFront = async (
     requestReload,
     sharedTargets: targets,
     acmeChallenges: challenges,
+    sharedApps: apps,
   }).catch(fail);
   process.off('uncaughtException', fail);
   rounds = createFrontReload(running, send, logger);

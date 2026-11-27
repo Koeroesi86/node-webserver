@@ -27,7 +27,6 @@ const createFrontSet = ({ plan, fork, logger, services, watch, onStale, onRecoun
     stop,
     reload: rounds.request,
     isEmpty: supervisor.isEmpty,
-    isSingleFrontOnly: rounds.isSingleFrontOnly,
   };
 };
 

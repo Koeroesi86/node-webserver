@@ -15,7 +15,6 @@ describe('createServerPlan', () => {
       problems: [],
       frontCount: 3,
       balanced: true,
-      singleFrontOnly: false,
       release: { version: readServerVersion() },
       files: [],
       settings: { reloadOnSighup: true, shutdownTimeout: 7, watchServers: true },

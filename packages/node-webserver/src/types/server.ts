@@ -69,6 +69,8 @@ export interface ServerRuntime {
   url?: string;
   secureContext?: SecureContext;
   child?: ChildProcess;
+  /** in a front, where the primary runs the application of a `child` server: its process while it runs */
+  appPid?: () => number | undefined;
   /** the connections to the target of a `child` server, closed when it stops */
   proxy?: { close: () => void };
   lambdas?: Record<string, { pid: number }>;

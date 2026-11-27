@@ -3,7 +3,7 @@ import { Agent } from 'http';
 import { middleware } from '@koeroesi86/node-worker-express';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
 import { createLambdaStats } from '@koeroesi86/node-lambda-invoke';
-import { lambda as lambdaMiddleware } from '../middlewares';
+import { lambda as lambdaMiddleware, sharedChild } from '../middlewares';
 import createInstanceHandler from './create-instance-handler';
 import createMockLogger from '../observability/mock-logger.test-helper';
 import { retireAgent } from '../proxy';
@@ -12,6 +12,8 @@ import type { LoadedInstance, ServerConfig, ServerRuntime } from '../types';
 
 // the child process and the proxy are started by the middleware, one that leaves the request open is enough here
 jest.mock('../middlewares/proxy', () => ({ __esModule: true, default: jest.fn(() => jest.fn()) }));
+// in a front the primary starts the application
+jest.mock('../middlewares/shared-child', () => ({ __esModule: true, default: jest.fn(() => ({ handler: jest.fn(), close: jest.fn(), pid: () => 4321 })) }));
 // the agent of a target is checked by the test of the target store
 jest.mock('../proxy/retire-agent', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('../middlewares/lambda', () => ({ __esModule: true, default: jest.fn(() => Object.assign(jest.fn(), { close: jest.fn() })) }));
@@ -44,6 +46,21 @@ describe('createInstanceHandler', () => {
     expect(runtime.child?.kill).toHaveBeenCalledWith('SIGTERM');
     expect(runtime.proxy?.close).toHaveBeenCalled();
     expect(closed).toHaveBeenCalled();
+  });
+
+  it('has the primary start the application of a child server in a front, and releases it', async () => {
+    const { instance } = child();
+    const sharedApps = { claim: jest.fn(), start: jest.fn(), release: jest.fn(), pid: jest.fn() };
+    const runtime: ServerRuntime = {};
+    const portLookup = { from: 1, to: 2, address: 'localhost' };
+
+    const { close } = createInstanceHandler(instance, runtime, { logger, sharedApps, fingerprint: 'one', configuration: { portLookup } });
+    await close(0);
+
+    expect(sharedChild).toHaveBeenCalledWith(instance, { apps: sharedApps, fingerprint: 'one', portLookup, logger });
+    expect(jest.mocked(sharedChild).mock.results[0].value.close).toHaveBeenCalled();
+    // for the stats
+    expect(runtime.appPid?.()).toBe(4321);
   });
 
   it('leaves the waiting for the requests of a worker server to its pool', async () => {

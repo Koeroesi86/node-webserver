@@ -206,6 +206,31 @@ describeWithCores('the server with several front processes', () => {
     expect(await statuses()).toEqual([503]);
   });
 
+  it('has every front pass the requests of a child server on to the one application that the primary started, which ends with the server', async () => {
+    const server = await start({ SYSTEM_LOGS: 'true' });
+    await processesOf(server);
+    /** the applications that requests on connections of their own reach, enough of them for every front to get some */
+    const applications = async () => {
+      const replies = await Promise.all(Array.from({ length: 8 }, () => server.get('child.localhost', '/', { signal: AbortSignal.timeout(5000) })));
+      return Array.from(new Set(replies.map((reply) => (reply.status === 200 ? (reply.json() as { pid: number }).pid : reply.status))));
+    };
+    // the application may not listen yet
+    await until(server, async () => !(await applications()).includes(502));
+    const [application, ...others] = await applications();
+    expect(others).toEqual([]);
+
+    const [killed] = frontsOf(await answering(server));
+    process.kill(killed, 'SIGKILL');
+    await until(server, async () => {
+      const fronts = frontsOf(await answering(server));
+      return fronts.length === 2 && !fronts.includes(killed);
+    });
+    expect(await applications()).toEqual([application]);
+
+    await server.stop();
+    await until(server, () => !isAlive(application));
+  });
+
   it('loads the servers again in every front', async () => {
     const server = await start({ SYSTEM_LOGS: 'true' });
 
@@ -290,14 +315,20 @@ describeWithCores('the server with several front processes', () => {
     await gone(server, processes);
   });
 
-  it('takes the fronts and their workers with it when the primary is killed', async () => {
+  it('takes the fronts, their workers and the application of a child server with it when the primary is killed', async () => {
     const server = await start();
     const processes = await processesOf(server);
+    let application = 0;
+    await until(server, async () => {
+      const reply = await server.get('child.localhost', '/', { signal: AbortSignal.timeout(5000) });
+      application = reply.status === 200 ? (reply.json() as { pid: number }).pid : 0;
+      return application > 0;
+    });
 
     server.signal('SIGKILL');
 
     await server.exited;
-    await gone(server, processes);
+    await gone(server, [...processes, application]);
   });
 
   it('does not start, and says why, when a front cannot listen', async () => {
