@@ -39,6 +39,7 @@ export const FUNCTION_FOLDERS = [
   'channel',
   'pooling',
   // tools
+  'branches',
   'checks',
   'compare',
   'coverage-report',
