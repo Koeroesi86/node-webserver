@@ -613,7 +613,8 @@ Only the files are watched: a change of an environment variable that the configu
 #### Updates of the server
 
 A server behind a launcher restarts into another version of itself once one is installed, unless `watchServers` is `false`. A version is the versions of `node-webserver-cli`, `node-webserver`, `node-lambda-invoke`, `node-worker-express`
-and `node-worker` together, as they are found from the script the server runs. An update of another dependency alone is not seen. A `startCluster` of a program is told apart the same way, without the command line.
+and `node-worker` together, as they are found on the disk from the script the server runs (one that is not found there, which Node may load through `NODE_PATH`, counts as missing). An update of
+another dependency alone is not seen. A `startCluster` of a program is told apart the same way, without the command line.
 
 - Every 5 seconds the server reads the versions where the script it was started with leads **now**, links included, so both a package manager that writes over the installed packages and a deploy that points a link to a new release are seen.
 - Another version is acted on once it was the same for about 10 seconds, as an update writes one package after the other. A process of its own then loads the **new** code with the configuration and checks it. While that fails (the update is not

@@ -58,12 +58,18 @@ describe('readServerVersion', () => {
     expect([first, readServerVersion(script)]).toEqual([expect.stringContaining('node-webserver@2 '), expect.stringContaining('node-webserver@2.1 ')]);
   });
 
-  it('cannot be read while a package is missing or half written', () => {
+  it('names a package that it does not find on the disk as missing, until it is there', () => {
     const { 'node-worker': _, ...without } = all;
     const script = release('one', without);
-    expect(() => readServerVersion(script)).toThrow('node-worker is not installed');
+    expect(readServerVersion(script).split(' ')).toContain('@koeroesi86/node-worker@missing');
 
     release('one', { 'node-worker': '3' });
+
+    expect(readServerVersion(script).split(' ')).toContain('@koeroesi86/node-worker@3');
+  });
+
+  it('cannot be read while a package is half written', () => {
+    const script = release('one', all);
     fs.writeFileSync(path.join(root, 'one', 'node_modules', '@koeroesi86', 'node-worker', 'package.json'), '{');
     expect(() => readServerVersion(script)).toThrow();
   });

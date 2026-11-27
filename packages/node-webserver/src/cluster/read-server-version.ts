@@ -17,33 +17,34 @@ const findPackageOf = (folder: string): string | undefined => {
   return parent === folder ? undefined : findPackageOf(parent);
 };
 
-/** the folder of a package and of every package of the repository it depends on, each found where the one that depends on it would load it from, through its links */
-const findPackages = (folder: string): string[] => {
-  const dependencies = Object.keys(read(folder).dependencies ?? {}).filter((name) => name.startsWith(PREFIX));
+/** `name@version` of a package and of every package of the repository it depends on, each found where the one that depends on it would load it from, through its links */
+const readPackages = (folder: string): string[] => {
+  const { name, version, dependencies = {} } = read(folder);
 
   return [
-    folder,
-    ...dependencies.flatMap((name) => {
-      const found = findInstalledPackage(folder, name);
-      if (!found) throw new Error(`${name} is not installed where ${folder} would load it from.`);
-
-      return findPackages(fs.realpathSync(found));
-    }),
+    `${name}@${version}`,
+    ...Object.keys(dependencies)
+      .filter((dependency) => dependency.startsWith(PREFIX))
+      .flatMap((dependency) => {
+        const found = findInstalledPackage(folder, dependency);
+        // one that node finds somewhere else, as through NODE_PATH, must not keep the server from starting
+        return found ? readPackages(fs.realpathSync(found)) : [`${dependency}@missing`];
+      }),
   ];
 };
 
 /**
  * The versions of the packages of the server as they are installed now for the script that runs it, which an update changes while the processes that run keep their code: of the
  * package of the script when it is one of the repository (the command line), of the server and of what it runs on. The script is followed through links, so that a link that
- * points to a new release says what is there. Throws while an update is not complete enough to be read.
+ * points to a new release says what is there. A package that is not found on the disk is named as `missing`. Throws while a `package.json` cannot be read, as while an update writes it.
  */
 const readServerVersion = (script: string = process.argv[1]): string => {
   const folder = path.dirname(fs.realpathSync(script));
   const server = fs.realpathSync(findInstalledPackage(folder, SERVER) ?? PACKAGE_ROOT);
   const own = findPackageOf(folder);
-  const ofTheScript = own && read(own).name?.startsWith(PREFIX) ? [own] : [];
   // the package of the script alone: what it depends on is the server, which is looked up for itself
-  const versions = [...ofTheScript, ...findPackages(server)].map(read).map(({ name, version }) => `${name}@${version}`);
+  const ofTheScript = own && read(own).name?.startsWith(PREFIX) ? [own] : [];
+  const versions = [...ofTheScript.map(read).map(({ name, version }) => `${name}@${version}`), ...readPackages(server)];
 
   return Array.from(new Set(versions)).join(' ');
 };
