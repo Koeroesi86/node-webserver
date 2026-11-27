@@ -191,7 +191,8 @@ module.exports = async (event, callback) => {
 ## Metrics
 
 `await event.getMetrics()` in a worker gives a snapshot of the server (uptime, memory, event loop delay, request counts, worker pools) for health and metrics endpoints, see the README of `@koeroesi86/node-webserver`.
-In the server process `getServerMetrics()` gives the same, and `registerMetricsSource(name, read)` adds a source to it.
+In the server process `getServerMetrics()` gives the same, and `registerMetricsSource(name, read)` adds a source to it. A server that is more than one process can answer the workers itself with
+`setMetricsCollector(async () => metrics)`, which returns a function that removes it again: `node-webserver` does with several front processes, and adds `front` and `fronts` to what a worker is told.
 
 ## How the server and the workers talk
 

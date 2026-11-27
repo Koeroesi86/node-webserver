@@ -30,6 +30,10 @@ export const DEFAULT_MAX_CONNECTIONS = 10000;
 /** how long the primary waits for its fronts to take a challenge before it asks the authority to check it, in milliseconds */
 export const CHALLENGE_TIMEOUT = 5000;
 
+/** how long the primary waits for the metrics of its fronts, and a front for the answer of the primary, in milliseconds */
+export const METRICS_TIMEOUT = 1000;
+export const METRICS_ANSWER_TIMEOUT = 2000;
+
 /** the path of a `proxy` host with a dynamic target that the server answers itself, for the service to register its target */
 export const DEFAULT_CONTROL_PATH = '/.well-known/node-webserver/proxy';
 

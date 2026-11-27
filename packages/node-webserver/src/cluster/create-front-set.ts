@@ -1,5 +1,7 @@
 import type { FrontSetOptions, PrimaryMessage } from '../types';
+import createFrontServices from './create-front-services';
 import createFrontSupervisor from './create-front-supervisor';
+import createMetricsExchange from './create-metrics-exchange';
 import createReloadRounds from './create-reload-rounds';
 
 /** The fronts that serve one configuration, with their supervision and the reloads of their servers. A change of the configuration starts another set next to it. */
@@ -11,7 +13,16 @@ const createFrontSet = ({ plan, fork, logger, services, watch, onStale, onRecoun
     watch: plan.settings.watchServers ? watch : undefined,
     onRecount,
   });
-  const supervisor = createFrontSupervisor({ count: plan.frontCount, release: plan.release, fork, logger, services, onStale, listener: rounds });
+  const supervisor = createFrontSupervisor({
+    count: plan.frontCount,
+    release: plan.release,
+    fork,
+    logger,
+    // what the fronts learn of each other is between the ones of this set
+    services: createFrontServices([services, createMetricsExchange()]),
+    onStale,
+    listener: rounds,
+  });
   const stop = (message: PrimaryMessage, timeout: number) => {
     rounds.stop();
     return supervisor.stop(message, timeout);

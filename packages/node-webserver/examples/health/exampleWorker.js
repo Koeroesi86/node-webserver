@@ -9,7 +9,9 @@ module.exports = async (event, callback) => {
   }
 
   if (event.path === '/health') {
-    const waiting = Object.values(metrics.sources).reduce((total, source) => total + (source && typeof source.waiting === 'number' ? source.waiting : 0), 0);
+    // with several front processes a request can wait in any of them
+    const sources = Object.values(metrics.fronts || { own: metrics }).flatMap((front) => Object.values(front.sources));
+    const waiting = sources.reduce((total, source) => total + (source && typeof source.waiting === 'number' ? source.waiting : 0), 0);
 
     return waiting > 0 ? json(503, { status: 'busy', waiting }) : json(200, { status: 'ok', uptimeSeconds: metrics.uptimeSeconds });
   }

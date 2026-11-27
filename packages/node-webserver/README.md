@@ -211,7 +211,7 @@ The client address workers get (`remoteAddress`) does not follow `trustedProxies
 
 ### Metrics for workers
 
-A worker can ask the server how it is doing with `event.getMetrics()`, which makes it easy to add a health or metrics endpoint. The server and the workers are different processes (with [several front processes](#front-processes), the answer is of the one that runs the worker), so this is a question over the channel to the server,
+A worker can ask the server how it is doing with `event.getMetrics()`, which makes it easy to add a health or metrics endpoint. The server and the workers are different processes, so this is a question over the channel to the server,
 answered with a snapshot:
 
 ```javascript
@@ -226,14 +226,19 @@ module.exports = async (event, callback) => {
 | `uptimeSeconds`, `memory` | of the server process: `rss`, `heapTotal`, `heapUsed`, `external` |
 | `eventLoopDelayMs` | `mean`, `p99` and `max` of how late the event loop ran since the metrics were read the last time (all zero the first time): the best sign that the server is too busy |
 | `requests` | `total`, `active` (no complete response yet), `status`, the responses by class (`2xx` ... `5xx`), and `latencyMs`, how long they took (below) |
+| `front`, `fronts` | with [several front processes](#front-processes) only (below) |
 | `sources` | `workers:<host name>` for each worker server (`workers`, `active` requests, `waiting` requests, `refused`, `failing`, the worker files that crashed in a row, the same per worker file under `paths`, and `latencyMs` per worker file), `lambdas` (`lambdas`, `busy`, `starting`, `waiting` requests, `abandoned` requests, per file), `connections:http` and `connections:https` (`open`, `dropped`, the settings) |
 
 `latencyMs` is a histogram of the time from the request to the close of its response: `count`, `sumMs`, `maxMs`, the number of requests in each of fixed buckets (`buckets`, by their upper bound in milliseconds from `1` to `30000`, and `+Inf`,
 not cumulative), and `p50`, `p90` and `p99`, which are the upper bound of the bucket they fall into. Counting a request only adds to numbers that exist, so it costs no memory per request. Per worker server it is kept by worker file,
 the static files under the static worker, and the first 100 worker files get one each, the others share `(other)`, so a client that asks for many different paths cannot grow the metrics. A websocket counts until its upgrade is answered, not for as long as it stays open.
 
+With [several front processes](#front-processes) the numbers on top are the ones of the front that runs the worker, `front` is its number (counted from 1, as in the logs), and `fronts` holds the numbers of every front by that number,
+its own included. They are labelled and not added up, as percentiles, the event loop delay and the sources a program registers cannot be: a scraper sums the counters it needs. The front asks the primary, which asks every front,
+so a question costs a round of messages; a front that does not answer within a second is left out, and while the fronts are replaced only the ones of the same set are asked.
+
 `examples/health/exampleWorker.js` is a worker with `/health` (200, or 503 while requests wait for a worker) and `/metrics`. Mind that a health endpoint is a worker like the others: it is reachable by anyone who can reach its host name.
-Part of the numbers are counted since the server started, a scraper computes rates from them. The existing stats domain (`statsDomain`) reports CPU and memory per process.
+Part of the numbers are counted since the server started, a scraper computes rates from them. The existing stats domain (`statsDomain`) reports CPU and memory per process, with several fronts also `front`, the one that answers, and `fronts`, the usage of every front process by its number.
 `getServerMetrics()` and `registerMetricsSource(name, read)` are exported by `@koeroesi86/node-worker-express`, to read the same numbers in the server process or add your own.
 
 ### Logging
@@ -510,8 +515,8 @@ Every front is the same script run again with the same arguments, in which `star
 It resolves once all fronts serve, and rejects when one does not start (a problem of the configuration, a port in use), which stops the others. `role` is `primary` or `front`; `reload` and `stop` of the primary act on every front,
 `reload` of a front asks the primary for it, `stop` of a front stops that one.
 
-**What is shared and what is not.** Each front is a server of its own: its own worker and lambda pools (a path that has a worker in one front starts another one in the next), caches, metrics and [stats](#metrics-for-workers), so an answer of
-`event.getMetrics()` or the stats domain shows one front only. The [registered targets](#registering-a-dynamic-target) of `proxy` servers and the applications of `child` servers are the same for all of them. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
+**What is shared and what is not.** Each front is a server of its own: its own worker and lambda pools (a path that has a worker in one front starts another one in the next), caches and metrics, which `event.getMetrics()` and the
+[stats domain](#metrics-for-workers) show for every front. The [registered targets](#registering-a-dynamic-target) of `proxy` servers and the applications of `child` servers are the same for all of them. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
 
 **Limits** are the totals of the server, split between the fronts as evenly as possible (6 over 4 fronts: 2, 2, 1, 1): `workerLimit`, `maxConnections`, `limit` and `limitPerPath` of a worker server, `limit` of a lambda server and its routes,
 their defaults included. No more fronts run than the smallest limit that is set allows, without a message about it: with `limit: 2` on one lambda route there are 2 fronts at most, with a limit of 1 there is one, behind the primary.

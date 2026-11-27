@@ -10,6 +10,9 @@ const TYPES: unknown[] = [
   'challenge',
   'app-port',
   'apps',
+  'metrics-read',
+  'metrics',
+  'processes',
 ] satisfies PrimaryMessage['nodeWebserver'][];
 
 /** whether a message to a front is one of the primary: the process may get messages of others */

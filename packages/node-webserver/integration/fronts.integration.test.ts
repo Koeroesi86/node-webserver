@@ -231,6 +231,18 @@ describeWithCores('the server with several front processes', () => {
     await until(server, () => !isAlive(application));
   });
 
+  it('tells a worker the metrics of every front, labelled, with the ones of its own front on top', async () => {
+    const server = await start();
+    await processesOf(server);
+
+    const reply = await server.get('health.localhost', '/metrics');
+    const metrics = reply.json() as { front: number; uptimeSeconds: number; fronts: Record<string, { uptimeSeconds: number; sources: object }> };
+
+    expect(Object.keys(metrics.fronts)).toEqual(['1', '2']);
+    expect(metrics.uptimeSeconds).toBe(metrics.fronts[metrics.front].uptimeSeconds);
+    Object.values(metrics.fronts).forEach(({ sources }) => expect(sources).toHaveProperty(['workers:health.localhost']));
+  });
+
   it('loads the servers again in every front', async () => {
     const server = await start({ SYSTEM_LOGS: 'true' });
 

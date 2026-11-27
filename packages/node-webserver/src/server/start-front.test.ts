@@ -1,10 +1,12 @@
 import { EventEmitter } from 'events';
+import { setMetricsCollector } from '@koeroesi86/node-worker-express';
 import startFront from './start-front';
 import createServer from './create-server';
 import { createMergedSignals, fingerprintConfiguration, readServerVersion } from '../cluster';
 import createMockLogger from '../observability/mock-logger.test-helper';
 
 jest.mock('./create-server', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('@koeroesi86/node-worker-express', () => ({ ...jest.requireActual('@koeroesi86/node-worker-express'), setMetricsCollector: jest.fn() }));
 jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), createMergedSignals: jest.fn() }));
 
 describe('startFront', () => {
@@ -69,8 +71,13 @@ describe('startFront', () => {
       sharedTargets: expect.any(Object),
       acmeChallenges: expect.any(Map),
       sharedApps: expect.any(Object),
+      listFronts: expect.any(Function),
     });
-    expect(sent()).toEqual([{ nodeWebserver: 'hello' }, { nodeWebserver: 'ready', release, ...report }]);
+    expect(sent()).toEqual([
+      { nodeWebserver: 'hello' },
+      { nodeWebserver: 'process', front: 2, pid: process.pid },
+      { nodeWebserver: 'ready', release, ...report },
+    ]);
     expect(front).toMatchObject({ role: 'front', frontCount: 2 });
   });
 
@@ -80,7 +87,7 @@ describe('startFront', () => {
     front.reload();
     jest.mocked(createServer).mock.calls[0][2]?.requestReload?.();
 
-    expect(sent().slice(2)).toEqual([{ nodeWebserver: 'reload-request' }, { nodeWebserver: 'reload-request' }]);
+    expect(sent().slice(3)).toEqual([{ nodeWebserver: 'reload-request' }, { nodeWebserver: 'reload-request' }]);
   });
 
   it('has the channel to the primary keep it running from the start of the server', async () => {
@@ -114,7 +121,7 @@ describe('startFront', () => {
     channel.emit('message', { nodeWebserver: 'challenge', token: 'a' });
 
     expect(challenges?.size).toBe(0);
-    expect(sent().slice(2)).toEqual([{ nodeWebserver: 'challenge-taken', token: 'a' }]);
+    expect(sent().slice(3)).toEqual([{ nodeWebserver: 'challenge-taken', token: 'a' }]);
   });
 
   it('hears from the primary the port of an application it claimed', async () => {
@@ -143,6 +150,26 @@ describe('startFront', () => {
     expect(kill).toHaveBeenCalledTimes(kills);
     if (original) Object.defineProperty(process, 'connected', original);
     else Reflect.deleteProperty(process, 'connected');
+  });
+
+  it.each([
+    [2, 1],
+    [1, 0],
+  ])('has the workers told the metrics of all fronts only with several (%i fronts)', async (count, collectors) => {
+    await startFront({ index: 0, count }, configuration, logger, {});
+
+    expect(setMetricsCollector).toHaveBeenCalledTimes(collectors);
+    expect(sent().filter(({ nodeWebserver }) => nodeWebserver === 'process')).toHaveLength(collectors);
+  });
+
+  it('answers the primary about its metrics, and takes the processes of the fronts', async () => {
+    await startFront({ index: 0, count: 2 }, configuration, logger, {});
+
+    channel.emit('message', { nodeWebserver: 'metrics-read', query: 4 });
+    channel.emit('message', { nodeWebserver: 'processes', processes: { 1: 11 } });
+
+    expect(sent()).toContainEqual({ nodeWebserver: 'metrics-read-done', query: 4, metrics: expect.objectContaining({ front: 1 }) });
+    expect(jest.mocked(createServer).mock.calls[0][2]?.listFronts?.()).toEqual({ 1: 11 });
   });
 
   it('does what the primary tells it', async () => {

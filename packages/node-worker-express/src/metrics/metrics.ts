@@ -86,3 +86,24 @@ export function getServerMetrics(): ServerMetrics {
     sources: Object.fromEntries(Array.from(sources.entries()).map(([name, read]) => [name, readSource(read)])),
   };
 }
+
+let collector: (() => Promise<ServerMetrics>) | undefined;
+
+/**
+ * Has `event.getMetrics()` of the workers answered with what `collect` resolves to, instead of the metrics of this process alone, for a server that is more than this process.
+ * Returns the function that removes it again.
+ */
+export function setMetricsCollector(collect: () => Promise<ServerMetrics>) {
+  collector = collect;
+
+  return () => {
+    if (collector === collect) collector = undefined;
+  };
+}
+
+/** gives `answer` what a worker is told: at once for a process on its own, so that nothing waits, and its own numbers should the collector fail */
+export function answerMetrics(answer: (metrics: ServerMetrics) => void) {
+  if (!collector) return answer(getServerMetrics());
+
+  void collector().then(answer, () => answer(getServerMetrics()));
+}

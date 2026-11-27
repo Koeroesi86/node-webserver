@@ -5,6 +5,6 @@ export { createWorkerBudget } from '@koeroesi86/node-worker/pool';
 export { closeWebSockets } from './websocket';
 export { createCache } from './static';
 export { createRouteMatcher, type RouteMatcherResult } from './routing';
-export { getServerMetrics, registerMetricsSource } from './metrics';
+export { getServerMetrics, registerMetricsSource, setMetricsCollector } from './metrics';
 export { isHandedOff, isRequestHandedOff, requestHandOffDoneEvent } from './hand-off';
 export type { ServerMetrics, StatusClass } from '@koeroesi86/node-worker/pool';

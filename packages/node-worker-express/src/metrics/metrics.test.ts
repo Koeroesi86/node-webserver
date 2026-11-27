@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { getServerMetrics, registerMetricsSource, trackRequest } from './metrics';
+import { answerMetrics, getServerMetrics, registerMetricsSource, setMetricsCollector, trackRequest } from './metrics';
 import type { ServerResponse } from 'http';
 
 const response = (statusCode = 200) => Object.assign(new EventEmitter(), { statusCode }) as unknown as ServerResponse;
@@ -156,6 +156,45 @@ describe('metrics', () => {
       expect(sources.broken).toEqual({ error: 'not available' });
       expect(sources.fine).toBe('ok');
       unregister.forEach((remove) => remove());
+    });
+  });
+
+  describe('what a worker is told', () => {
+    const told = () => new Promise<unknown>((resolve) => answerMetrics(resolve));
+
+    it('is the metrics of the process, at once', () => {
+      const answer = jest.fn();
+
+      answerMetrics(answer);
+
+      expect(answer).toHaveBeenCalledWith(expect.objectContaining({ uptimeSeconds: expect.any(Number) }));
+    });
+
+    it('is what the collector resolves to while there is one', async () => {
+      const remove = setMetricsCollector(async () => ({ ...getServerMetrics(), front: 2 }));
+
+      expect(await told()).toMatchObject({ front: 2 });
+      remove();
+      expect(await told()).not.toHaveProperty('front');
+    });
+
+    it('is the metrics of the process when the collector fails', async () => {
+      const remove = setMetricsCollector(async () => {
+        throw new Error('no answer');
+      });
+
+      expect(await told()).toHaveProperty('uptimeSeconds');
+      remove();
+    });
+
+    it('stays with a later collector when an earlier one is removed', async () => {
+      const removeFirst = setMetricsCollector(async () => ({ ...getServerMetrics(), front: 1 }));
+      const removeSecond = setMetricsCollector(async () => ({ ...getServerMetrics(), front: 2 }));
+
+      removeFirst();
+
+      expect(await told()).toMatchObject({ front: 2 });
+      removeSecond();
     });
   });
 });

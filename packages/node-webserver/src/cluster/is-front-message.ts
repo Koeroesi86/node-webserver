@@ -15,6 +15,9 @@ const TYPES: unknown[] = [
   'app-claim',
   'app-start',
   'app-release',
+  'process',
+  'metrics-wanted',
+  'metrics-read-done',
 ] satisfies FrontMessage['nodeWebserver'][];
 
 /** whether a message of a front process is one of the server: a worker of a cluster may send others */

@@ -37,6 +37,8 @@ export interface ServerOptions {
   acmeChallenges?: AcmeChallenges;
   /** set in a front process: the applications of the `child` servers, which the primary runs */
   sharedApps?: SharedApps;
+  /** set in a front process: the processes of all fronts by their number, none with one front */
+  listFronts?: () => Record<string, number>;
 }
 
 export interface RunningServer {
@@ -56,7 +58,7 @@ export interface RunningServer {
 const createServer = async (
   configuration: Partial<Configuration>,
   logger?: Logger,
-  { processHooks = true, front, signals, stoppable = false, requestReload, sharedTargets, acmeChallenges, sharedApps }: ServerOptions = {}
+  { processHooks = true, front, signals, stoppable = false, requestReload, sharedTargets, acmeChallenges, sharedApps, listFronts }: ServerOptions = {}
 ): Promise<RunningServer> => {
   // one set for each call, so that a second server in the process does not share the middlewares of the first
   const httpApp = express();
@@ -103,7 +105,7 @@ const createServer = async (
   httpApp.use(createAcmeChallengeHandler(challenges));
 
   /** overall stats endpoint */
-  setupStatsHandler(reloader.getLoaded, httpApp, configuration, log);
+  setupStatsHandler(reloader.getLoaded, httpApp, configuration, log, front && listFronts && { front: front.index + 1, list: listFronts });
 
   httpApp.use(reloader.httpHandler);
   // the hosts are the same for HTTP/1 and HTTP/2, so a worker pool is not started twice
