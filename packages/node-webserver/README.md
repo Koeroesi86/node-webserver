@@ -463,6 +463,8 @@ and the http and https ports each have their own. Without one, a request for a h
   so it works while `redirectHttp` is on. A name needs to resolve to the server and to be one the authority issues for (not `localhost`, not a private address).
 - A host name with a wildcard (`*.example.com`) needs the `dns-01` challenge and a DNS provider, which this does not do: the configuration check fails for it, and it can still use certificate files that certbot or similar make.
 - `directory` has to be an https URL. For a private ACME server such as [Pebble](https://github.com/letsencrypt/pebble), `directoryCa` is the file with the certificate its directory is checked against.
+- Behind a primary ([front processes](#front-processes)) the primary alone orders and renews, for the servers its fronts run, and writes the logs of it. It tells every front the answer of a challenge before it asks the authority to check it,
+  as the authority may reach any of them, and has all of them load a new certificate. A server that a change adds gets its certificate at once.
 - The client is part of the server (the `https` and `crypto` modules of node, no ACME package): the account and the orders of RFC 8555 with `http-01` and ES256 keys. The work happens at start and on the hourly timer, none of it on the path of a request except the check of the http
   path for the challenge.
 
@@ -517,7 +519,7 @@ their defaults included. No more fronts run than the smallest limit that is set 
 of `warmPaths` (`warmWorkersPerPath` in every front, within its share of the limits). The connections are spread, not the requests: a front can be full while another has room, so requests wait, or get a 503, earlier than with one front.
 A connection over the share of `maxConnections` of a front is closed, also while another front has room, which long lived connections can lead to.
 
-**Not with several fronts yet:** `child` servers and `acme` work with one front only, as every front would start the application or order the certificate on its own.
+**Not with several fronts yet:** `child` servers work with one front only, as every front would start the application on its own.
 More than one front with them is an error at the start, on a reload and in the [check](#checking-the-configuration), whether the number comes from `frontProcesses` or from `"auto"`.
 
 **When a front ends** another one takes its place and its share, at once the first time, then after 100 ms doubling up to 10 s as long as they end within 5 seconds, like a [worker that crashes](#workers-that-crash). The others keep serving.
@@ -582,7 +584,7 @@ flight is answered, then it is closed: a client that sends the next request in t
 
 **With a pause**, by a restart of the whole server through the launcher: new connections are refused while the requests in flight finish and the new server starts. That happens when
 - `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started (not on Windows, where the primary always accepts them),
-- the server has a `child` server or `acme`, before or after the change: a second application on the same port, or a second renewer. The [registered targets](#registering-a-dynamic-target) are lost by such a restart without `persistPath`,
+- the server has a `child` server, before or after the change: a second application on the same port. The [registered targets](#registering-a-dynamic-target) are lost by such a restart without `persistPath`,
 - the server was updated and a front finds another version than the one the primary runs.
 
 There is no old server to go back to then, so a server that does not start after a restart (a port in use) is tried again, at once and then after 100 ms doubling up to 10 s, and the log says so.
@@ -604,7 +606,7 @@ It prints every problem with its server (the host name, and the file when the se
 - the certificates: an https server needs a key and a certificate, which have to belong together; a certificate that expired is an error, one that expires within 14 days a warning
 - the routes: `pattern` has to be a regular expression with its `flags`
 - the servers together: a host name served twice over the same protocol is an error, a host that is the `statsDomain` is a warning, and `portHttp` and `portHttps` cannot be the same
-- `frontProcesses` above what the machine runs, and a `child` server or `acme` while [more than one front](#front-processes) would run
+- `frontProcesses` above what the machine runs, and a `child` server while [more than one front](#front-processes) would run
 - a `proxy` server has either a `target` that is a URL or a `dynamic` one with a token, a `child` server with arguments needs `%PORT%` in them unless `proxyOptions.port` is set, and a lambda server needs a `lambda` or `routes`
 
 An error stops the start, with all the problems in the message, and on a reload it is what is logged while the running servers are kept. A server file that does not exist is a warning, as a reload leaves it out.

@@ -11,8 +11,8 @@ const createFrontReload = (server: Pick<RunningServer, 'prepare' | 'report'>, se
   let held: { round: number; servers: PreparedServers } | undefined;
 
   const sendFiles = () => {
-    const { files, singleFrontOnly, targets } = server.report();
-    send({ nodeWebserver: 'files', files, singleFrontOnly, targets });
+    const { fingerprint, ...report } = server.report();
+    send({ nodeWebserver: 'files', ...report });
   };
 
   /** serves or closes what is held for the round, which may be nothing when this front failed to prepare it */

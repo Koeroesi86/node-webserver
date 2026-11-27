@@ -63,6 +63,8 @@ describePebble('an https server that gets its certificate from Pebble', () => {
         PORT_HTTPS: String(httpsPort),
         ACME_HOSTNAME: hostname,
         ACME_STORAGE: path.join(folder, 'storage'),
+        ACME_DIRECTORY: PEBBLE_DIRECTORY,
+        ACME_CA: PEBBLE_CA,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

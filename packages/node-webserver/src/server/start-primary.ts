@@ -2,8 +2,10 @@ import cluster from 'cluster';
 import createServerPlan from './create-server-plan';
 import {
   connectLauncher,
+  createFrontServices,
   createFrontSet,
   createFrontsManager,
+  createPrimaryCertificates,
   createTargetRegistry,
   forkFront,
   getLauncherMode,
@@ -15,7 +17,7 @@ import { reportProblems } from '../problems';
 import { readFingerprint, watchFiles } from '../reload';
 import { FRONT_STOP_MARGIN, RESTART_EXIT_CODE } from '../constants';
 import { getDate } from '../utils';
-import type { Cluster, ClusterOptions, Configuration, Logger } from '../types';
+import type { Cluster, ClusterOptions, Configuration, Logger, PrimaryMessage } from '../types';
 
 /**
  * The primary of a server: it owns the ports, starts the fronts, supervises them and takes them through the changes of the configuration, and serves no request itself.
@@ -37,12 +39,13 @@ const startPrimary = async (
     logger.flush();
     process.exit(code);
   };
-  // one for all the sets of fronts, so that new ones have what was registered with the ones they replace
-  const targets = createTargetRegistry(logger);
+  const certificates = createPrimaryCertificates({ logger, reload: () => manager.reloadFronts() });
+  // one for all the sets of fronts, so that new ones have what was registered with the ones they replace. The targets last, as a front starts once it has them.
+  const services = createFrontServices([certificates.service, createTargetRegistry(logger)]);
   const manager = createFrontsManager({
     logger,
     version: plan.release.version,
-    createSet: (next, events) => createFrontSet({ plan: next, fork: forkFront, logger, targets, watch: watchFiles, ...events }),
+    createSet: (next, events) => createFrontSet({ plan: next, fork: forkFront, logger, services, watch: watchFiles, ...events }),
     requestPlan,
     watch: watchFiles,
     fingerprint: readFingerprint,
@@ -56,21 +59,26 @@ const startPrimary = async (
     },
   });
   const settings = () => (manager.getPlan() ?? plan).settings;
+  const stop = (message: PrimaryMessage, timeout: number) => {
+    certificates.stop();
+    return manager.stop(message, timeout);
+  };
   const removeProcessHooks = setupPrimaryHooks(processHooks, {
     signals: launcher?.signals,
     settings,
     logger,
     reload: manager.reload,
-    stop: manager.stop,
+    stop,
   });
 
   logger.system(`[${getDate()}] Starting the front processes: ${plan.frontCount}`);
   await manager.start(plan).catch(async (error) => {
-    await manager.stop({ nodeWebserver: 'stop' }, FRONT_STOP_MARGIN);
+    await stop({ nodeWebserver: 'stop' }, FRONT_STOP_MARGIN);
     removeProcessHooks();
     logger.flush();
     throw error;
   });
+  certificates.start();
   await launcher?.serving();
 
   return {
@@ -79,7 +87,7 @@ const startPrimary = async (
       return (manager.getPlan() ?? plan).frontCount;
     },
     reload: manager.reload,
-    stop: () => manager.stop({ nodeWebserver: 'stop' }, settings().shutdownTimeout + FRONT_STOP_MARGIN),
+    stop: () => stop({ nodeWebserver: 'stop' }, settings().shutdownTimeout + FRONT_STOP_MARGIN),
     removeProcessHooks,
   };
 };

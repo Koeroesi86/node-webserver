@@ -11,6 +11,7 @@ const TYPES: unknown[] = [
   'files',
   'reload-request',
   'target',
+  'challenge-taken',
 ] satisfies FrontMessage['nodeWebserver'][];
 
 /** whether a message of a front process is one of the server: a worker of a cluster may send others */

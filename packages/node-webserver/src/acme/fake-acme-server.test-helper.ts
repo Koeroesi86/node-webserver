@@ -52,7 +52,8 @@ const readBody = (request: http.IncomingMessage) =>
 const fetchChallenge = (challengePort: number, hostname: string, token: string) =>
   new Promise<string>((resolve, reject) => {
     http
-      .get({ host: '127.0.0.1', port: challengePort, path: `/.well-known/acme-challenge/${token}`, headers: { Host: hostname } }, (response) => {
+      // on a connection of its own, as the authority may reach any of the processes that answer for the host
+      .get({ host: '127.0.0.1', port: challengePort, path: `/.well-known/acme-challenge/${token}`, headers: { Host: hostname }, agent: false }, (response) => {
         const chunks: Buffer[] = [];
         response.on('data', (chunk: Buffer) => chunks.push(chunk));
         response.on('end', () =>

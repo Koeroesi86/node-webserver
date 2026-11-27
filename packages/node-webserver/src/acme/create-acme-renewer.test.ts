@@ -142,6 +142,42 @@ describe('createAcmeRenewer', () => {
     expect(authority.hostnames).toEqual(['slow.example.com']);
   });
 
+  it('looks again, once the look that runs is done, for a server that was added meanwhile', async () => {
+    const servers: LoadedInstance[] = [loaded({ hostname: 'earlier.example.com' })];
+    const instance = createAcmeRenewer({ getLoaded: () => [...servers], challenges, logger: createMockLogger(), reload: jest.fn(), pollInterval: 5 });
+    const first = instance.check();
+
+    servers.push(loaded({ hostname: 'added.example.com' }));
+    instance.recheck();
+    await first;
+
+    expect(authority.hostnames).toEqual(['earlier.example.com', 'added.example.com']);
+  });
+
+  it('asks the authority to check a challenge only once it is there to be asked for', async () => {
+    const order: string[] = [];
+    const slow = {
+      set: async (token: string, answer: string) => {
+        // some turns of the event loop later, as fronts take it
+        for (const turn of [1, 2, 3]) await new Promise((resolve) => setImmediate(resolve, turn));
+        challenges.set(token, answer);
+        order.push(...authority.requests.filter((request) => request.startsWith('POST /chall')), 'there');
+      },
+      delete: (token: string) => challenges.delete(token),
+    };
+
+    await createAcmeRenewer({
+      getLoaded: () => [loaded({ hostname: 'waited.example.com' })],
+      challenges: slow,
+      logger: createMockLogger(),
+      reload: jest.fn(),
+      pollInterval: 5,
+    }).check();
+
+    expect(order).toEqual(['there']);
+    expect(fs.existsSync(path.join(storagePath(), 'waited.example.com', 'fullchain.pem'))).toBe(true);
+  });
+
   it('looks when it starts and every interval after, until it is stopped', async () => {
     jest.useFakeTimers();
     const getLoaded = jest.fn(() => []);

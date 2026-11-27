@@ -11,7 +11,7 @@ describe('startFront', () => {
   const logger = createMockLogger();
   const signals = { on: jest.fn(), once: jest.fn(), off: jest.fn(), detach: jest.fn(), receive: jest.fn() };
   const prepared = { instances: [], commit: jest.fn(), discard: jest.fn() };
-  const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [] };
+  const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [], certificates: [] };
   const running = { stop: jest.fn(async () => undefined), removeProcessHooks: jest.fn(), prepare: jest.fn(() => prepared), report: () => report };
   const configuration = { portHttp: 80 };
   const release = { configuration: fingerprintConfiguration(configuration), version: readServerVersion() };
@@ -59,6 +59,7 @@ describe('startFront', () => {
       stoppable: true,
       requestReload: expect.any(Function),
       sharedTargets: expect.any(Object),
+      acmeChallenges: expect.any(Map),
     });
     expect(sent()).toEqual([{ nodeWebserver: 'hello' }, { nodeWebserver: 'ready', release, ...report }]);
     expect(front).toMatchObject({ role: 'front', frontCount: 2 });
@@ -93,6 +94,18 @@ describe('startFront', () => {
 
     void targets?.publish({ ...change, setAt: 2 });
     expect(sent()).toContainEqual({ nodeWebserver: 'target', change: { ...change, setAt: 2 } });
+  });
+
+  it('answers the challenges the primary tells it, and says that it has them', async () => {
+    await startFront({ index: 0, count: 2 }, configuration, logger, {});
+    const challenges = jest.mocked(createServer).mock.calls[0][2]?.acmeChallenges;
+
+    channel.emit('message', { nodeWebserver: 'challenge', token: 'a', answer: 'b' });
+    expect(challenges?.get('a')).toBe('b');
+    channel.emit('message', { nodeWebserver: 'challenge', token: 'a' });
+
+    expect(challenges?.size).toBe(0);
+    expect(sent().slice(2)).toEqual([{ nodeWebserver: 'challenge-taken', token: 'a' }]);
   });
 
   it('does what the primary tells it', async () => {

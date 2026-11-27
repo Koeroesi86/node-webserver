@@ -1,10 +1,13 @@
 export { default as connectLauncher } from './connect-launcher';
+export { default as createCertificateRegistry } from './create-certificate-registry';
+export { default as createFrontServices } from './create-front-services';
 export { default as createFrontSet } from './create-front-set';
 export { default as createFrontSupervisor } from './create-front-supervisor';
 export { default as createFrontTargets } from './create-front-targets';
 export { default as createFrontsManager } from './create-fronts-manager';
 export { default as createLauncher } from './create-launcher';
 export { default as createMergedSignals } from './create-merged-signals';
+export { default as createPrimaryCertificates } from './create-primary-certificates';
 export { default as createReloadRounds } from './create-reload-rounds';
 export { default as createTargetRegistry } from './create-target-registry';
 export { default as decideChange } from './decide-change';
