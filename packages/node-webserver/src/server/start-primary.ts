@@ -12,6 +12,7 @@ import {
   getLauncherMode,
   readServerVersion,
   requestPlan,
+  watchRelease,
 } from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
 import { reportProblems } from '../problems';
@@ -65,7 +66,9 @@ const startPrimary = async (
     },
   });
   const settings = () => (manager.getPlan() ?? plan).settings;
+  let unwatchRelease = () => {};
   const stop = (message: PrimaryMessage, timeout: number) => {
+    unwatchRelease();
     certificates.stop();
     // the applications end after the fronts, which still have requests to answer with them
     return manager.stop(message, timeout).then(apps.stop);
@@ -87,6 +90,19 @@ const startPrimary = async (
   });
   certificates.start();
   await launcher?.serving();
+  // only a launcher can start the server anew, which another version takes
+  if (launcher) {
+    unwatchRelease = watchRelease({
+      running: plan.release.version,
+      read: readServerVersion,
+      onChange: () => {
+        if (!settings().watchServers) return;
+
+        logger.system(`[${getDate()}] Another version of the server is installed, checking it`);
+        void manager.check();
+      },
+    });
+  }
 
   return {
     role: 'primary',

@@ -1,5 +1,6 @@
 import { dirname } from 'path';
-import { SERVICE_SCRIPT_PATH, USAGE } from '../constants';
+import { USAGE } from '../constants';
+import getServiceScriptPath from './get-service-script-path';
 import installService from './install-service';
 import parseServiceArguments from './parse-service-arguments';
 import removeService from './remove-service';
@@ -19,7 +20,7 @@ const createDefinition = (configPath: string, userService: boolean): ServiceDefi
     name,
     displayName: configuration.serviceDisplayName || name,
     nodePath: process.execPath,
-    scriptPath: SERVICE_SCRIPT_PATH,
+    scriptPath: getServiceScriptPath(),
     configPath,
     workingDirectory: dirname(configPath),
     user: configuration.serviceUser,

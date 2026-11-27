@@ -174,6 +174,8 @@ const createFrontsManager = ({ logger, version, createSet, requestPlan, watch, f
     },
     /** loads the servers again in every set of fronts, also the one that starts */
     reloadFronts: () => sets.forEach((set) => set.reload()),
+    /** applies what changed since the fronts were started, the installed server included, and leaves everything as it is otherwise */
+    check: () => change(),
     /** applies a change of the configuration, and otherwise loads the servers again */
     reload: () => void change().then((applied) => !applied && !stopped && running?.set.reload()),
     stop: (message: PrimaryMessage, timeout: number) => {

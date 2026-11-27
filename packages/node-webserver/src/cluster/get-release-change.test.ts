@@ -8,7 +8,7 @@ describe('getReleaseChange', () => {
   });
 
   it('names another version', () => {
-    expect(getReleaseChange(running, { configuration: 'b', version: '2.0.0' })).toContain('version 2.0.0');
+    expect(getReleaseChange(running, { configuration: 'b', version: '2.0.0' })).toContain('2.0.0 now, instead of 1.0.0');
   });
 
   it('names another configuration', () => {

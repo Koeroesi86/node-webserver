@@ -40,6 +40,10 @@ sudo npx nws-cli service remove --config </path/to/config>
 
 The service is named after `serviceName` of the configuration (letters, digits, `_`, `.` and `-`), described by `serviceDisplayName`, and starts `node cli.js --config <absolute path>` in the folder of the configuration, with the `node` that ran `service add`.
 
+The path of `cli.js` in the service is the one `service add` was run by, **links included**. A server that restarts into [an update](../node-webserver/README.md#updates-of-the-server), and a restart of the service, start what that path
+leads to then. So where an update installs next to the old version (a folder for each release, a version manager), run `service add` through the link that the update moves, for example `node /opt/app/current/node_modules/@koeroesi86/node-webserver-cli/dist/scripts/cli.js service add ...`,
+and check the path in the definition it wrote. A path with the version or the release in it keeps starting that one. A service installed by an earlier version has the path without links: run `service add` again to change it.
+
 | | Linux (systemd) | macOS (launchd) |
 |---|---|---|
 | File | `/etc/systemd/system/<serviceName>.service` | `/Library/LaunchDaemons/com.koeroesi86.<serviceName>.plist` |
