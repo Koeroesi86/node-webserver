@@ -293,6 +293,22 @@ describe('WorkerPool', () => {
       expect(onStderr).toHaveBeenCalledWith(Buffer.from('err'));
     });
 
+    it('does not put the pieces of two workers together to one line', async () => {
+      const onStdoutLine = jest.fn();
+      const onStderrLine = jest.fn();
+      const pool = createPool({ onStdoutLine, onStderrLine });
+
+      pool.warm(pathA, {});
+      pool.warm(pathB, {});
+      const [first, second] = FakeWorker.instances.map(output);
+      first.stdout.emit('data', Buffer.from('fir'));
+      second.stdout.emit('data', Buffer.from('second\n'));
+      first.stdout.emit('data', Buffer.from('st\n'));
+      second.stderr.emit('data', Buffer.from('error\n'));
+
+      expect([onStdoutLine.mock.calls, onStderrLine.mock.calls]).toEqual([[['second'], ['first']], [['error']]]);
+    });
+
     it('listens once for a worker, however many requests it gets', async () => {
       const pool = createPool({ onStdout: jest.fn(), onStderr: jest.fn() });
 

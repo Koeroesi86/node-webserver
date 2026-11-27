@@ -11,6 +11,9 @@ export interface WorkerPoolParams {
   /** receive what the workers write to their stdout and stderr, attached once when a worker starts */
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
+  /** receive the same line by line, a line of one worker at a time, without its line break, see `createLineSplitter` */
+  onStdoutLine?: (line: string) => void;
+  onStderrLine?: (line: string) => void;
   /** when a worker that crashed is started again, see `WorkerRestartBackoff` and `WorkerMinUptime` */
   restartBackoff?: { minUptime: number; base: number; max: number };
   /** a worker that has not had a request for this long is stopped, in milliseconds. 0 keeps idle workers running. */

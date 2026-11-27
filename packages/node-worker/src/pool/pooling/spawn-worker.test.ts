@@ -89,6 +89,31 @@ describe('spawnWorker', () => {
     expect([onStdout.mock.calls, onStderr.mock.calls]).toEqual([[[Buffer.from('out')]], [[Buffer.from('err')]]]);
   });
 
+  it('hands over what the worker writes line by line, each stream with lines of its own, up to what ends without a line break', () => {
+    const onStdoutLine = jest.fn();
+    const onStderrLine = jest.fn();
+    spawnWorker({ workerPath: '/root/a.js', command: [], options: {}, onMessage: jest.fn(), onStdoutLine, onStderrLine });
+    const { stdout, stderr } = FakeWorker.instances[0].instance;
+
+    stdout.emit('data', Buffer.from('one\ntw'));
+    stderr.emit('data', Buffer.from('bro'));
+    stdout.emit('data', Buffer.from('o\nlast'));
+    stderr.emit('data', Buffer.from('ken\n'));
+    stdout.emit('end');
+
+    expect([onStdoutLine.mock.calls, onStderrLine.mock.calls]).toEqual([[['one'], ['two'], ['last']], [['broken']]]);
+  });
+
+  it('hands the pieces to one listener and the lines to the other when both are given', () => {
+    const onStdout = jest.fn();
+    const onStdoutLine = jest.fn();
+    spawnWorker({ workerPath: '/root/a.js', command: [], options: {}, onMessage: jest.fn(), onStdout, onStdoutLine });
+
+    FakeWorker.instances[0].instance.stdout.emit('data', Buffer.from('a\nb\n'));
+
+    expect([onStdout.mock.calls, onStdoutLine.mock.calls]).toEqual([[[Buffer.from('a\nb\n')]], [['a'], ['b']]]);
+  });
+
   it('attaches no output listener when none is given', () => {
     spawnWorker({ workerPath: '/root/a.js', command: [], options: {}, onMessage: jest.fn() });
     const { stdout, stderr } = FakeWorker.instances[0].instance;

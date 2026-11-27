@@ -48,6 +48,9 @@ export const ChannelMaxFrameLength = 512 * 1024 * 1024;
 /** how many parts of a streamed request body may be on their way to the worker before it takes one */
 export const RequestBodyWindow = 4;
 
+/** the longest line of the output of a process that `createLineSplitter` hands over in one piece, in characters: a longer one is cut, also one that never ends */
+export const MaxLineLength = 16 * 1024;
+
 /** a worker that stops sooner than this after it started, or with an error, has crashed, in milliseconds */
 export const WorkerMinUptime = 5000;
 

@@ -228,6 +228,9 @@ importers:
       '@koeroesi86/node-lambda-invoke':
         specifier: workspace:*
         version: link:../node-lambda-invoke
+      '@koeroesi86/node-worker':
+        specifier: workspace:*
+        version: link:../node-worker
       '@koeroesi86/node-worker-express':
         specifier: workspace:*
         version: link:../node-worker-express

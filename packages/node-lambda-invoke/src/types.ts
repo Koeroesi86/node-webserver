@@ -6,6 +6,10 @@ export interface HttpMiddlewareOptions {
   lambdaPath: string;
   handlerKey?: string;
   logger?: Logger;
+  /** names the lambdas in the lines about their processes (what they write, their exit code), in brackets after the time. None by default. */
+  label?: string;
+  /** whether what the lambdas write goes to the `logger`. With `false` it is read and dropped. Defaults to true. */
+  logOutput?: boolean;
   /**
    * how many lambdas this middleware may run, they are shared by all of its requests: a lambda answers one request at a time. Defaults to the number of CPU cores, 0 means no limit.
    * Every middleware has a limit of its own.

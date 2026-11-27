@@ -72,7 +72,9 @@ describe('workerMiddleware', () => {
     it('leaves handing the output of the workers to the pool, once for each worker, not for every request', async () => {
       const onStdout = jest.fn();
       const onStderr = jest.fn();
-      await start({ onStdout, onStderr });
+      const onStdoutLine = jest.fn();
+      const onStderrLine = jest.fn();
+      await start({ onStdout, onStderr, onStdoutLine, onStderrLine });
       const lease = mockLease((handlers, requestId) =>
         handlers.onMessage({ type: WORKER_EVENT.RESPONSE, requestId, event: { statusCode: 200, headers: {}, body: Buffer.from('ok') } })
       );
@@ -80,7 +82,7 @@ describe('workerMiddleware', () => {
       await fetch(`${t.baseUrl}/`);
       await fetch(`${t.baseUrl}/`);
 
-      expect(FakePool.last.params).toMatchObject({ onStdout, onStderr });
+      expect(FakePool.last.params).toMatchObject({ onStdout, onStderr, onStdoutLine, onStderrLine });
       expect(lease.worker.instance.stdout.on).not.toHaveBeenCalled();
       expect(lease.worker.instance.stderr.on).not.toHaveBeenCalled();
     });

@@ -52,7 +52,7 @@
       { "from": "node-lambda-invoke", "allow": ["node-worker"] },
       { "from": "tools", "allow": [] },
       { "from": "node-worker-express", "allow": ["node-worker"] },
-      // node-worker through the exports of node-worker-express that are its (the budget of the workers, the types of the protocol), which the server uses as the ones of the middleware
+      // node-worker for the line splitter of its pool, and for what node-worker-express re-exports of it (the budget of the workers, the types of the protocol)
       { "from": "node-webserver", "allow": ["node-worker-express", "node-lambda-invoke", "node-worker"] },
       { "from": "node-webserver-cli", "allow": ["node-webserver"] }
     ]

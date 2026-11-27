@@ -11,7 +11,7 @@ import {
 } from '../middlewares';
 import { createErrorPagesHandler, createRulesHandler } from '../routing';
 import { createHstsHandler } from '../tls';
-import { getDate } from '../utils';
+import { labelLine } from '../utils';
 import { getTargetKey } from '../proxy';
 import { trackRequests } from '../observability';
 import { untilIdle } from '../lifecycle';
@@ -46,6 +46,8 @@ interface Context {
   configuration?: Partial<Configuration>;
 }
 
+const discard = () => {};
+
 function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudget?: WorkerBudget) {
   const { options } = instance;
 
@@ -53,22 +55,25 @@ function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudge
     throw new Error(`options are required for worker server ${instance.hostname}.`);
   }
 
+  /** logs a line of a worker and hands it to the callback of the options. Without both no lines are built. */
+  const lineListener = (level: 'info' | 'error', callback?: (line: string) => void) => {
+    if (!logger.isEnabled(level)) return callback;
+
+    return (line: string) => {
+      logger[level](labelLine(instance.hostname, line));
+      callback?.(line);
+    };
+  };
+
   return workerMiddleware({
     name: instance.hostname,
     workerBudget,
     ...options,
-    onStdout(data) {
-      logger.info(`[${getDate()}] ${data.toString().trim()}`);
-      if (options.onStdout) {
-        options.onStdout(data);
-      }
-    },
-    onStderr(data) {
-      logger.error(`[${getDate()}] ${data.toString().trim()}`);
-      if (options.onStderr) {
-        options.onStderr(data);
-      }
-    },
+    // read whatever the levels are, as a worker would block on a full pipe
+    onStdout: options.onStdout ?? discard,
+    onStderr: options.onStderr ?? discard,
+    onStdoutLine: lineListener('info', options.onStdoutLine),
+    onStderrLine: lineListener('error', options.onStderrLine),
   });
 }
 
@@ -114,7 +119,7 @@ function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, context: 
     return { handler, close: async () => handler.close(), registeredTarget: handler.registeredTarget };
   }
   if (instance.type === 'lambda') {
-    const handler = lambdaMiddleware(instance, logger.info, lambdaStats);
+    const handler = lambdaMiddleware(instance, logger, lambdaStats);
     // the pool stops a busy lambda once it answered, which its own timeout bounds
     return { handler, close: async () => handler.close() };
   }

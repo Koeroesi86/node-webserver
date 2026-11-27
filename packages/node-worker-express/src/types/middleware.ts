@@ -71,6 +71,9 @@ export interface MiddlewareOptions {
   limitWebSocketIdleTimeout?: number;
   onStdout?: (data: Buffer) => void;
   onStderr?: (data: Buffer) => void;
+  /** what the workers write, line by line, a line of one worker at a time, without its line break */
+  onStdoutLine?: (line: string) => void;
+  onStderrLine?: (line: string) => void;
   onExit?: (code: number, workerPath: string, id: string) => void;
   onForbiddenPath?: (request: Request, response: Response) => unknown;
   index?: string[];

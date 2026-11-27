@@ -70,7 +70,8 @@ It rejects with `WorkerBusyError` (the line is full, or the request waited for `
 | `idleTimeout` | a worker with no request for this long is stopped, 0 keeps idle workers |
 | `budget` | a limit shared with other pools, made by `createWorkerBudget` |
 | `restartBackoff` | when a worker that crashed is started again |
-| `onExit`, `onStdout`, `onStderr` | what happens to the workers: their exit code, what they write |
+| `onExit`, `onStdout`, `onStderr` | what happens to the workers: their exit code, what they write, in pieces as they are read |
+| `onStdoutLine`, `onStderrLine` | what they write line by line, put together for each worker and output on its own (see `createLineSplitter`). A worker blocks on a full pipe when neither of the two callbacks of an output is given. |
 | `createCommand` | the executable and arguments that run a worker file, `node --expose-gc worker-invoke.js <file>` by default, with the `node` that runs the pool (`process.execPath`), not the one of the `PATH`. The arguments are not split on spaces, so a path with spaces works. |
 | `concurrency` | how many requests one worker takes at the same time, 0 for no limit. With 1 a worker answers one request at a time and the next ones wait in line, in order, until a worker is released or one can be started: it is a runtime like a lambda, not a server. |
 | `startTimeout` | how long a worker may take to say `READY`, 0 (default) does not wait for it. A worker that is not ready in time is killed, which counts as a crash of its path (so the backoff applies), and `lease.ready()` rejects with a `WorkerStartError`. |
@@ -80,6 +81,9 @@ It rejects with `WorkerBusyError` (the line is full, or the request waited for `
 
 The lease has `send`, `subscribe`, `handOff` and `release`, and for a pool that waits for the handshake `ready()`, which resolves when the worker is ready for its request. `kill()` kills a worker whose request ran out of time without counting a crash,
 the lease is still to be released. `getStats()` has `workers`, `starting` (workers that are not ready yet), `active` (requests that run), `waiting`, `refused`, `abandoned`, `evicted`, `failing` and `paths`.
+
+`createLineSplitter(onLine, maxLength?)` puts the pieces that are read from a stream together to whole lines: `write(piece)` takes them, `end()` hands over what has no line break after it.
+A line ends at `\n`, `\r\n` or `\r`, blank lines are left out, trailing whitespace is removed, and a line longer than `maxLength` (16384 characters, `MaxLineLength`) comes in pieces of that length.
 
 `startUnrefTimer(callback, delay)` and `startUnrefInterval(callback, delay)` are `setTimeout` and `setInterval` that do not keep the process alive, which the pool uses for its own timers.
 

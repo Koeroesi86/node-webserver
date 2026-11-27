@@ -938,6 +938,12 @@
         "onStderr": {
           "$ref": "#/definitions/function"
         },
+        "onStdoutLine": {
+          "$ref": "#/definitions/function"
+        },
+        "onStderrLine": {
+          "$ref": "#/definitions/function"
+        },
         "onExit": {
           "$ref": "#/definitions/function"
         },

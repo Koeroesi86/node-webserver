@@ -1,5 +1,6 @@
 export { default as createBodyForwarder } from './create-body-forwarder';
 export type { BodyForwarderParams } from './create-body-forwarder';
+export { default as createLineSplitter } from './create-line-splitter';
 export { default as createRestartBackoff } from './create-restart-backoff';
 export type { RestartBackoffOptions } from './create-restart-backoff';
 export { default as createWorkerBudget } from './create-worker-budget';

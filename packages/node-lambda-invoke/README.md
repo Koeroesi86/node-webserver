@@ -64,7 +64,9 @@ The options of `httpMiddleware`:
 | --- | --- |
 | `lambdaPath` | the file of the handler |
 | `handlerKey` | the export of the handler, `handler` by default |
-| `logger` | gets the output of the lambdas and what happens to them |
+| `logger` | gets the output of the lambdas, line by line with the time in front, and what happens to them. A line is logged once it ends (`\n`, `\r\n` or `\r`) or the output does, blank lines are left out and one of more than 16384 characters comes in pieces of that length. |
+| `label` | names the lambdas in those lines, in brackets after the time (`[2026-01-31 12:00:00.00] [api] listening`), none by default |
+| `logOutput` | whether what the lambdas write goes to the `logger`, true by default. With false it is read and dropped, what happens to the lambdas is still logged. |
 | `limit` | how many lambdas the middleware may run, the number of CPU cores by default, 0 for no limit. Every middleware has a limit of its own. |
 | `acquireTimeout` | how long a request waits for a lambda when all of them are busy and the limit is reached, 10000 ms by default, then it is answered with 503 |
 | `startTimeout` | how long a lambda may take to load its module and start, 10000 ms by default, then it is stopped and the request is answered with 502 |

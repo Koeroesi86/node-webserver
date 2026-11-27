@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { httpMiddleware } from '@koeroesi86/node-lambda-invoke';
 import type { HttpMiddleware, LambdaStats } from '@koeroesi86/node-lambda-invoke';
-import type { LambdaOptions, LogFunction, ServerConfig } from '../types';
+import type { LambdaOptions, Logger, ServerConfig } from '../types';
 import createLambdaRouteTable from './lambda-route-table';
 
 type LambdaHandler = ((request: IncomingMessage, response: ServerResponse, next?: () => void) => void) & { close: () => void };
@@ -18,7 +18,9 @@ const pathnameOf = ({ url = '/' }: IncomingMessage) => {
 };
 
 interface CreateLambdaParams {
-  log: LogFunction;
+  logger: Logger;
+  /** the host of the server, which its lambdas are named with in the logs */
+  hostname: string;
   config: LambdaOptions | undefined;
   lambda: string;
   handler: string | undefined;
@@ -26,11 +28,14 @@ interface CreateLambdaParams {
   stats?: LambdaStats;
 }
 
-const createLambda = ({ log, config, lambda, handler, limit, stats }: CreateLambdaParams) =>
+const createLambda = ({ logger, hostname, config, lambda, handler, limit, stats }: CreateLambdaParams) =>
   httpMiddleware({
     lambdaPath: lambda.replace(/\\/g, '/'),
     handlerKey: handler || 'handler',
-    logger: log,
+    logger: logger.info,
+    label: hostname,
+    // no lines are built for a level that is off
+    logOutput: logger.isEnabled('info'),
     limit,
     acquireTimeout: config?.acquireTimeout,
     startTimeout: config?.startTimeout,
@@ -41,8 +46,11 @@ const createLambda = ({ log, config, lambda, handler, limit, stats }: CreateLamb
     stats,
   });
 
-const createFallbackLambda = (log: LogFunction, config: LambdaOptions | undefined, stats?: LambdaStats) =>
-  config?.lambda ? createLambda({ log, config, lambda: config.lambda, handler: config.handler, limit: config.limit, stats }) : undefined;
+/** what all the lambdas of a server share */
+type ServerLambdas = Pick<CreateLambdaParams, 'logger' | 'hostname' | 'config' | 'stats'>;
+
+const createFallbackLambda = (shared: ServerLambdas) =>
+  shared.config?.lambda ? createLambda({ ...shared, lambda: shared.config.lambda, handler: shared.config.handler, limit: shared.config.limit }) : undefined;
 
 const dispatchRequest =
   (match: ReturnType<typeof createLambdaRouteTable>, fallback: HttpMiddleware | undefined): ((request: IncomingMessage, response: ServerResponse) => void) =>
@@ -56,12 +64,13 @@ const dispatchRequest =
 const closeLambdas = (started: HttpMiddleware[]) => started.forEach((route) => route.close());
 
 /** `stats` is where the pools of the lambdas list themselves, for the stats of the server that runs them */
-const lambdaMiddleware = (instance: ServerConfig, log: LogFunction, stats?: LambdaStats): LambdaHandler => {
-  const { lambdaOptions: config } = instance;
+const lambdaMiddleware = (instance: ServerConfig, logger: Logger, stats?: LambdaStats): LambdaHandler => {
+  const { hostname, lambdaOptions: config } = instance;
   const routes = config?.routes ?? [];
+  const shared = { logger, hostname, config, stats };
 
   if (routes.length === 0) {
-    return createLambda({ log, config, lambda: config?.lambda || '', handler: config?.handler, limit: config?.limit, stats });
+    return createLambda({ ...shared, lambda: config?.lambda || '', handler: config?.handler, limit: config?.limit });
   }
 
   // the routes are matched before a lambda is taken, and each one has the pool and so the limit of its own lambda and handler
@@ -69,10 +78,10 @@ const lambdaMiddleware = (instance: ServerConfig, log: LogFunction, stats?: Lamb
   try {
     const match = createLambdaRouteTable(
       routes,
-      ({ lambda, handler, limit }) => createLambda({ log, config, lambda, handler, limit: limit ?? config?.limit, stats }),
+      ({ lambda, handler, limit }) => createLambda({ ...shared, lambda, handler, limit: limit ?? config?.limit }),
       started
     );
-    const fallback = createFallbackLambda(log, config, stats);
+    const fallback = createFallbackLambda(shared);
     started.push(...(fallback ? [fallback] : []));
 
     return Object.assign(dispatchRequest(match, fallback), { close: () => closeLambdas(started) });

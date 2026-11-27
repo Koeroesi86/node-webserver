@@ -24,6 +24,10 @@ export interface LambdaPoolParams {
   restrictFileSystem: boolean;
   env?: Record<string, string>;
   logger: Logger;
+  /** names the lambdas in the lines about their processes */
+  label?: string;
+  /** whether what the lambdas write is logged, true by default */
+  logOutput?: boolean;
 }
 
 /** The pools do not limit each other: every lambda middleware has the limit of its own, so they share a budget without one. A lambda ends with the server anyway: it exits when its channel closes. */
@@ -32,12 +36,29 @@ const budget = createWorkerBudget();
 /** the file that loads a lambda in its process, from src/ and from dist/ */
 const runner = resolve(__dirname, '../middlewares/runner.js');
 
+const discard = () => {};
+
 /**
  * The pool that runs the lambda of one file and handler: a lambda is a worker that answers one request at a time, with a folder of its own that goes with it,
  * is drained after a while and stopped when idle, and gets its signal, then its kill.
  */
-const createLambdaPool = ({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, timeout, restrictFileSystem, env, logger }: LambdaPoolParams) => {
-  const log = (data: Buffer) => logger(`[${getDate()}] ${data.toString().trim()}`);
+const createLambdaPool = ({
+  lambdaPath,
+  handlerKey,
+  limit,
+  acquireTimeout,
+  startTimeout,
+  timeout,
+  restrictFileSystem,
+  env,
+  logger,
+  label,
+  logOutput = true,
+}: LambdaPoolParams) => {
+  const prefix = label ? `[${label}] ` : '';
+  const log = (line: string) => logger(`[${getDate()}] ${prefix}${line}`);
+  // output that is not logged is read too, as a lambda would block on a full pipe
+  const output = logOutput ? { onStdoutLine: log, onStderrLine: log } : { onStdout: discard, onStderr: discard };
 
   return new WorkerPool({
     overallLimit: limit,
@@ -51,10 +72,9 @@ const createLambdaPool = ({ lambdaPath, handlerKey, limit, acquireTimeout, start
     stopSignal: 'SIGTERM',
     killAfter: STOP_GRACE,
     createCommand: () => [process.execPath, runner, lambdaPath],
-    onStdout: log,
-    onStderr: log,
+    ...output,
     onExit: (code) => {
-      if (code) logger(`[${getDate()}] child process exited with code ${code}`);
+      if (code) log(`child process exited with code ${code}`);
     },
     prepareWorker: () => {
       // what the lambda wrote is gone with it, as the storage of an environment of AWS is

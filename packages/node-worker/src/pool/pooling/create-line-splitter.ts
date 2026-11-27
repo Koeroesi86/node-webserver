@@ -1,5 +1,5 @@
 import { StringDecoder } from 'string_decoder';
-import { MAX_CHILD_LINE_LENGTH } from '../constants';
+import { MaxLineLength } from '../constants';
 
 /** a `\r` ends a line too, as of a progress bar: in the console it would write over what is in front of the line */
 const LINE_BREAK = /\r\n?|\n/;
@@ -8,7 +8,7 @@ const LINE_BREAK = /\r\n?|\n/;
  * Puts the pieces that are read from a stream together to whole lines, for `onLine`. Blank lines are left out. A line that is longer than `maxLength` comes in pieces of that
  * length, so that one that never ends does not fill the memory. `end` hands over what has no line break after it.
  */
-const createLineSplitter = (onLine: (line: string) => void, maxLength = MAX_CHILD_LINE_LENGTH) => {
+const createLineSplitter = (onLine: (line: string) => void, maxLength = MaxLineLength) => {
   // a character of several bytes can be split between two pieces
   const decoder = new StringDecoder('utf8');
   let unfinished = '';

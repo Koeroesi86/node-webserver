@@ -1,6 +1,7 @@
 export { default as asString } from './as-string';
 export { default as debounce } from './debounce';
 export { default as getDate } from './get-date';
+export { default as labelLine } from './label-line';
 export { default as parseArgv } from './parse-argv';
 export type { ParsedArgv } from './parse-argv';
 export { addPort, getPorts, clearPorts, getFreePort, findPorts } from './ports';

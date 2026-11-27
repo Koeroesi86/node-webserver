@@ -61,15 +61,38 @@ describe('createLambdaPool', () => {
     expect(FakePool.last.params.budget).toEqual({ budget: true });
   });
 
-  it('logs what a lambda writes and the exit code of one that failed, not of one that ended well', () => {
+  /** the logged lines without the time in front */
+  const logged = (logger: jest.Mock) => logger.mock.calls.map(([line]) => line.replace(/^\[[\d :.-]+\] /, ''));
+
+  it('logs the lines a lambda writes and the exit code of one that failed, not of one that ended well', () => {
     const { params, logger } = create();
 
-    params.onStdout(Buffer.from(' hello \n'));
-    params.onStderr(Buffer.from('oops'));
+    params.onStdoutLine('    hello');
+    params.onStderrLine('oops');
     params.onExit(1, '/lambdas/api.js', 'id');
     params.onExit(0, '/lambdas/api.js', 'id');
 
-    expect(logger.mock.calls.map(([line]) => line.replace(/^\[[^\]]+\] /, ''))).toEqual(['hello', 'oops', 'child process exited with code 1']);
+    expect(logged(logger)).toEqual(['    hello', 'oops', 'child process exited with code 1']);
+  });
+
+  it('names the lambdas with the label it is given, after the time', () => {
+    const { params, logger } = create({ label: 'api.localhost' });
+
+    params.onStdoutLine('hello');
+    params.onExit(1, '/lambdas/api.js', 'id');
+
+    expect(logged(logger)).toEqual(['[api.localhost] hello', '[api.localhost] child process exited with code 1']);
+  });
+
+  it('reads the output without logging it when that is switched off, and still logs the exit code', () => {
+    const { params, logger } = create({ logOutput: false });
+
+    expect([params.onStdoutLine, params.onStderrLine]).toEqual([undefined, undefined]);
+    params.onStdout(Buffer.from('hello\n'));
+    params.onStderr(Buffer.from('oops\n'));
+    params.onExit(1, '/lambdas/api.js', 'id');
+
+    expect(logged(logger)).toEqual(['child process exited with code 1']);
   });
 
   describe('a lambda that is prepared', () => {
