@@ -7,7 +7,7 @@ const settle = () => new Promise(process.nextTick);
 describe('createAppRegistry', () => {
   const logger = createMockLogger();
   const report = { targets: [], certificates: [] };
-  const run = { nodeWebserver: 'app-start' as const, key: 'a', command: 'node', args: ['app.js', '4000'] };
+  const run = { nodeWebserver: 'app-start' as const, key: 'a', hostname: 'a.localhost', command: 'node', args: ['app.js', '4000'] };
   const claim = { nodeWebserver: 'app-claim' as const, key: 'a' };
   const release = { nodeWebserver: 'app-release' as const, key: 'a' };
 
@@ -69,10 +69,10 @@ describe('createAppRegistry', () => {
     await settle();
     front.receive(run);
 
-    children[0].stdout.emit('data', 'listening');
+    children[0].stdout.emit('data', 'listening\n');
     children[0].emit('error', new Error('no such command'));
 
-    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('listening'));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('[a.localhost] listening'));
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('could not be started'), expect.anything());
   });
 

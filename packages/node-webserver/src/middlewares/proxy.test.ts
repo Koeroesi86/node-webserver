@@ -52,10 +52,10 @@ describe('proxyMiddleware', () => {
     const runtime: ServerRuntime = {};
     proxyMiddleware(instance(), runtime, logger);
 
-    runtime.child?.stdout?.emit('data', 'listening');
-    runtime.child?.stderr?.emit('data', 'broken');
+    runtime.child?.stdout?.emit('data', 'listening\n');
+    runtime.child?.stderr?.emit('data', 'broken\n');
 
-    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('listening'));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('[child.localhost] listening'));
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('broken'));
   });
 

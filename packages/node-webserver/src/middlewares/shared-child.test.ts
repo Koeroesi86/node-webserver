@@ -67,7 +67,7 @@ describe('sharedChildMiddleware', () => {
       port: undefined,
       lookup: { from: 1, to: 2, address: 'localhost' },
     });
-    expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'node', ['app.js', `--port=${port}`]);
+    expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'child.localhost', 'node', ['app.js', `--port=${port}`]);
     expect(await (await get(child.handler)).text()).toBe('application');
   });
 
@@ -84,7 +84,7 @@ describe('sharedChildMiddleware', () => {
     tell(4000);
     await new Promise(process.nextTick);
 
-    expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'node', ['4000', '4000']);
+    expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'child.localhost', 'node', ['4000', '4000']);
   });
 
   it('takes a port, a target and arguments of the configuration as they are written', async () => {
@@ -96,7 +96,7 @@ describe('sharedChildMiddleware', () => {
     await new Promise(process.nextTick);
 
     expect(apps.claim).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ port }));
-    expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'node', ['app.js', '--port=%PORT%']);
+    expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'child.localhost', 'node', ['app.js', '--port=%PORT%']);
   });
 
   it('refuses a server with a port and no target, and one without its options', () => {

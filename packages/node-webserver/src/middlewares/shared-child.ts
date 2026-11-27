@@ -43,7 +43,7 @@ const sharedChildMiddleware = (
     if (closed) return;
 
     const asWritten = Array.isArray(args) ? args : [];
-    apps.start(key, command, fixed ? asWritten : fillPort(port));
+    apps.start(key, instance.hostname, command, fixed ? asWritten : fillPort(port));
     proxy ??= createProxy(`${PROXY_PROTOCOLS[serverOptions.protocol]}://${proxyOptions.hostname || 'localhost'}:${port}`);
   });
   started.catch((error) => logger.error(`[${getDate()}] The application of ${instance.hostname} cannot be started:`, error));

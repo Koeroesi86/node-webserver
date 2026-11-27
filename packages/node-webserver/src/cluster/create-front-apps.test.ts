@@ -7,7 +7,7 @@ describe('createFrontApps', () => {
 
     const ports = [apps.claim('a', { port: 8080 }), apps.claim('a', { port: 8080 })];
     apps.receive({ key: 'a', port: 8080 });
-    apps.start('a', 'node', ['app.js']);
+    apps.start('a', 'a.localhost', 'node', ['app.js']);
     apps.release('a');
     apps.release('a');
     apps.release('a');
@@ -15,7 +15,7 @@ describe('createFrontApps', () => {
     expect(await Promise.all(ports)).toEqual([8080, 8080]);
     expect(send.mock.calls).toEqual([
       [{ nodeWebserver: 'app-claim', key: 'a', port: 8080, lookup: undefined }],
-      [{ nodeWebserver: 'app-start', key: 'a', command: 'node', args: ['app.js'] }],
+      [{ nodeWebserver: 'app-start', key: 'a', hostname: 'a.localhost', command: 'node', args: ['app.js'] }],
       [{ nodeWebserver: 'app-release', key: 'a' }],
     ]);
   });

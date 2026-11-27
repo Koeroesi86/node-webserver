@@ -34,7 +34,7 @@ const createFrontApps = (send: (message: FrontMessage) => unknown, kill: (pid: n
 
       return app.port;
     },
-    start: (key, command, args) => void send({ nodeWebserver: 'app-start', key, command, args }),
+    start: (key, hostname, command, args) => void send({ nodeWebserver: 'app-start', key, hostname, command, args }),
     pid: (key) => running.find((app) => app.key === key)?.pid,
     release: (key) => {
       const app = apps.get(key);

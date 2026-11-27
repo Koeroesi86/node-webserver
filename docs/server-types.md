@@ -28,7 +28,7 @@ More: [Lambdas](https://github.com/Koeroesi86/node-webserver/blob/master/package
 
 ## child
 
-The server starts `childOptions.command` with its `args`, and proxies requests to its port on `localhost` (`proxyOptions`, `serverOptions.protocol` and `childOptions` are required). The port is a free one, replaced for `%PORT%` in the arguments (or the result of an `args` function), unless `proxyOptions.port` is fixed. The child is stopped with the server. What it writes is logged, stdout as info and stderr as an error. Behind a primary (the command line, `startCluster`) the primary starts it once for all front processes, picks the port from `portLookup` and does the logging. Requests and websockets are passed on as for a `proxy` server with a fixed target: 502 when the child cannot be reached, also because its command is not found or may not be run (which is logged), 504 when it stays silent.
+The server starts `childOptions.command` with its `args`, and proxies requests to its port on `localhost` (`proxyOptions`, `serverOptions.protocol` and `childOptions` are required). The port is a free one, replaced for `%PORT%` in the arguments (or the result of an `args` function), unless `proxyOptions.port` is fixed. The child is stopped with the server. What it writes is logged line by line with the host in front, stdout as info and stderr as an error. Behind a primary (the command line, `startCluster`) the primary starts it once for all front processes, picks the port from `portLookup` and does the logging. Requests and websockets are passed on as for a `proxy` server with a fixed target: 502 when the child cannot be reached, also because its command is not found or may not be run (which is logged), 504 when it stays silent.
 
 ## proxy
 
