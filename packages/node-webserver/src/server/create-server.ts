@@ -33,6 +33,8 @@ export interface ServerOptions {
   requestReload?: () => void;
   /** set in a front process: the registered targets of the dynamic `proxy` servers, which all fronts have */
   sharedTargets?: SharedTargets;
+  /** set in a front process: the challenges of the certificate orders, which the primary makes. Without them the server orders its certificates itself. */
+  acmeChallenges?: AcmeChallenges;
 }
 
 export interface RunningServer {
@@ -52,7 +54,7 @@ export interface RunningServer {
 const createServer = async (
   configuration: Partial<Configuration>,
   logger?: Logger,
-  { processHooks = true, front, signals, stoppable = false, requestReload, sharedTargets }: ServerOptions = {}
+  { processHooks = true, front, signals, stoppable = false, requestReload, sharedTargets, acmeChallenges }: ServerOptions = {}
 ): Promise<RunningServer> => {
   // one set for each call, so that a second server in the process does not share the middlewares of the first
   const httpApp = express();
@@ -95,7 +97,7 @@ const createServer = async (
   [httpsApp, http2App].forEach((app) => app.use(logHttps));
 
   /** the challenge of the certificate authority, before the hosts: a redirect to https must not get in its way */
-  const challenges: AcmeChallenges = new Map();
+  const challenges: AcmeChallenges = acmeChallenges ?? new Map();
   httpApp.use(createAcmeChallengeHandler(challenges));
 
   /** overall stats endpoint */
@@ -130,10 +132,10 @@ const createServer = async (
     signals,
   });
   // after the servers listen, as the authority comes to the http port
-  const renewer = createAcmeRenewer({ getLoaded: reloader.getLoaded, challenges, logger: log, reload });
-  void renewer.start();
+  const renewer = acmeChallenges ? undefined : createAcmeRenewer({ getLoaded: reloader.getLoaded, challenges, logger: log, reload });
+  void renewer?.start();
   httpServer.once('close', () => {
-    renewer.stop();
+    renewer?.stop();
     unregisterMetrics();
     hooks.removeWorkerBudget();
   });
@@ -144,6 +146,10 @@ const createServer = async (
     fingerprint: getLoadFingerprint(servers?.instances ?? reloader.getLoaded(), configuration.unknownHostPage),
     singleFrontOnly: reloader.getLoaded().some(({ instance }) => findFrontProblems(instance, instance.hostname).length > 0),
     targets: reloader.getLoaded().flatMap(({ instance }) => getTargetKey(instance) ?? []),
+    certificates: reloader
+      .getLoaded()
+      .filter(({ instance }) => instance.acme)
+      .map(({ instance: { hostname, protocol, key, cert, acme } }) => ({ hostname, protocol, key, cert, acme })),
   });
 
   return {

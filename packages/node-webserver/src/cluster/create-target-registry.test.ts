@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import createTargetRegistry from './create-target-registry';
 import createMockLogger from '../observability/mock-logger.test-helper';
+import type { TargetChange } from '../types';
 
 describe('createTargetRegistry', () => {
   const logger = createMockLogger();
@@ -11,6 +12,8 @@ describe('createTargetRegistry', () => {
   const until = async (condition: () => boolean) => {
     while (!condition()) await new Promise((resolve) => setImmediate(resolve));
   };
+
+  const told = (next: TargetChange) => ({ nodeWebserver: 'target' as const, change: next });
 
   /** two fronts that listen */
   const joinTwo = () => {
@@ -25,23 +28,23 @@ describe('createTargetRegistry', () => {
   it('tells every front what was registered with one of them, and a front that comes later too', () => {
     const { registry, sends, members } = joinTwo();
 
-    members[0].change(change);
+    members[0].receive(told(change));
     const late = jest.fn();
     const member = registry.join(late);
-    members[0].change(change);
+    members[0].receive(told(change));
     expect(late).not.toHaveBeenCalled();
     member.hello();
 
-    const told = [{ nodeWebserver: 'targets', changes: [change] }];
-    expect(sends.map((send) => send.mock.lastCall)).toEqual([told, told]);
-    expect(late.mock.calls).toEqual([told]);
+    const expected = [{ nodeWebserver: 'targets', changes: [change] }];
+    expect(sends.map((send) => send.mock.lastCall)).toEqual([expected, expected]);
+    expect(late.mock.calls).toEqual([expected]);
   });
 
   it('keeps what is newer than a change, and tells that', () => {
     const { sends, members } = joinTwo();
-    members[0].change(change);
+    members[0].receive(told(change));
 
-    members[1].change({ ...change, target: 'http://203.0.113.8/', setAt: 1 });
+    members[1].receive(told({ ...change, target: 'http://203.0.113.8/', setAt: 1 }));
 
     expect(sends[1]).toHaveBeenLastCalledWith({ nodeWebserver: 'targets', changes: [change] });
   });
@@ -50,24 +53,24 @@ describe('createTargetRegistry', () => {
     const { sends, members } = joinTwo();
 
     members[1].leave();
-    members[0].change(change);
+    members[0].receive(told(change));
 
     expect(sends[1]).not.toHaveBeenCalled();
   });
 
   it('forgets the target of a server once no front has it, but not before every front said what it has', () => {
     const { sends, members } = joinTwo();
-    members[0].change(change);
+    members[0].receive(told(change));
 
-    members[0].holds([]);
+    members[0].serves({ targets: [], certificates: [] });
     members[0].hello();
     expect(sends[0]).toHaveBeenLastCalledWith({ nodeWebserver: 'targets', changes: [change] });
 
-    members[1].holds(['https a']);
+    members[1].serves({ targets: ['https a'], certificates: [] });
     members[0].hello();
     expect(sends[0]).toHaveBeenLastCalledWith({ nodeWebserver: 'targets', changes: [change] });
 
-    members[1].holds([]);
+    members[1].serves({ targets: [], certificates: [] });
     members[0].hello();
     expect(sends[0]).toHaveBeenLastCalledWith({ nodeWebserver: 'targets', changes: [] });
   });
@@ -77,8 +80,8 @@ describe('createTargetRegistry', () => {
     const [first, second] = [join(folder, 'first.json'), join(folder, 'second.json')];
     const { members } = joinTwo();
 
-    members[0].change({ ...change, persistPath: first });
-    members[1].change({ ...change, persistPath: second });
+    members[0].receive(told({ ...change, persistPath: first }));
+    members[1].receive(told({ ...change, persistPath: second }));
 
     const written = () => [first, second].map((path) => JSON.parse(readFileSync(path, 'utf8')));
     // the file is written some time after the change, and is empty or missing until then

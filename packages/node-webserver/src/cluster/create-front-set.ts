@@ -3,7 +3,7 @@ import createFrontSupervisor from './create-front-supervisor';
 import createReloadRounds from './create-reload-rounds';
 
 /** The fronts that serve one configuration, with their supervision and the reloads of their servers. A change of the configuration starts another set next to it. */
-const createFrontSet = ({ plan, fork, logger, targets, watch, onStale, onRecount }: FrontSetOptions) => {
+const createFrontSet = ({ plan, fork, logger, services, watch, onStale, onRecount }: FrontSetOptions) => {
   const rounds = createReloadRounds({
     logger,
     send: (message, index) => supervisor.send(message, index),
@@ -11,7 +11,7 @@ const createFrontSet = ({ plan, fork, logger, targets, watch, onStale, onRecount
     watch: plan.settings.watchServers ? watch : undefined,
     onRecount,
   });
-  const supervisor = createFrontSupervisor({ count: plan.frontCount, release: plan.release, fork, logger, targets, onStale, listener: rounds });
+  const supervisor = createFrontSupervisor({ count: plan.frontCount, release: plan.release, fork, logger, services, onStale, listener: rounds });
   const stop = (message: PrimaryMessage, timeout: number) => {
     rounds.stop();
     return supervisor.stop(message, timeout);

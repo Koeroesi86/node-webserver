@@ -1,6 +1,6 @@
 import type http from 'http';
-import type { LoadedInstance } from './instance';
 import type { Logger } from './logger';
+import type { ServerConfig } from './server';
 
 export interface AcmeOptions {
   /** the contact address the certificate authority writes to about the account and the certificates that are about to expire */
@@ -17,6 +17,16 @@ export interface AcmeOptions {
 
 /** the tokens of the `http-01` challenges that wait for the certificate authority, with the answer to each */
 export type AcmeChallenges = Map<string, string>;
+
+/** where the answers of the challenges go before the authority is asked to check them */
+export interface ChallengeStore {
+  /** may resolve once the answer is there to be asked for */
+  set: (token: string, answer: string) => unknown;
+  delete: (token: string) => unknown;
+}
+
+/** what of an `acme` server it takes to order its certificate */
+export type CertificateServer = Pick<ServerConfig, 'hostname' | 'protocol' | 'key' | 'cert' | 'acme'>;
 
 export interface AcmeRequestOptions {
   method?: string;
@@ -52,7 +62,7 @@ export interface AcmeClient {
 export interface CertificateOrder {
   hostname: string;
   acme: AcmeOptions;
-  challenges: AcmeChallenges;
+  challenges: ChallengeStore;
   /** how long to wait between two looks at an order or a challenge that is not done, in milliseconds. Defaults to 2000. */
   pollInterval?: number;
   /** how many looks before the order is given up. Defaults to 60. */
@@ -64,11 +74,13 @@ export interface AcmeRenewer {
   start: () => Promise<void>;
   stop: () => void;
   check: () => Promise<void>;
+  /** looks now, or once the look that runs is done, for a server that was added */
+  recheck: () => void;
 }
 
 export interface AcmeRenewerContext {
-  getLoaded: () => LoadedInstance[];
-  challenges: AcmeChallenges;
+  getLoaded: () => Array<{ instance: CertificateServer }>;
+  challenges: ChallengeStore;
   logger: Logger;
   /** loads the servers again, so that new connections get the new certificates */
   reload: () => void;

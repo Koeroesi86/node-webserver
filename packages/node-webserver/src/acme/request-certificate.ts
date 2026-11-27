@@ -54,8 +54,8 @@ const solveAuthorization = async (client: AcmeClient, url: string, order: Certif
   const challenge = authorization.challenges.find(({ type }) => type === 'http-01');
   if (!challenge) throw new Error(`${url} offers no http-01 challenge`);
 
-  order.challenges.set(challenge.token, `${challenge.token}.${client.thumbprint}`);
   try {
+    await order.challenges.set(challenge.token, `${challenge.token}.${client.thumbprint}`);
     await answerChallenge(client, url, challenge.url, order);
   } finally {
     order.challenges.delete(challenge.token);

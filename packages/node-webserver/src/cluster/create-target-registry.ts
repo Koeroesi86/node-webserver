@@ -1,5 +1,5 @@
 import { createTargetFile } from '../proxy';
-import type { Logger, PrimaryMessage, TargetChange, TargetFile, TargetRegistry } from '../types';
+import type { FrontService, Logger, PrimaryMessage, TargetChange, TargetFile } from '../types';
 
 interface Member {
   send: (message: PrimaryMessage) => void;
@@ -13,7 +13,7 @@ interface Member {
  * The registered targets of the dynamic `proxy` servers, as the primary keeps them for all its fronts: a front tells it what was registered with it, and it tells every front,
  * the ones that start later too, and writes the file of the target. A change that is older than what it has is not taken.
  */
-const createTargetRegistry = (logger: Logger): TargetRegistry => {
+const createTargetRegistry = (logger: Logger): FrontService => {
   const members = new Set<Member>();
   const targets = new Map<string, TargetChange>();
   const files = new Map<string, TargetFile>();
@@ -60,8 +60,8 @@ const createTargetRegistry = (logger: Logger): TargetRegistry => {
           member.listens = true;
           send({ nodeWebserver: 'targets', changes: Array.from(targets.values()) });
         },
-        change: take,
-        holds: (keys) => {
+        receive: (message) => message.nodeWebserver === 'target' && take(message.change),
+        serves: ({ targets: keys }) => {
           member.keys = keys;
           prune();
         },

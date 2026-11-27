@@ -11,7 +11,7 @@ import {
   sendMessage as send,
 } from '../cluster';
 import { getDate } from '../utils';
-import type { Cluster, ClusterOptions, Configuration, FrontMessage, FrontProcess, Logger, PrimaryMessage } from '../types';
+import type { AcmeChallenges, Cluster, ClusterOptions, Configuration, FrontMessage, FrontProcess, Logger, PrimaryMessage } from '../types';
 
 /** tells the primary why this front does not serve, and ends it */
 const leave = async (message: FrontMessage, logger: Logger, code: number): Promise<never> => {
@@ -40,6 +40,8 @@ const startFront = async (
   };
   const stop = () => (running ? running.stop() : Promise.resolve());
   const targets = createFrontTargets((message) => void send(message));
+  /** of the orders of the primary, which the authority may ask any front for */
+  const challenges: AcmeChallenges = new Map();
   let welcome = () => {};
   /** resolves once the primary told the registered targets, which the servers start with */
   const welcomed = new Promise<void>((resolve) => (welcome = resolve));
@@ -53,6 +55,13 @@ const startFront = async (
       if (message.nodeWebserver !== 'targets') return;
       targets.receive(message.changes);
       welcome();
+    },
+    challenge: (message) => {
+      if (message.nodeWebserver !== 'challenge') return;
+      const { token, answer } = message;
+      if (answer === undefined) return challenges.delete(token);
+      challenges.set(token, answer);
+      void send({ nodeWebserver: 'challenge-taken', token });
     },
   };
   // from here on the channel keeps the front running, which it does not until the server starts. Node does not take it back by itself once it was let go, and nothing else
@@ -76,7 +85,15 @@ const startFront = async (
   // a port that cannot be listened on is an error of the server that nothing catches
   process.once('uncaughtException', fail);
   await welcomed;
-  running = await createServer(configuration, logger, { processHooks, front, signals, stoppable: true, requestReload, sharedTargets: targets }).catch(fail);
+  running = await createServer(configuration, logger, {
+    processHooks,
+    front,
+    signals,
+    stoppable: true,
+    requestReload,
+    sharedTargets: targets,
+    acmeChallenges: challenges,
+  }).catch(fail);
   process.off('uncaughtException', fail);
   rounds = createFrontReload(running, send, logger);
   await send({ nodeWebserver: 'ready', release, ...running.report() });

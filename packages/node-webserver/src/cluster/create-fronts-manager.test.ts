@@ -66,6 +66,16 @@ describe('createFrontsManager', () => {
     return created;
   };
 
+  it('loads the servers of every set of fronts again when asked, also of the one that starts', async () => {
+    const { manager, sets } = create();
+    const starting = manager.start(createPlan());
+
+    manager.reloadFronts();
+    await starting;
+
+    expect(sets[0].reload).toHaveBeenCalled();
+  });
+
   it('starts the fronts of the plan, and watches the files of the configuration', async () => {
     const { sets, watch, manager } = await started();
 

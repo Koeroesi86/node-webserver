@@ -16,7 +16,7 @@ describe('createFrontSet', () => {
   const create = (change: Parameters<typeof createPlan>[0] = {}, extra: Partial<FrontSetOptions> = {}) => {
     const { fork, fronts } = createFakeFork();
     const plan = createPlan(change);
-    return { fronts, set: createFrontSet({ plan, fork, logger, targets: createTargetRegistry(logger), watch, onStale, onRecount, ...extra }) };
+    return { fronts, set: createFrontSet({ plan, fork, logger, services: createTargetRegistry(logger), watch, onStale, onRecount, ...extra }) };
   };
   const ready = {
     nodeWebserver: 'ready' as const,
@@ -25,6 +25,7 @@ describe('createFrontSet', () => {
     fingerprint: 'a',
     singleFrontOnly: false,
     targets: [],
+    certificates: [],
   };
   const started = async (change: Parameters<typeof createPlan>[0] = {}) => {
     const created = create(change);
@@ -82,7 +83,7 @@ describe('createFrontSet', () => {
     const { set, fronts } = await started();
     expect(set.isSingleFrontOnly()).toBe(false);
 
-    fronts[1].say({ nodeWebserver: 'files', files: [], singleFrontOnly: true, targets: [] });
+    fronts[1].say({ nodeWebserver: 'files', files: [], singleFrontOnly: true, targets: [], certificates: [] });
 
     expect(set.isSingleFrontOnly()).toBe(true);
   });

@@ -1,7 +1,7 @@
 import cluster from 'cluster';
 import os from 'os';
 import startPrimary from './start-primary';
-import { connectLauncher, createFrontSet, createFrontsManager, getLauncherMode, readServerVersion } from '../cluster';
+import { connectLauncher, createFrontSet, createFrontsManager, createPrimaryCertificates, getLauncherMode, readServerVersion } from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
 import { watchFiles } from '../reload';
 import createMockLogger from '../observability/mock-logger.test-helper';
@@ -13,13 +13,15 @@ jest.mock('../cluster', () => ({
   connectLauncher: jest.fn(),
   createFrontSet: jest.fn(),
   createFrontsManager: jest.fn(),
+  createPrimaryCertificates: jest.fn(),
   getLauncherMode: jest.fn(),
 }));
 jest.mock('../lifecycle', () => ({ ...jest.requireActual('../lifecycle'), setupPrimaryHooks: jest.fn() }));
 
 describe('startPrimary', () => {
   const logger = createMockLogger();
-  const manager = { start: jest.fn(), stop: jest.fn(), reload: jest.fn(), getPlan: jest.fn() };
+  const manager = { start: jest.fn(), stop: jest.fn(), reload: jest.fn(), reloadFronts: jest.fn(), getPlan: jest.fn() };
+  const certificates = { service: { join: jest.fn() }, start: jest.fn(), stop: jest.fn() };
   const launcher = { signals: {} as never, serving: jest.fn(async () => undefined) };
   const removeHooks = jest.fn();
   const configuration = { frontProcesses: 2, servers: [], portHttp: 0, portHttps: 0, shutdownTimeout: 100 };
@@ -34,6 +36,7 @@ describe('startPrimary', () => {
     manager.stop.mockResolvedValue(undefined);
     manager.getPlan.mockReturnValue(undefined);
     jest.mocked(createFrontsManager).mockReturnValue(manager);
+    jest.mocked(createPrimaryCertificates).mockReturnValue(certificates as never);
     jest.mocked(setupPrimaryHooks).mockReturnValue(removeHooks);
     jest.mocked(connectLauncher).mockReturnValue(launcher);
     jest.mocked(getLauncherMode).mockReturnValue(undefined);
@@ -82,7 +85,7 @@ describe('startPrimary', () => {
     options().createSet({ frontCount: 2 } as never, events);
 
     expect(createFrontSet).toHaveBeenCalledWith(
-      expect.objectContaining({ plan: { frontCount: 2 }, targets: expect.any(Object), watch: watchFiles, ...events })
+      expect.objectContaining({ plan: { frontCount: 2 }, services: expect.any(Object), watch: watchFiles, ...events })
     );
     expect(options().watch).toBe(watchFiles);
   });
@@ -114,6 +117,18 @@ describe('startPrimary', () => {
 
     expect(manager.reload).toHaveBeenCalled();
     expect(manager.stop).toHaveBeenCalledWith({ nodeWebserver: 'stop' }, 7 + FRONT_STOP_MARGIN);
+  });
+
+  it('orders the certificates once the fronts serve, until it stops, and has all fronts load what it got', async () => {
+    const running = await startPrimary(configuration, logger, {});
+
+    expect(certificates.start.mock.invocationCallOrder[0]).toBeGreaterThan(manager.start.mock.invocationCallOrder[0]);
+    jest.mocked(createPrimaryCertificates).mock.calls[0][0].reload();
+    expect(manager.reloadFronts).toHaveBeenCalled();
+
+    await hooks().stop({ nodeWebserver: 'stop' }, 1);
+    await running.stop();
+    expect(certificates.stop).toHaveBeenCalledTimes(2);
   });
 
   it('cannot restart without a launcher', async () => {

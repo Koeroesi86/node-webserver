@@ -4,7 +4,7 @@ import { getDate } from '../utils';
 import { needsCertificate } from '../tls';
 import requestCertificate from './request-certificate';
 import writeCertificateFiles from './write-certificate-files';
-import type { AcmeRenewer, AcmeRenewerContext, LoadedInstance } from '../types';
+import type { AcmeRenewer, AcmeRenewerContext, CertificateServer } from '../types';
 
 /**
  * Gets the certificates of the `acme` servers that have none or are about to expire, and loads the servers again when it got any. It works through the servers
@@ -13,8 +13,10 @@ import type { AcmeRenewer, AcmeRenewerContext, LoadedInstance } from '../types';
 const createAcmeRenewer = ({ getLoaded, challenges, logger, reload, pollInterval, interval = ACME_CHECK_INTERVAL }: AcmeRenewerContext): AcmeRenewer => {
   let timer: NodeJS.Timeout | undefined;
   let checking = false;
+  /** whether a server was added while a look ran */
+  let again = false;
 
-  const issue = async ({ instance }: LoadedInstance) => {
+  const issue = async ({ instance }: { instance: CertificateServer }) => {
     const { hostname, acme } = instance;
     if (!acme) return false;
 
@@ -29,7 +31,7 @@ const createAcmeRenewer = ({ getLoaded, challenges, logger, reload, pollInterval
     }
   };
 
-  const isDue = ({ instance }: LoadedInstance) =>
+  const isDue = ({ instance }: { instance: CertificateServer }) =>
     instance.protocol === 'https' &&
     instance.acme !== undefined &&
     !instance.hostname.includes('*') &&
@@ -53,6 +55,10 @@ const createAcmeRenewer = ({ getLoaded, challenges, logger, reload, pollInterval
       .finally(() => {
         checking = false;
       });
+
+    if (!again) return;
+    again = false;
+    await check();
   };
 
   return {
@@ -65,6 +71,10 @@ const createAcmeRenewer = ({ getLoaded, challenges, logger, reload, pollInterval
     },
     stop: () => clearInterval(timer),
     check,
+    recheck: () => {
+      again = checking;
+      void check();
+    },
   };
 };
 

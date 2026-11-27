@@ -8,8 +8,8 @@ import type {
   FrontReloadMessage,
   Logger,
   PrimaryMessage,
-  TargetMember,
-  TargetRegistry,
+  FrontMember,
+  FrontService,
 } from '../types';
 import { getDate } from '../utils';
 import getRestartDelay from './get-restart-delay';
@@ -26,15 +26,15 @@ interface SupervisorOptions {
   onStale: () => void;
   /** what is told about the fronts */
   listener: FrontListener;
-  /** the registered targets, which every front is told */
-  targets: TargetRegistry;
+  /** what the primary keeps for all fronts, which every one of them joins */
+  services: FrontService;
 }
 
 /** one of the places for a front, which the front that replaces another one takes over with its share of the limits */
 interface Slot {
   index: number;
   handle?: FrontHandle;
-  member?: TargetMember;
+  member?: FrontMember;
   startedAt: number;
   /** how many fronts in a row ended too soon */
   failures: number;
@@ -55,7 +55,7 @@ interface Start {
 const isSameRelease = (first: FrontRelease, second: FrontRelease) => first.configuration === second.configuration && first.version === second.version;
 
 /** Starts the fronts, replaces the ones that end, and stops them. It serves nothing itself. */
-const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener, targets }: SupervisorOptions) => {
+const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener, services }: SupervisorOptions) => {
   const slots: Slot[] = Array.from({ length: count }, (_, index) => ({ index, startedAt: 0, failures: 0, stale: false }));
   const stopped: Array<() => void> = [];
   /** set until all the first fronts serve */
@@ -100,10 +100,14 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
     resolve();
   };
 
-  const serve = (slot: Slot, { release: found, files, fingerprint, singleFrontOnly, targets: keys }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
+  const serve = (
+    slot: Slot,
+    { release: found, files, fingerprint, singleFrontOnly, targets, certificates }: Extract<FrontMessage, { nodeWebserver: 'ready' }>
+  ) => {
+    const report = { files, fingerprint, singleFrontOnly, targets, certificates };
     logger.system(`[${getDate()}] ${name(slot)} is serving`);
-    slot.member?.holds(keys);
-    listener.serving(slot.index, { files, fingerprint, singleFrontOnly, targets: keys });
+    slot.member?.serves(report);
+    listener.serving(slot.index, report);
     starting?.releases.push(found);
     if (starting?.releases.length === count) settleStart(starting);
   };
@@ -116,14 +120,14 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
   };
 
   const pass = (slot: Slot, message: FrontReloadMessage) => {
-    if (message.nodeWebserver === 'files') slot.member?.holds(message.targets);
+    if (message.nodeWebserver === 'files') slot.member?.serves(message);
     listener.message(slot.index, message);
   };
 
   const receive = (slot: Slot, message: FrontMessage) => {
     if (message.nodeWebserver === 'ready') return serve(slot, message);
     if (message.nodeWebserver === 'hello') return welcome(slot);
-    if (message.nodeWebserver === 'target') return slot.member?.change(message.change);
+    if (message.nodeWebserver === 'target' || message.nodeWebserver === 'challenge-taken') return slot.member?.receive(message);
     // a plan comes from a process of its own, which is no front
     if (message.nodeWebserver === 'plan') return undefined;
     if (message.nodeWebserver !== 'failed' && message.nodeWebserver !== 'stale') return pass(slot, message);
@@ -145,7 +149,7 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
 
   const launch = (slot: Slot) => {
     const handle = fork({ index: slot.index, count, ...(expected && { expected }) });
-    Object.assign(slot, { handle, member: targets.join(handle.send), startedAt: Date.now(), reason: undefined, stale: false, timer: undefined });
+    Object.assign(slot, { handle, member: services.join(handle.send), startedAt: Date.now(), reason: undefined, stale: false, timer: undefined });
     logger.system(`[${getDate()}] ${name(slot)} started`);
     handle.onMessage((message) => isFrontMessage(message) && receive(slot, message));
     handle.onExit((code, signal) => exited(slot, String(signal ?? `code ${code}`)));
