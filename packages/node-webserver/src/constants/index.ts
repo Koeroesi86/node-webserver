@@ -75,9 +75,6 @@ export const LOG_MAX_BUFFER_SIZE = 64 * 1024;
 /** log lines are dropped, and counted, once this many characters wait because the disk does not keep up, so the memory cannot grow without a limit */
 export const LOG_MAX_QUEUE_SIZE = 16 * 1024 * 1024;
 
-/** the longest line of the output of a `child` application that is logged in one piece, in characters: a longer one is cut, also one that never ends */
-export const MAX_CHILD_LINE_LENGTH = 16 * 1024;
-
 /** the content types worth compressing: text like ones, and fonts and documents that are not compressed in themselves */
 export const COMPRESSIBLE_TYPES =
   /^(text\/|application\/(json|(x-)?javascript|xml|wasm|manifest\+json|.+\+(json|xml))|image\/svg\+xml|font\/(ttf|otf)|application\/vnd\.ms-fontobject)/i;

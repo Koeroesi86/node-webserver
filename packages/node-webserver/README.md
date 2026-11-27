@@ -254,6 +254,9 @@ A `command` that is not found or may not be run is logged as an error, followed 
 Node throws some other failures to start a process instead, such as for a path that goes through a file. Behind a primary they are logged the same way, without an exit code, and only the requests of that server fail.
 `startServer` does not start with such a command, and a reload with one keeps the servers that run.
 
+What workers and [lambdas](#lambdas) write is logged line by line in the same way, with the host name of their server: the stdout of a worker as info and its stderr as an error, both outputs of a lambda as info, and so is
+the exit code of a lambda that failed, which names the host too. Every process and output has lines of its own, so those of two workers are not mixed. The routes of a lambda server share the host name.
+
 ### Waiting for a worker
 
 A request is handed a worker of its worker file at once, also when all of them are busy: workers handle several requests at a time, and a request waits only when its file has no worker and no more can be started, because the limit for all
@@ -357,7 +360,8 @@ After the second one in a row the server stops starting workers for that path fo
 Requests that arrive in the meantime are answered with 503 and a `Retry-After`, unless a worker for the path is still running, which takes them. A worker that stays up for 5 seconds clears the count.
 `failing` in the metrics lists the paths that are held back, with their crashes and the time left. Workers the server stops itself (an idle one that makes room, the shutdown) are no crash.
 
-What a worker writes to its stdout and stderr is handed to `onStdout` and `onStderr` from the moment it starts.
+What a worker writes to its stdout and stderr is [logged](#logging) from the moment it starts, and handed to the callbacks in the `options`: `onStdout` and `onStderr` get it in pieces, as they are read,
+`onStdoutLine` and `onStderrLine` line by line, without the time and the host.
 
 ### HTTPS
 

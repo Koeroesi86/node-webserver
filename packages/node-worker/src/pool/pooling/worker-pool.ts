@@ -43,7 +43,7 @@ class WorkerPool implements WorkerBudgetMember {
   /** the workers that the pool stops itself, which is no crash */
   private readonly stopping: WeakSet<Worker>;
   /** what the pool was given and only passes on to its workers */
-  private readonly settings: Pick<WorkerPoolParams, 'onStdout' | 'onStderr' | 'prepareWorker'> & {
+  private readonly settings: Pick<WorkerPoolParams, 'onStdout' | 'onStderr' | 'onStdoutLine' | 'onStderrLine' | 'prepareWorker'> & {
     minUptime: number;
     stopSignal: NodeJS.Signals;
     killAfter: number;
@@ -72,6 +72,8 @@ class WorkerPool implements WorkerBudgetMember {
     onExit = () => {},
     onStdout,
     onStderr,
+    onStdoutLine,
+    onStderrLine,
     restartBackoff = { minUptime: WorkerMinUptime, ...WorkerRestartBackoff },
     idleTimeout = 0,
     budget,
@@ -87,7 +89,17 @@ class WorkerPool implements WorkerBudgetMember {
     this.acquireTimeout = acquireTimeout;
     this.acquisitionQueue = new WorkerAcquisitionQueue(acquireTimeout, maxQueue);
     this.onExit = onExit;
-    this.settings = { onStdout, onStderr, prepareWorker, createCommand, stopSignal, killAfter, minUptime: restartBackoff.minUptime };
+    this.settings = {
+      onStdout,
+      onStderr,
+      onStdoutLine,
+      onStderrLine,
+      prepareWorker,
+      createCommand,
+      stopSignal,
+      killAfter,
+      minUptime: restartBackoff.minUptime,
+    };
     this.concurrency = concurrency;
     this.startTimeout = startTimeout;
     this.restartBackoff = createRestartBackoff(restartBackoff);
@@ -286,6 +298,8 @@ class WorkerPool implements WorkerBudgetMember {
         onMessage: this.receive,
         onStdout: this.settings.onStdout,
         onStderr: this.settings.onStderr,
+        onStdoutLine: this.settings.onStdoutLine,
+        onStderrLine: this.settings.onStderrLine,
       });
     } catch (error) {
       prepared.onClose?.();

@@ -71,20 +71,65 @@ describe('createInstanceHandler', () => {
     expect(jest.mocked(middleware).mock.results[0].value.close).toHaveBeenCalledWith(1000);
   });
 
-  it('logs what a worker writes, and still hands it to the callbacks of the options', () => {
-    const onStdout = jest.fn();
-    const onStderr = jest.fn();
-    jest.mocked(middleware).mockClear();
-    createInstanceHandler({ hostname: 'worker.localhost', protocol: 'http', type: 'worker', options: { root: '/', onStdout, onStderr } }, {}, { logger });
-    const options = jest.mocked(middleware).mock.calls[0][0];
+  describe('the output of the workers', () => {
+    const start = (options: Partial<NonNullable<ServerConfig['options']>> = {}) => {
+      jest.mocked(middleware).mockClear();
+      createInstanceHandler({ hostname: 'worker.localhost', protocol: 'http', type: 'worker', options: { root: '/', ...options } }, {}, { logger });
+      return jest.mocked(middleware).mock.calls[0][0];
+    };
 
-    options.onStdout?.(Buffer.from('out\n'));
-    options.onStderr?.(Buffer.from('err\n'));
+    beforeEach(() => {
+      jest.mocked(logger.info).mockClear();
+      jest.mocked(logger.error).mockClear();
+      logger.isEnabled.mockImplementation(() => true);
+    });
 
-    expect(logger.info).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] out$/));
-    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] err$/));
-    expect(onStdout).toHaveBeenCalledWith(Buffer.from('out\n'));
-    expect(onStderr).toHaveBeenCalledWith(Buffer.from('err\n'));
+    it('is logged line by line with the time and the host in front, stderr as an error', () => {
+      const options = start();
+
+      options.onStdoutLine?.('out');
+      options.onStderrLine?.('    at worker.js:1');
+
+      expect(logger.info.mock.calls).toEqual([[expect.stringMatching(/^\[[\d :.-]+\] \[worker\.localhost\] out$/)]]);
+      expect(logger.error.mock.calls).toEqual([[expect.stringMatching(/^\[[\d :.-]+\] \[worker\.localhost\]     at worker\.js:1$/)]]);
+    });
+
+    it('is still handed to the callbacks of the options, in pieces as it is read and line by line', () => {
+      const callbacks = { onStdout: jest.fn(), onStderr: jest.fn(), onStdoutLine: jest.fn(), onStderrLine: jest.fn() };
+      const options = start(callbacks);
+
+      options.onStdout?.(Buffer.from('out\n'));
+      options.onStderr?.(Buffer.from('err\n'));
+      options.onStdoutLine?.('out');
+      options.onStderrLine?.('err');
+
+      expect(callbacks.onStdout).toHaveBeenCalledWith(Buffer.from('out\n'));
+      expect(callbacks.onStderr).toHaveBeenCalledWith(Buffer.from('err\n'));
+      expect(callbacks.onStdoutLine).toHaveBeenCalledWith('out');
+      expect(callbacks.onStderrLine).toHaveBeenCalledWith('err');
+      // the pieces are not logged, only the lines
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      expect(logger.error).toHaveBeenCalledTimes(1);
+    });
+
+    it('is read without building lines for a level that is off', () => {
+      logger.isEnabled.mockImplementation(() => false);
+
+      const options = start();
+
+      expect([options.onStdoutLine, options.onStderrLine]).toEqual([undefined, undefined]);
+      expect([options.onStdout, options.onStderr]).toEqual([expect.any(Function), expect.any(Function)]);
+    });
+
+    it('is handed to the line callbacks of the options for a level that is off too, without logging it', () => {
+      logger.isEnabled.mockImplementation(() => false);
+      const onStdoutLine = jest.fn();
+
+      start({ onStdoutLine }).onStdoutLine?.('out');
+
+      expect(onStdoutLine).toHaveBeenCalledWith('out');
+      expect(logger.info).not.toHaveBeenCalled();
+    });
   });
 
   it('hands every worker server the same budget, so that their workers count together', () => {

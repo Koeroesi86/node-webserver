@@ -1,6 +1,7 @@
 export {
   type BodyForwarderParams,
   createBodyForwarder,
+  createLineSplitter,
   createWorkerBudget,
   type SpawnOptions,
   startUnrefInterval,

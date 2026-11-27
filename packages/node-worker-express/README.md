@@ -188,6 +188,11 @@ module.exports = async (event, callback) => {
 - `limitWebSocketMessage` (bytes, 1 MiB by default, 0 for no limit) is the largest message, and the largest frame.
 - The worker is called with `closed: true` when a **websocket** connection closes, and not for HTTP requests any more. A second answer to the upgrade is ignored, and so is an answer that is not `sendWsMessage` to a message.
 
+## What the workers write
+
+The middleware reads what its workers write to their stdout and stderr from the moment they start, and drops it unless it is asked for: `onStdout` and `onStderr` get it in pieces, as they are read, `onStdoutLine` and `onStderrLine` line by line,
+without the line break. A line is put together for each worker and output on its own, see `createLineSplitter` in [node-worker](../node-worker#the-pool-of-worker-processes).
+
 ## Metrics
 
 `await event.getMetrics()` in a worker gives a snapshot of the server (uptime, memory, event loop delay, request counts, worker pools) for health and metrics endpoints, see the README of `@koeroesi86/node-webserver`.

@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'child_process';
 import type { Readable } from 'stream';
-import createLineSplitter from './create-line-splitter';
-import { getDate } from '../utils';
+import { createLineSplitter } from '@koeroesi86/node-worker/pool';
+import { labelLine } from '../utils';
 import type { Logger } from '../types';
 
 /** how to take the listeners off a child again, so that setting it up twice does not log a line twice */
@@ -25,7 +25,7 @@ const listenToOutput = (stream: Readable | null | undefined, enabled: boolean, l
 const setupChildListener = (child: ChildProcess, hostname: string, logger: Logger) => {
   detachers.get(child)?.();
 
-  const label = (text: string) => `[${getDate()}] [${hostname}] ${text}`;
+  const label = (text: string) => labelLine(hostname, text);
   const detachOutput = listenToOutput(child.stdout, logger.isEnabled('info'), (line) => logger.info(label(line)));
   const detachErrors = listenToOutput(child.stderr, logger.isEnabled('error'), (line) => logger.error(label(line)));
   // without a listener it would end the process, and with it the other servers

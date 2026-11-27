@@ -24,6 +24,8 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
     lambdaPath,
     handlerKey = 'handler',
     logger = () => {},
+    label,
+    logOutput,
     limit = availableParallelism(),
     acquireTimeout = 10000,
     startTimeout = DEFAULT_START_TIMEOUT,
@@ -35,7 +37,7 @@ function createHttpMiddleware(options: HttpMiddlewareOptions): HttpMiddleware {
   } = options;
 
   sweepLambdaFolders();
-  const pool = createLambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, timeout, restrictFileSystem, env, logger });
+  const pool = createLambdaPool({ lambdaPath, handlerKey, limit, acquireTimeout, startTimeout, timeout, restrictFileSystem, env, logger, label, logOutput });
   const statsSource = createLambdaStatsSource(lambdaPath, pool);
   stats.add(statsSource);
 

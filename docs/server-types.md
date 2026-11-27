@@ -14,6 +14,7 @@ Each entry of `servers` has a `hostname`, a `protocol` (`http` or `https`) and a
 - The worker file is found under `options.root`, or named by `options.routes` (a `path` or a `pattern`, first match wins).
 - Pools grow per file up to a limit, idle workers stop after 5 minutes by default, and `warmPaths` starts some in advance.
 - The body of a request is read from `event.bodyStream`. Responses can be streamed, and websockets are supported.
+- What a worker writes is logged line by line with the host in front, stdout as info and stderr as an error.
 - The static worker serves files with range requests, `Cache-Control` per folder or extension, and precompressed `.br` and `.gz` files.
 
 More: [the server README](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#routes), [node-worker-express](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-worker-express/README.md).
@@ -22,6 +23,7 @@ More: [the server README](https://github.com/Koeroesi86/node-webserver/blob/mast
 
 - `lambdaOptions.lambda` is the file and `handler` the export (nested names work). `routes` hosts several lambdas on one server.
 - The event is the proxy integration payload format 1.0. Failures are answered as API Gateway does: 502 for a handler that fails, 504 for a timeout, 503 for a full line, 413 for a body over 6 MiB.
+- What a lambda writes is logged line by line with the host in front, as info.
 - Lambdas get a clean environment and a temporary folder of their own, and by default can write nowhere else.
 
 More: [Lambdas](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-webserver/README.md#lambdas), [node-lambda-invoke](https://github.com/Koeroesi86/node-webserver/blob/master/packages/node-lambda-invoke/README.md).

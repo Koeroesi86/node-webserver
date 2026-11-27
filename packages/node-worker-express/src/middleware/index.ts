@@ -26,6 +26,8 @@ const workerMiddleware = (options: MiddlewareOptions): WorkerMiddleware => {
     maxQueue: config.limitQueue,
     onStdout: config.onStdout,
     onStderr: config.onStderr,
+    onStdoutLine: config.onStdoutLine,
+    onStderrLine: config.onStderrLine,
     idleTimeout: config.limitWorkerIdleTimeout,
     budget: config.workerBudget,
   });

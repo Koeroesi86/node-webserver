@@ -1,5 +1,5 @@
 import createLineSplitter from './create-line-splitter';
-import { MAX_CHILD_LINE_LENGTH } from '../constants';
+import { MaxLineLength } from '../constants';
 
 describe('createLineSplitter', () => {
   const split = (maxLength?: number) => {
@@ -90,8 +90,8 @@ describe('createLineSplitter', () => {
   it('has a limit unless it is given one', () => {
     const { write, lines } = split();
 
-    write('a'.repeat(MAX_CHILD_LINE_LENGTH + 1));
+    write('a'.repeat(MaxLineLength + 1));
 
-    expect(lines()).toEqual(['a'.repeat(MAX_CHILD_LINE_LENGTH)]);
+    expect(lines()).toEqual(['a'.repeat(MaxLineLength)]);
   });
 });
