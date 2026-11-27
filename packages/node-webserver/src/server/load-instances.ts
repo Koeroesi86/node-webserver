@@ -9,7 +9,7 @@ import { setupSecureContexts } from '../tls';
 import { validateServers } from '../configuration';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
-import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger, ServerConfig } from '../types';
+import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger, ServerConfig, SharedTargets } from '../types';
 
 type Candidate = Omit<LoadedInstance, 'handler' | 'close'> | LoadedInstance;
 
@@ -66,6 +66,7 @@ interface Shared {
   configuration?: Partial<Configuration>;
   /** set in a front process, which runs its share of the limits of the servers */
   front?: FrontShare;
+  sharedTargets?: SharedTargets;
 }
 
 const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger, shared: Shared): LoadedInstance => ({

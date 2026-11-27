@@ -81,7 +81,9 @@ describe('startPrimary', () => {
 
     options().createSet({ frontCount: 2 } as never, events);
 
-    expect(createFrontSet).toHaveBeenCalledWith(expect.objectContaining({ plan: { frontCount: 2 }, watch: watchFiles, ...events }));
+    expect(createFrontSet).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: { frontCount: 2 }, targets: expect.any(Object), watch: watchFiles, ...events })
+    );
     expect(options().watch).toBe(watchFiles);
   });
 

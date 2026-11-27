@@ -1,6 +1,15 @@
 import cluster from 'cluster';
 import createServerPlan from './create-server-plan';
-import { connectLauncher, createFrontSet, createFrontsManager, forkFront, getLauncherMode, readServerVersion, requestPlan } from '../cluster';
+import {
+  connectLauncher,
+  createFrontSet,
+  createFrontsManager,
+  createTargetRegistry,
+  forkFront,
+  getLauncherMode,
+  readServerVersion,
+  requestPlan,
+} from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
 import { reportProblems } from '../problems';
 import { readFingerprint, watchFiles } from '../reload';
@@ -28,10 +37,12 @@ const startPrimary = async (
     logger.flush();
     process.exit(code);
   };
+  // one for all the sets of fronts, so that new ones have what was registered with the ones they replace
+  const targets = createTargetRegistry(logger);
   const manager = createFrontsManager({
     logger,
     version: plan.release.version,
-    createSet: (next, events) => createFrontSet({ plan: next, fork: forkFront, logger, watch: watchFiles, ...events }),
+    createSet: (next, events) => createFrontSet({ plan: next, fork: forkFront, logger, targets, watch: watchFiles, ...events }),
     requestPlan,
     watch: watchFiles,
     fingerprint: readFingerprint,

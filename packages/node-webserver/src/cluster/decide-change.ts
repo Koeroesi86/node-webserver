@@ -26,7 +26,7 @@ const decideChange = ({ running, singleFrontOnly, next, version, force }: Change
   if (next.release.version !== version) return { action: 'restart', reason: `the server is version ${next.release.version} now, the running one ${version}` };
   if (next.balanced !== running.balanced) return { action: 'restart', reason: 'frontProcesses changed between one front and several' };
   if (singleFrontOnly || next.singleFrontOnly) {
-    return { action: 'restart', reason: 'a child server, acme or a dynamic proxy target cannot run in two sets of fronts at once' };
+    return { action: 'restart', reason: 'a child server or acme cannot run in two sets of fronts at once' };
   }
 
   return { action: 'switch' };

@@ -183,10 +183,13 @@ curl -X PUT https://app.example.com/.well-known/node-webserver/proxy -H "Authori
 With a `ttl`, the application sends the same request again before it runs out, as a heartbeat. A target that is not refreshed expires, instead of reaching whoever gets the old address next.
 With `persistPath` the target is written to that file and read from it at the start, and still expires by its `ttl`. Without it a restart starts without a target, until the application registers again.
 
+Behind a primary ([front processes](#front-processes)) the front that takes a registration tells the primary, which writes `persistPath` and tells every front before the request is answered, a front that starts later too.
+So a target stays when fronts are replaced, without `persistPath` as well, and is lost by a restart of the whole server only.
+
 Security, as the proxy takes its target from a caller on the internet:
 - **The token is the only protection of the control path.** It is per host, compared in constant time, and never logged (`Authorization` is left out of the access logs).
   The control path only accepts requests over HTTPS: on an `http` host only the ones a trusted proxy received over HTTPS (`X-Forwarded-Proto`), and the server warns at the start for such a host.
-  An address that fails 10 times in a minute is refused for the rest of the minute, and a host takes 10 updates a minute.
+  An address that fails 10 times in a minute is refused for the rest of the minute, and a host takes 10 updates a minute, both counted by each [front process](#front-processes) for itself: with four of them it is up to four times as many.
 - **A target is an IP address, http or https, and a public one.** Names are refused, as what they resolve to can change after the check. Loopback, private, shared (100.64.0.0/10), link-local (the metadata service 169.254.169.254 included),
   multicast and unspecified addresses are refused unless the host sets `allowPrivate: true`, for a LAN.
 - The address of the caller is the one described below, so it cannot be spoofed with a header. Behind a load balancer that is not in `trustedProxies` it is the address of the load balancer, which is private and refused: the registration fails instead of pointing somewhere wrong.
@@ -506,15 +509,15 @@ It resolves once all fronts serve, and rejects when one does not start (a proble
 `reload` of a front asks the primary for it, `stop` of a front stops that one.
 
 **What is shared and what is not.** Each front is a server of its own: its own worker and lambda pools (a path that has a worker in one front starts another one in the next), caches, metrics and [stats](#metrics-for-workers), so an answer of
-`event.getMetrics()` or the stats domain shows one front only. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
+`event.getMetrics()` or the stats domain shows one front only. The [registered targets](#registering-a-dynamic-target) of `proxy` servers are the same in all of them. A connection stays on its front for as long as it is open, websockets and HTTP/2 sessions included.
 
 **Limits** are the totals of the server, split between the fronts as evenly as possible (6 over 4 fronts: 2, 2, 1, 1): `workerLimit`, `maxConnections`, `limit` and `limitPerPath` of a worker server, `limit` of a lambda server and its routes,
 their defaults included. No more fronts run than the smallest limit that is set allows, without a message about it: with `limit: 2` on one lambda route there are 2 fronts at most, with a limit of 1 there is one, behind the primary.
-`limitPerPath` as a function is the exception, every front gets at least 1 of what it returns, so the total can be higher. Per front, and not split: the `concurrency` of the compression, `limitQueue`, `limitWebSocketConnections`, and the workers
+`limitPerPath` as a function is the exception, every front gets at least 1 of what it returns, so the total can be higher. Per front, and not split: the `concurrency` of the compression, `limitQueue`, `limitWebSocketConnections`, the rate limits of the control path of a dynamic target, and the workers
 of `warmPaths` (`warmWorkersPerPath` in every front, within its share of the limits). The connections are spread, not the requests: a front can be full while another has room, so requests wait, or get a 503, earlier than with one front.
 A connection over the share of `maxConnections` of a front is closed, also while another front has room, which long lived connections can lead to.
 
-**Not with several fronts yet:** `child` servers, `acme` and `proxy` servers with a `dynamic` target work with one front only, as every front would start the application, order the certificate or know the target on its own.
+**Not with several fronts yet:** `child` servers and `acme` work with one front only, as every front would start the application or order the certificate on its own.
 More than one front with them is an error at the start, on a reload and in the [check](#checking-the-configuration), whether the number comes from `frontProcesses` or from `"auto"`.
 
 **When a front ends** another one takes its place and its share, at once the first time, then after 100 ms doubling up to 10 s as long as they end within 5 seconds, like a [worker that crashes](#workers-that-crash). The others keep serving.
@@ -579,7 +582,7 @@ flight is answered, then it is closed: a client that sends the next request in t
 
 **With a pause**, by a restart of the whole server through the launcher: new connections are refused while the requests in flight finish and the new server starts. That happens when
 - `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started (not on Windows, where the primary always accepts them),
-- the server has a `child` server, `acme` or a dynamic proxy target, before or after the change: a second application on the same port, a second renewer, or a lost target,
+- the server has a `child` server or `acme`, before or after the change: a second application on the same port, or a second renewer. The [registered targets](#registering-a-dynamic-target) are lost by such a restart without `persistPath`,
 - the server was updated and a front finds another version than the one the primary runs.
 
 There is no old server to go back to then, so a server that does not start after a restart (a port in use) is tried again, at once and then after 100 ms doubling up to 10 s, and the log says so.
@@ -601,7 +604,7 @@ It prints every problem with its server (the host name, and the file when the se
 - the certificates: an https server needs a key and a certificate, which have to belong together; a certificate that expired is an error, one that expires within 14 days a warning
 - the routes: `pattern` has to be a regular expression with its `flags`
 - the servers together: a host name served twice over the same protocol is an error, a host that is the `statsDomain` is a warning, and `portHttp` and `portHttps` cannot be the same
-- `frontProcesses` above what the machine runs, and a `child` server, `acme` or a dynamic proxy target while [more than one front](#front-processes) would run
+- `frontProcesses` above what the machine runs, and a `child` server or `acme` while [more than one front](#front-processes) would run
 - a `proxy` server has either a `target` that is a URL or a `dynamic` one with a token, a `child` server with arguments needs `%PORT%` in them unless `proxyOptions.port` is set, and a lambda server needs a `lambda` or `routes`
 
 An error stops the start, with all the problems in the message, and on a reload it is what is logged while the running servers are kept. A server file that does not exist is a warning, as a reload leaves it out.

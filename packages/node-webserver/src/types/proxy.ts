@@ -58,6 +58,38 @@ export interface ProxyTarget {
   expiresAt?: number;
 }
 
+/** a registered target as it is kept in its file and passed between processes. Without a `target` it was removed. */
+export interface TargetState {
+  target?: string;
+  /** when it was set or removed */
+  setAt: number;
+  expiresAt?: number;
+}
+
+/** what was registered with, or removed from, a server */
+export interface TargetChange extends TargetState {
+  /** what the server is known by (`getTargetKey`) */
+  key: string;
+  persistPath?: string;
+}
+
+/** the file a registered target is kept in */
+export interface TargetFile {
+  /** writes the target, or removes the file for one that was removed */
+  save: (state: TargetState) => void;
+  /** resolves once what was saved is in the file */
+  saved: () => Promise<void>;
+}
+
+/** the registered targets that all fronts of a server have, as one of them sees them */
+export interface SharedTargets {
+  get: (key: string) => TargetChange | undefined;
+  /** resolves once every front was told */
+  publish: (change: TargetChange) => Promise<void>;
+  /** calls `listener` with what is registered for the server from now on, and returns what stops that */
+  subscribe: (key: string, listener: (change: TargetChange) => void) => () => void;
+}
+
 /** the target of a `proxy` server that the service behind it sets */
 export interface TargetStore {
   /** the target, unless none was set or it expired */
@@ -66,6 +98,8 @@ export interface TargetStore {
   unset: () => void;
   /** resolves once what was changed is in the file it is kept in */
   saved: () => Promise<void>;
+  /** resolves once every front of the server was told what changed, at once without fronts */
+  published: () => Promise<void>;
   /** closes the connections to the target once the requests on them are answered, for a server that is not used any more */
   close: () => void;
 }

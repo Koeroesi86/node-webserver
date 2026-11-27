@@ -57,6 +57,8 @@ const proxyControl = (options: ControlOptions): RequestHandler => {
 
     if (request.method === 'DELETE') {
       store.unset();
+      // before the answer, so that a request after it finds it so, whichever front takes it
+      await store.published();
       logger.info(`[${getDate()}] The target of ${hostname} was removed by ${client}.`);
       return send(response, 204);
     }
@@ -79,6 +81,7 @@ const proxyControl = (options: ControlOptions): RequestHandler => {
     if ('error' in resolved) return send(response, resolved.status, { error: resolved.error });
 
     const target = store.set(resolved.url, ttl ? Date.now() + ttl * 1000 : undefined);
+    await store.published();
     logger.info(`[${getDate()}] The target of ${hostname} was set to ${target.url.href} by ${client}.`);
     return send(response, 200, describe(target));
   };

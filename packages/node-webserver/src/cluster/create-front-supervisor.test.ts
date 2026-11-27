@@ -4,13 +4,15 @@ import { createFakeFork } from './fake-front.test-helper';
 import { FRONT_MIN_UPTIME, FRONT_STOP_MARGIN } from '../constants';
 
 const release = { configuration: 'a', version: '1.0.0' };
-const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false };
+const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [] };
 const ready = { nodeWebserver: 'ready' as const, release, ...report };
 
 describe('createFrontSupervisor', () => {
   const logger = createMockLogger();
   const onStale = jest.fn();
   const listener = { serving: jest.fn(), message: jest.fn(), exited: jest.fn() };
+  const member = { hello: jest.fn(), change: jest.fn(), holds: jest.fn(), leave: jest.fn() };
+  const targets = { join: jest.fn(() => member) };
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -21,7 +23,7 @@ describe('createFrontSupervisor', () => {
 
   const create = (count = 2) => {
     const { fork, fronts } = createFakeFork();
-    return { fronts, supervisor: createFrontSupervisor({ count, release, fork, logger, onStale, listener }) };
+    return { fronts, supervisor: createFrontSupervisor({ count, release, fork, logger, onStale, listener, targets }) };
   };
 
   const started = async (count = 2) => {
@@ -171,11 +173,11 @@ describe('createFrontSupervisor', () => {
   it('tells the listener when a front serves, what it says about its servers, and when it ends', async () => {
     const { fronts } = await started(1);
 
-    fronts[0].say({ nodeWebserver: 'files', files: [], singleFrontOnly: false });
+    fronts[0].say({ nodeWebserver: 'files', files: [], singleFrontOnly: false, targets: [] });
     fronts[0].exit(1);
 
     expect(listener.serving).toHaveBeenCalledWith(0, report);
-    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [], singleFrontOnly: false });
+    expect(listener.message).toHaveBeenCalledWith(0, { nodeWebserver: 'files', files: [], singleFrontOnly: false, targets: [] });
     expect(listener.exited).toHaveBeenCalledWith(0);
   });
 
@@ -238,5 +240,23 @@ describe('createFrontSupervisor', () => {
     jest.runAllTimers();
 
     expect(fronts).toHaveLength(1);
+  });
+
+  it('joins every front to the registry of the targets: it is told them when it listens, and says what it has and what was registered with it', async () => {
+    const { fronts } = await started(1);
+    const change = { key: 'https a', target: 'http://203.0.113.7/', setAt: 1 };
+
+    fronts[0].say({ nodeWebserver: 'hello' });
+    fronts[0].say({ nodeWebserver: 'target', change });
+    fronts[0].say({ nodeWebserver: 'files', files: [], singleFrontOnly: false, targets: ['https a'] });
+
+    expect(targets.join).toHaveBeenCalledTimes(1);
+    expect(member.hello).toHaveBeenCalled();
+    expect(member.change).toHaveBeenCalledWith(change);
+    expect(member.holds.mock.calls).toEqual([[[]], [['https a']]]);
+    expect(listener.message).toHaveBeenCalledTimes(1);
+
+    fronts[0].exit(1);
+    expect(member.leave).toHaveBeenCalled();
   });
 });
