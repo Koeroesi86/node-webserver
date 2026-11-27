@@ -55,15 +55,28 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
 
   const giveBack = ({ fixed, number }: App) => number !== undefined && !fixed && ports.give(number);
 
-  const launch = (key: string, app: App, port: number, { hostname, command, args }: NonNullable<App['waiting']>) => {
+  /** some failures to start a process are thrown rather than emitted as its `error`, which would end the primary, and with it every server */
+  const spawnApp = ({ hostname, command, args }: NonNullable<App['waiting']>) => {
+    try {
+      return start(command, args, { stdio: 'pipe' });
+    } catch (error) {
+      logger.error(`[${getDate()}] [${hostname}] ${command} could not be started:`, error);
+      return undefined;
+    }
+  };
+
+  const launch = (key: string, app: App, port: number, waiting: NonNullable<App['waiting']>) => {
     app.waiting = undefined;
+    const child = spawnApp(waiting);
+    // its port stays its own until no front wants it, as that of an application that ended does
+    if (!child) return;
+
     busy.add(port);
-    const child = start(command, args, { stdio: 'pipe' });
     app.child = child;
     started.set(child, key);
     tell();
     // reads what it writes, which would otherwise fill the pipe, and logs why it could not be started
-    setupChildListener(child, hostname, logger);
+    setupChildListener(child, waiting.hostname, logger);
     child.once('close', () => {
       app.child = undefined;
       busy.delete(port);

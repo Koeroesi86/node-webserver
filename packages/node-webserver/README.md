@@ -251,6 +251,8 @@ What the application of a `child` server writes goes to the logs too, stdout to 
 Blank lines are left out, and a line of more than 16384 characters is logged in pieces of that length. The messages about the process (it could not be started, its exit code) name the host too.
 The server reads it whatever the levels are, so that an application does not block on a full pipe. For a chatty one, `logLevels: { info: false }` leaves its stdout out, along with everything else that is logged as info.
 A `command` that is not found or may not be run is logged as an error, followed by the negative exit code of the attempt. The requests of that server fail with 502, and the other servers are not affected.
+Node throws some other failures to start a process instead, such as for a path that goes through a file. Behind a primary they are logged the same way, without an exit code, and only the requests of that server fail.
+`startServer` does not start with such a command, and a reload with one keeps the servers that run.
 
 ### Waiting for a worker
 

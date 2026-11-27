@@ -76,6 +76,43 @@ describe('createAppRegistry', () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('could not be started'), expect.anything());
   });
 
+  it('logs what starting an application throws, and gives its port back once no front wants it', async () => {
+    const { start, join, ports } = create();
+    const error = new Error('spawn ENOTDIR');
+    start.mockImplementationOnce(() => {
+      throw error;
+    });
+    const front = join();
+    front.serves(report);
+    front.receive(claim);
+    await settle();
+
+    front.receive(run);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[a.localhost] node could not be started'), error);
+    expect(ports.give).not.toHaveBeenCalled();
+    front.receive(release);
+
+    expect(ports.give).toHaveBeenCalledWith(4000);
+  });
+
+  it('starts the application that waits for the port of one whose start throws', async () => {
+    const { children, start, join } = create();
+    start.mockImplementationOnce(() => {
+      throw new Error('spawn ENOTDIR');
+    });
+    const front = join();
+    front.receive({ ...claim, port: 8080 });
+    front.receive({ ...claim, key: 'b', port: 8080 });
+    await settle();
+
+    front.receive(run);
+    front.receive({ ...run, key: 'b' });
+    front.hello();
+
+    expect(children).toHaveLength(1);
+    expect(front.send).toHaveBeenLastCalledWith({ nodeWebserver: 'apps', running: [{ key: 'b', pid: 100 }] });
+  });
+
   it('stops an application once no front wants it, and gives its port back once it ended', async () => {
     const { children, join, ports } = create();
     const fronts = [join(), join()];
