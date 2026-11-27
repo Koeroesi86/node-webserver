@@ -8,6 +8,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | [Channel benchmark](#channel-benchmark) | the channel between the server and a worker on its own: messages and bytes per second, the old IPC against the socket pair | `node tools/dist/scripts/channel-bench.js` |
 | [Pull request description](#pull-request-description) | holds the description of a pull request to the template | `node tools/dist/scripts/check-pull-request.js description.md` |
 | [Layout of added files](#layout-of-added-files) | holds the files a pull request adds to the layout rules of `CLAUDE.md` | `node tools/dist/scripts/check-layout.js origin/master` |
+| [Merge queue](#merge-queue) | turns auto-merge on for labelled pull requests and rebases the first one in line | `node tools/dist/scripts/automerge-label.js`, `node tools/dist/scripts/rebase-auto-merge.js` |
 | [Coverage report](#coverage-report) | merges the unit test coverage of the packages into one markdown and json report | `pnpm test:coverage` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
@@ -17,12 +18,12 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `automerge-label.ts`, `rebase-auto-merge.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
-| `utils/` and `checks/`, `compare/`, `coverage-report/`, `load-test/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
+| `utils/` and `checks/`, `compare/`, `coverage-report/`, `load-test/`, `merge-queue/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
 | `types/` | the interfaces shared by the scripts and the utils |
-| `constants/` | the limits and defaults of the load test |
-| `test-helpers/` | what several tests share (summaries to compare, a server on a free port), not compiled |
+| `constants/` | the limits and defaults of the scripts |
+| `test-helpers/` | what several tests share (summaries to compare, servers on a free port, git repositories), not compiled |
 
 ## Versions
 
@@ -69,6 +70,27 @@ The `layout` job of `pr-checks.yml` runs `scripts/check-layout.ts` on the files 
 - in `utils/` or a domain folder has more than one `export` line (a type next to the function counts, types belong in `types/`) or no `name.test.ts` next to it.
 
 Existing files are not checked, they break these rules today (camelCase names, several exports, no test) and are cleaned up on their own. Changed or renamed-over files are not "added", so editing an old file never fails. The job checks out with `fetch-depth: 0` for the merge base.
+
+## Merge queue
+
+`master` only merges a pull request that is up to date with it and passed `required-checks`, so every merge leaves the other pull requests behind, and a pull request stacked on another cannot get auto-merge at all. Two workflows take care of both. Label a pull request `automerge`, or turn its squash auto-merge on, and it merges when its turn comes.
+
+| Workflow | Script | What it does |
+| --- | --- | --- |
+| `automerge-label.yml` | `scripts/automerge-label.ts` | turns squash auto-merge on for every open pull request to `master` with the `automerge` label and takes the label off, so auto-merge that is turned off by hand stays off. Drafts and pull requests of forks are left alone |
+| `rebase-auto-merge.yml` | `scripts/rebase-auto-merge.ts` | rebases the pull request whose auto-merge was enabled first, when it is behind `master`. The others wait for it |
+
+Both run when `master` moves, when the checks of a pull request end, when they are started by hand, and on the events of a pull request that concern them (the label or the base for the first, auto-merge switched on or off for the second).
+
+- A stacked pull request can be labelled right away. Once the one below it is merged, GitHub moves it to `master`, the label turns its auto-merge on, and the rebase starts its checks.
+- When it cannot be rebased because the one below was squash merged, its own commits are replayed onto `master` and force pushed. The commits below are found by the pull requests GitHub knows for them, or by their author date and message among the last 30 closed pull requests.
+- A first pull request that fails its checks or conflicts holds the ones behind it. Fix it, re-run the failed job, or turn its auto-merge off.
+- GitHub refuses auto-merge for a pull request that can be merged right now. It keeps its label and the run says so: merge it by hand.
+- Fetch before you work on a branch with auto-merge, as it may have been rebased.
+
+Both need the repository secret `GH_REBASE_TOKEN`: a fine-grained personal access token of the owner for this repository with read and write access to Contents, Pull requests and Workflows (a rebase can move changes of `.github/workflows/`). `GITHUB_TOKEN` does not do, as what it pushes or merges starts no workflow. When the token expires, the runs fail with a 401 until the secret is replaced. The tools are built in a job without the secret (`tools-dist.yml`), and nothing of a pull request is installed or run.
+
+Both scripts read `GH_TOKEN`, `GITHUB_REPOSITORY` (`owner/name`) and `GITHUB_API_URL` (defaults to https://api.github.com), and take the base branch as their argument (defaults to `master`). `rebase-auto-merge` runs in a checkout with the history of the repository.
 
 ## Load tests
 

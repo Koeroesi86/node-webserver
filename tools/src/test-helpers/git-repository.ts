@@ -15,6 +15,8 @@ export const createRepository = () => {
 
   return {
     path,
+    /** runs git in the repository and gives what it printed */
+    git,
     /** writes the files (path to content), commits them and gives the sha of the commit */
     commit: (files: Record<string, string>, message = 'commit') => {
       Object.entries(files).forEach(([file, content]) => {

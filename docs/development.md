@@ -29,6 +29,7 @@ Run the checks above before calling a change done, and the load test when the re
 
 - Tickets are GitHub issues. A PR is one change from a branch off `master`, uses the template, and its title is an imperative sentence.
 - The pipeline (`.github/workflows/`) gates `master` with `pr-checks.yml` and publishes twice a day. A package is published when its folder, or the folder of a workspace package it depends on, changed since its latest release.
+- To merge when the checks pass, label a pull request `automerge`: it is rebased in turn, also when it is stacked on another ([Merge queue](https://github.com/Koeroesi86/node-webserver/blob/master/tools/README.md#merge-queue)).
 - Never edit `version` or `gitHead` of a package, the pipeline stamps them ([Versions](https://github.com/Koeroesi86/node-webserver/blob/master/tools/README.md#versions)).
 
 ## This site

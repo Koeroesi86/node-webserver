@@ -1,0 +1,46 @@
+name: Automerge label
+
+# A pull request of a stack cannot get auto-merge while its base is another pull request. The automerge label asks for squash auto-merge, and this turns it on
+# once for the labeled pull requests to master and takes the label off, when the label is added, when the base becomes master, when master moves and when checks
+# end (tools/README.md#merge-queue)
+on:
+  push:
+    branches: [master]
+  # pull_request_target and workflow_run have the secret, and nothing of a pull request is checked out or run: the script only calls the API
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, labeled, edited]
+    branches: [master]
+  workflow_run:
+    workflows: [Pull request checks]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automerge-label
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/tools-dist.yml
+
+  # checks nothing out and installs nothing, so only what the build made runs with the token
+  automerge:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tools-dist
+          path: tools/dist
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # GH_REBASE_TOKEN, not GITHUB_TOKEN: auto-merge turned on with GITHUB_TOKEN starts no rebase-auto-merge.yml run, and its merge no workflow on master
+      - name: Turn auto-merge on
+        env:
+          GH_TOKEN: ${{ secrets.GH_REBASE_TOKEN }}
+        run: node tools/dist/scripts/automerge-label.js
