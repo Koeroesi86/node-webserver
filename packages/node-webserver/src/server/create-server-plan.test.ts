@@ -23,10 +23,15 @@ describe('createServerPlan', () => {
     expect(plan.filesFingerprint).toBeUndefined();
   });
 
-  it('has the primary accept only for several fronts, also when a limit brings them down to one', () => {
-    const balanced = [{}, { frontProcesses: 4, workerLimit: 1 }].map((configuration) => createServerPlan({ servers: [], ...configuration }).balanced);
+  it.each<[string, NodeJS.Platform, boolean[]]>([
+    ['only for several fronts, also when a limit brings them down to one', 'linux', [false, true]],
+    ['for one front too on Windows, where a front that stops listening would take a connection with it', 'win32', [true, true]],
+  ])('has the primary accept %s', (_, platform, expected) => {
+    const configurations = [{}, { frontProcesses: 4, workerLimit: 1 }];
 
-    expect(balanced).toEqual([false, true]);
+    const balanced = configurations.map((configuration) => createServerPlan({ servers: [], ...configuration }, undefined, platform).balanced);
+
+    expect(balanced).toEqual(expected);
   });
 
   it('fingerprints the files of the configuration', () => {

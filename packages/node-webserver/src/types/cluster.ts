@@ -40,7 +40,7 @@ export interface ServerPlan {
   /** everything wrong with the configuration and the server files */
   problems: ConfigurationProblem[];
   frontCount: number;
-  /** whether more than one front is asked for, and the primary accepts the connections, which cannot change while it runs */
+  /** whether the primary accepts the connections (several fronts are asked for, or it is Windows), which cannot change while it runs */
   balanced: boolean;
   /** whether there is a server that two fronts must not run at the same time: a `child` server, `acme` or a dynamic proxy target */
   singleFrontOnly: boolean;

@@ -23,6 +23,7 @@ describe('startPrimary', () => {
   const launcher = { signals: {} as never, serving: jest.fn(async () => undefined) };
   const removeHooks = jest.fn();
   const configuration = { frontProcesses: 2, servers: [], portHttp: 0, portHttps: 0, shutdownTimeout: 100 };
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform') ?? {};
   let exit: jest.SpyInstance;
 
   beforeEach(() => {
@@ -39,6 +40,7 @@ describe('startPrimary', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(process, 'platform', originalPlatform);
     jest.restoreAllMocks();
     process.exitCode = undefined;
   });
@@ -46,10 +48,13 @@ describe('startPrimary', () => {
   const options = () => jest.mocked(createFrontsManager).mock.calls[0][0];
   const hooks = () => jest.mocked(setupPrimaryHooks).mock.calls[0][1];
 
-  it.each([
-    [1, cluster.SCHED_NONE],
-    [2, cluster.SCHED_RR],
-  ])('with frontProcesses %i has the connections accepted by the ones that serve, or in turn', async (frontProcesses, policy) => {
+  it.each<[number, NodeJS.Platform, number]>([
+    [1, 'linux', cluster.SCHED_NONE],
+    [2, 'linux', cluster.SCHED_RR],
+    [1, 'win32', cluster.SCHED_RR],
+  ])('with frontProcesses %i on %s has the connections accepted by the ones that serve, or in turn', async (frontProcesses, platform, policy) => {
+    Object.defineProperty(process, 'platform', { ...originalPlatform, value: platform });
+
     await startPrimary({ ...configuration, frontProcesses }, logger, {});
 
     expect(cluster.schedulingPolicy).toBe(policy);

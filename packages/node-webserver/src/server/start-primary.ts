@@ -10,7 +10,7 @@ import type { Cluster, ClusterOptions, Configuration, Logger } from '../types';
 
 /**
  * The primary of a server: it owns the ports, starts the fronts, supervises them and takes them through the changes of the configuration, and serves no request itself.
- * With one front the front accepts the connections itself, so that it can be replaced without a pause. With several the primary does.
+ * With one front the front accepts the connections itself, which costs nothing per connection. With several, and on Windows, the primary does (see `createServerPlan`).
  */
 const startPrimary = async (
   configuration: Partial<Configuration>,

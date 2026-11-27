@@ -17,7 +17,7 @@ The front server listens on the http and the https port (HTTP/2 and SNI optional
 launcher             starts the server again when it asks for that, otherwise ends the way it ends
  └─ primary          owns the ports, supervises the fronts, has them reload together and replaces them on a change of the configuration, serves no request
      ├─ front 1      the front server as above: http, https, express, pools of its own
-     ├─ front 2      with several the primary accepts the connections and hands them out in turn, one front accepts them itself
+     ├─ front 2      with several (and on Windows) the primary accepts the connections and hands them out in turn, else the front does
      └─ front N
 ```
 

@@ -498,8 +498,9 @@ const { startCluster } = require('@koeroesi86/node-webserver');
 const { role, frontCount, reload, stop } = await startCluster(require('./configuration'), undefined, { configurationFile: require.resolve('./configuration') });
 ```
 
-`startCluster` always makes the process a primary, also for one front: the primary owns the ports, supervises the fronts and serves nothing itself. With `frontProcesses` of one the front accepts the connections itself, so that it can be
-[replaced without a pause](#changes-of-the-configuration). When it asks for more, the primary accepts them and hands them to the fronts in turn (also on Windows), also when a limit brings them down to one.
+`startCluster` always makes the process a primary, also for one front: the primary owns the ports, supervises the fronts and serves nothing itself. With `frontProcesses` of one the front accepts the connections itself. When it asks for more, the primary accepts them and hands them to the fronts in turn,
+also when a limit brings them down to one. On Windows the primary does that for one front too: a front that accepts itself would take a connection with it when it stops listening, and could not be
+[replaced without a failed request](#changes-of-the-configuration).
 Every front is the same script run again with the same arguments, in which `startCluster` serves instead, and so is the process that looks at a changed configuration, so what comes before the call runs in each of them too.
 It resolves once all fronts serve, and rejects when one does not start (a problem of the configuration, a port in use), which stops the others. `role` is `primary` or `front`; `reload` and `stop` of the primary act on every front,
 `reload` of a front asks the primary for it, `stop` of a front stops that one.
@@ -577,7 +578,7 @@ a limit in a server file does too. While old and new fronts run side by side, **
 flight is answered, then it is closed: a client that sends the next request in that instant has to send it again, as with any server that closes an idle connection.
 
 **With a pause**, by a restart of the whole server through the launcher: new connections are refused while the requests in flight finish and the new server starts. That happens when
-- `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started,
+- `frontProcesses` changes between one front and several, as how connections are accepted is fixed once the first front started (not on Windows, where the primary always accepts them),
 - the server has a `child` server, `acme` or a dynamic proxy target, before or after the change: a second application on the same port, a second renewer, or a lost target,
 - the server was updated and a front finds another version than the one the primary runs.
 

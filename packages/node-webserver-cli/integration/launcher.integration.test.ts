@@ -169,13 +169,14 @@ describe('the server of the command line', () => {
     expect(server.ended()).toBeUndefined();
   });
 
-  itWithCores('restarts to change between one front and several, and comes back', async () => {
+  itWithCores('changes between one front and several, with a restart where the way of accepting connections changes', async () => {
     await start();
 
     folder.configure({ frontProcesses: 2 });
 
     await eventually(async () => frontsOf(await answering()).length === 2);
-    expect(server.output()).toContain('frontProcesses changed between one front and several');
+    // on Windows the primary accepts the connections of one front too
+    expect(server.output().includes('frontProcesses changed between one front and several')).toBe(process.platform !== 'win32');
     expect(server.ended()).toBeUndefined();
   });
 
