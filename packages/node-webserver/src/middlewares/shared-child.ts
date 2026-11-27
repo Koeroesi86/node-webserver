@@ -19,7 +19,10 @@ interface Options {
  * A `child` server in a front: the primary starts its application, once for all fronts, and the requests are passed on to it as those of a `proxy` server. Without a port of the
  * configuration the primary picks one, and the requests that come before it said which wait for it.
  */
-const sharedChildMiddleware = (instance: ServerConfig, { apps, fingerprint, portLookup, logger }: Options): { handler: RequestHandler; close: () => void } => {
+const sharedChildMiddleware = (
+  instance: ServerConfig,
+  { apps, fingerprint, portLookup, logger }: Options
+): { handler: RequestHandler; close: () => void; pid: () => number | undefined } => {
   const { childOptions, proxyOptions, serverOptions } = instance;
 
   if (!childOptions || !proxyOptions || !serverOptions) {
@@ -55,6 +58,7 @@ const sharedChildMiddleware = (instance: ServerConfig, { apps, fingerprint, port
       proxy?.close();
       apps.release(key);
     },
+    pid: () => apps.pid(key),
   };
 };
 

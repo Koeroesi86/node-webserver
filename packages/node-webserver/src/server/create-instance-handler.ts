@@ -74,7 +74,11 @@ function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudge
 
 /** the application of a `child` server: one that this process starts, or one that the primary starts for all its fronts */
 function startChild(instance: ServerConfig, runtime: ServerRuntime, { logger, sharedApps, fingerprint, configuration }: Context) {
-  if (sharedApps) return sharedChild(instance, { apps: sharedApps, fingerprint, portLookup: configuration?.portLookup, logger });
+  if (sharedApps) {
+    const shared = sharedChild(instance, { apps: sharedApps, fingerprint, portLookup: configuration?.portLookup, logger });
+    runtime.appPid = shared.pid;
+    return shared;
+  }
 
   const handler = proxyMiddleware(instance, runtime, logger);
   return {

@@ -37,8 +37,12 @@ describe('createFrontApps', () => {
     });
     const apps = createFrontApps(jest.fn(), kill);
 
-    apps.runs([1]);
-    apps.runs([2, 3]);
+    apps.runs([{ key: 'a', pid: 1 }]);
+    apps.runs([
+      { key: 'b', pid: 2 },
+      { key: 'c', pid: 3 },
+    ]);
+    expect([apps.pid('a'), apps.pid('b')]).toEqual([undefined, 2]);
     apps.endAll();
 
     expect(kill.mock.calls).toEqual([[2], [3]]);

@@ -136,7 +136,7 @@ describe('startFront', () => {
     const original = Object.getOwnPropertyDescriptor(process, 'connected');
     Object.defineProperty(process, 'connected', { configurable: true, value: connected });
     await startFront({ index: 0, count: 2 }, configuration, logger, {});
-    channel.emit('message', { nodeWebserver: 'apps', pids: [4321] });
+    channel.emit('message', { nodeWebserver: 'apps', running: [{ key: 'a', pid: 4321 }] });
 
     exitListeners.forEach((listener) => listener());
 

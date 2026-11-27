@@ -80,8 +80,14 @@ export type PrimaryMessage =
   | { nodeWebserver: 'challenge'; token: string; answer?: string }
   /** the port of an application of a `child` server that the front claimed, or why it has none */
   | { nodeWebserver: 'app-port'; key: string; port?: number; error?: string }
-  /** the processes of the applications that run, which a front ends when it finds the primary gone */
-  | { nodeWebserver: 'apps'; pids: number[] };
+  /** the processes of the applications that run: for the stats of the fronts, which end them when they find the primary gone */
+  | { nodeWebserver: 'apps'; running: RunningApp[] };
+
+/** an application of a `child` server that runs */
+export interface RunningApp {
+  key: string;
+  pid: number;
+}
 
 /** what a front sends to the primary about the loading of its servers */
 export type FrontReloadMessage =
@@ -174,6 +180,8 @@ export interface SharedApps {
   claim: (key: string, wanted: { port?: number; lookup?: PortLookup }) => Promise<number>;
   start: (key: string, command: string, args: string[]) => void;
   release: (key: string) => void;
+  /** of the application while it runs */
+  pid: (key: string) => number | undefined;
 }
 
 /** how the launcher started the server: for the first time, or again after the server asked for it */

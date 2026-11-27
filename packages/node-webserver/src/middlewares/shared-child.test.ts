@@ -46,7 +46,7 @@ describe('sharedChildMiddleware', () => {
       tell = resolve;
       refuse = reject;
     });
-    const apps = { claim: jest.fn(() => claimed), start: jest.fn(), release: jest.fn() };
+    const apps = { claim: jest.fn(() => claimed), start: jest.fn(), release: jest.fn(), pid: jest.fn(() => 4321) };
     const child = sharedChildMiddleware(server, { apps, logger, fingerprint: 'one', portLookup: { from: 1, to: 2, address: 'localhost' } });
     return { apps, child, tell, refuse };
   };
@@ -69,6 +69,13 @@ describe('sharedChildMiddleware', () => {
     });
     expect(apps.start).toHaveBeenCalledWith(expect.any(String), 'node', ['app.js', `--port=${port}`]);
     expect(await (await get(child.handler)).text()).toBe('application');
+  });
+
+  it('tells the process of the application that the primary runs', () => {
+    const { apps, child } = create(instance());
+
+    expect(child.pid()).toBe(4321);
+    expect(apps.pid).toHaveBeenCalledWith(expect.stringContaining('http child.localhost '));
   });
 
   it('gives a function of the arguments the port', async () => {

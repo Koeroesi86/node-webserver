@@ -29,11 +29,13 @@ const getLambdaStats = (lambdas: Lambdas) =>
   );
 
 function refreshInstanceStats({ instance, runtime }: ServerState) {
-  const { child, lambdas } = runtime;
+  const { child, appPid, lambdas } = runtime;
   const url = instance.serverOptions?.url;
+  // started by this process, or in a front by the primary
+  const pid = child?.pid ?? appPid?.();
 
-  if (child?.pid && url) {
-    pidUsage(child.pid)
+  if (pid && url) {
+    pidUsage(pid)
       .then((stats) => {
         usages.child[url] = { url, stats };
 

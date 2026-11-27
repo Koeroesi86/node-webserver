@@ -66,7 +66,7 @@ const startFront = async (
       void send({ nodeWebserver: 'challenge-taken', token });
     },
     'app-port': (message) => message.nodeWebserver === 'app-port' && apps.receive(message),
-    apps: (message) => message.nodeWebserver === 'apps' && apps.runs(message.pids),
+    apps: (message) => message.nodeWebserver === 'apps' && apps.runs(message.running),
   };
   // from here on the channel keeps the front running, which it does not until the server starts. Node does not take it back by itself once it was let go, and nothing else
   // may be there while a port is waited for

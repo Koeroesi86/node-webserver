@@ -57,8 +57,9 @@ describe('createAppRegistry', () => {
     late.hello();
     children[0].emit('close');
 
-    expect(front.send).toHaveBeenCalledWith({ nodeWebserver: 'apps', pids: [100] });
-    expect(late.send.mock.calls).toEqual([[{ nodeWebserver: 'apps', pids: [100] }], [{ nodeWebserver: 'apps', pids: [] }]]);
+    const running = { nodeWebserver: 'apps', running: [{ key: 'a', pid: 100 }] };
+    expect(front.send).toHaveBeenCalledWith(running);
+    expect(late.send.mock.calls).toEqual([[running], [{ nodeWebserver: 'apps', running: [] }]]);
   });
 
   it('logs what the application writes, and why it could not be started', async () => {

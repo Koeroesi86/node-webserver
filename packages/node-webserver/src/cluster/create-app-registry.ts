@@ -42,22 +42,25 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
   const apps = new Map<string, App>();
   /** the ports of the applications that run */
   const busy = new Set<number>();
-  /** the processes of the applications that run, the ones that are told to end too */
-  const started = new Set<ChildProcess>();
+  /** the processes of the applications that run, with their key, the ones that are told to end too */
+  const started = new Map<ChildProcess, string>();
   let stopped = false;
 
-  /** the processes that run, for the fronts to end should the primary be gone, which cannot end them then */
-  const running = (): PrimaryMessage => ({ nodeWebserver: 'apps', pids: Array.from(started, ({ pid }) => pid).filter((pid) => pid !== undefined) });
+  /** the processes that run, for the stats of the fronts, and for them to end should the primary be gone, which cannot end them then */
+  const running = (): PrimaryMessage => ({
+    nodeWebserver: 'apps',
+    running: Array.from(started).flatMap(([{ pid }, key]) => (pid === undefined ? [] : [{ key, pid }])),
+  });
   const tell = () => members.forEach(({ send }) => send(running()));
 
   const giveBack = ({ fixed, number }: App) => number !== undefined && !fixed && ports.give(number);
 
-  const launch = (app: App, port: number, { command, args }: NonNullable<App['waiting']>) => {
+  const launch = (key: string, app: App, port: number, { command, args }: NonNullable<App['waiting']>) => {
     app.waiting = undefined;
     busy.add(port);
     const child = start(command, args, { stdio: 'pipe' });
     app.child = child;
-    started.add(child);
+    started.set(child, key);
     tell();
     // reads what it writes too, which would otherwise fill the pipe
     setupChildListener(child, logger);
@@ -73,9 +76,9 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
   };
 
   const startWaiting = () =>
-    Array.from(apps.values()).forEach((app) => {
+    Array.from(apps).forEach(([key, app]) => {
       const { number, waiting } = app;
-      if (!stopped && waiting && number !== undefined && !busy.has(number)) launch(app, number, waiting);
+      if (!stopped && waiting && number !== undefined && !busy.has(number)) launch(key, app, number, waiting);
     });
 
   const remove = (key: string, app: App) => {
