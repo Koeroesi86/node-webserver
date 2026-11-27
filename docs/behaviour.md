@@ -28,6 +28,7 @@ What the server does when things get busy, break or change. Defaults are the one
 | Situation | What happens |
 |---|---|
 | A front ends | it is replaced, at once the first time, then after 100 ms doubling up to 10 s; the others keep serving |
+| A front ends with connections it was handed but had not taken | another front gets them; with none listening they are closed. The ones it had taken end with it |
 | A replacement finds another configuration or server version | it ends, and the primary applies the change; with no front left and none to start the server ends with an error |
 | The primary dies | the fronts and their workers exit |
 | A front is at its share of `maxConnections` | its new connections are dropped, even while another front has room |

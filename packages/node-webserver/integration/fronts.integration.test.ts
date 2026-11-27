@@ -38,13 +38,9 @@ const refuses = (port: number) =>
     socket.once('error', () => resolve(true));
   });
 
-/**
- * the processes that answer a few requests, each on a connection of its own, without the ones that fail. A request is given up after a while: a connection that the primary
- * hands to a front as it dies is never answered, which node does not recover from
- */
+/** the processes that answer a few requests, each on a connection of its own, without the ones that fail, as on a connection that a front had when it was killed */
 const answering = async (server: RunningServer) => {
-  const get = () => server.get('front.localhost', '/', { signal: AbortSignal.timeout(5000) });
-  const replies = await Promise.allSettled(Array.from({ length: 8 }, get));
+  const replies = await Promise.allSettled(Array.from({ length: 8 }, () => server.get('front.localhost', '/')));
 
   return replies.flatMap((reply) => (reply.status === 'fulfilled' && reply.value.status === 200 ? [reply.value.json() as Processes] : []));
 };
@@ -144,6 +140,26 @@ describeWithCores('the server with several front processes', () => {
 
     expect(fronts).toContain(other);
     expect(server.output()).toContain('another one is started');
+  });
+
+  itWithSignals('has another front answer a connection that was handed to a front which ended before it took it', async () => {
+    const server = await start();
+    await processesOf(server);
+    const [stopped] = frontsOf(await answering(server));
+
+    // takes nothing from the primary any more, as a front that is about to die
+    process.kill(stopped, 'SIGSTOP');
+    let answered = 0;
+    const replies = Array.from({ length: 4 }, async () => {
+      const { status } = await server.get('front.localhost', '/', { signal: AbortSignal.timeout(10000) });
+      answered += 1;
+      return status;
+    });
+    // the one that is missing was handed to the stopped front
+    await until(server, () => answered === 3);
+    process.kill(stopped, 'SIGKILL');
+
+    expect(await Promise.all(replies)).toEqual([200, 200, 200, 200]);
   });
 
   it('closes the connections over the limit of the fronts, while the primary stays idle', async () => {

@@ -7,8 +7,8 @@ jest.mock('cluster', () => ({ __esModule: true, default: { fork: jest.fn() } }))
 
 describe('forkFront', () => {
   const fake = ({ connected = true, started = true } = {}) => {
-    const process = { pid: started ? 5 : undefined, kill: jest.fn() };
-    const worker = Object.assign(new EventEmitter(), { process, send: jest.fn(), isConnected: () => connected });
+    const process = Object.assign(new EventEmitter(), { pid: started ? 5 : undefined, kill: jest.fn(), send: jest.fn(), disconnect: jest.fn() });
+    const worker = Object.assign(new EventEmitter(), { process, send: jest.fn(), disconnect: jest.fn(), isConnected: () => connected });
     jest.mocked(cluster.fork).mockReturnValue(worker as never);
     return { worker, handle: forkFront({ index: 1, count: 2 }) };
   };
@@ -28,6 +28,17 @@ describe('forkFront', () => {
 
     expect(connected.worker.send).toHaveBeenCalledWith({ nodeWebserver: 'stop' }, expect.any(Function));
     expect(gone.worker.send).not.toHaveBeenCalled();
+  });
+
+  it('answers for a front that ends with a connection it was handed', () => {
+    const { worker } = fake();
+    const answers = jest.fn();
+    worker.process.on('internalMessage', answers);
+    worker.process.send({ cmd: 'NODE_CLUSTER', act: 'newconn', key: ':::80', seq: 2 });
+
+    worker.process.emit('close');
+
+    expect(answers).toHaveBeenCalledWith({ cmd: 'NODE_CLUSTER', ack: 2, accepted: true });
   });
 
   it('kills the process', () => {

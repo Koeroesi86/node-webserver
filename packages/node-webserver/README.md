@@ -539,7 +539,8 @@ A connection over the share of `maxConnections` of a front is closed, also while
 - The primary writes what the applications write in its own logs, and an application that ends on its own is not started again.
 
 **When a front ends** another one takes its place and its share, at once the first time, then after 100 ms doubling up to 10 s as long as they end within 5 seconds, like a [worker that crashes](#workers-that-crash). The others keep serving.
-A connection the primary hands to a front in the instant it dies is not answered, and its client gives up on its own. A replacement that loads another configuration than the one the server runs, or finds another version of the package installed,
+A connection the primary handed to a front that ends before it takes it is handed to another front (closed when none listens), so it waits no longer than the front takes to end.
+One the front had taken ends with it, as the requests on it do. A replacement that loads another configuration than the one the server runs, or finds another version of the package installed,
 ends instead of serving, and the primary looks at the [change](#changes-of-the-configuration); with no front left and none to start the server ends with an error, which has a service manager start it again. A configuration that loads differently
 every time (a value made while it is loaded) is not compared. When the primary dies, its fronts and their workers exit.
 

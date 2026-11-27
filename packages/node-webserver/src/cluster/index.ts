@@ -1,6 +1,7 @@
 export { default as connectLauncher } from './connect-launcher';
 export { default as createAppRegistry } from './create-app-registry';
 export { default as createCertificateRegistry } from './create-certificate-registry';
+export { default as createConnectionHandover } from './create-connection-handover';
 export { default as createFrontApps } from './create-front-apps';
 export { default as createFrontMetrics } from './create-front-metrics';
 export { default as createFrontServices } from './create-front-services';
