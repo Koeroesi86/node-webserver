@@ -5,16 +5,22 @@ import { createProxyTarget, createTargetStore, proxyRequest, retireAgent } from 
 import { getDate } from '../utils';
 import { setForwardedHeaders } from '../request';
 import proxyControl from './proxy-control';
-import type { Logger, ProxyTarget, ServerConfig } from '../types';
+import type { Logger, ProxyTarget, ServerConfig, SharedTargets } from '../types';
 
 /** the middleware, `close`, which closes the connections to the target once their requests are answered, and the target that was registered, if any */
 export type ProxyServerMiddleware = RequestHandler & { close: () => void; registeredTarget: () => ProxyTarget | undefined };
 
 /**
  * A `proxy` server: passes the requests of its host, websockets included, to a fixed `target`, or to the one the service behind it registers on the control path
- * of the host (`dynamic`). Without a target (yet, or expired) requests are answered with 503. A dynamic one starts with `seed`, the target of the server it replaces.
+ * of the host (`dynamic`). Without a target (yet, or expired) requests are answered with 503. A dynamic one starts with `seed`, the target of the server it replaces,
+ * and in a front with what all fronts have (`shared`).
  */
-const proxyServerMiddleware = (instance: ServerConfig, logger: Logger, seed?: ProxyTarget): ProxyServerMiddleware => {
+const proxyServerMiddleware = (
+  instance: ServerConfig,
+  logger: Logger,
+  seed?: ProxyTarget,
+  shared?: { targets: SharedTargets; key: string }
+): ProxyServerMiddleware => {
   const { hostname, protocol, proxyOptions = {} } = instance;
   const { target, dynamic, changeOrigin, secure, hideHeaders = [], forwardedHeaders, proxyTimeout = DEFAULT_PROXY_TIMEOUT } = proxyOptions;
   const ca = proxyOptions.ca ? readFileSync(proxyOptions.ca, 'utf8') : undefined;
@@ -51,7 +57,7 @@ const proxyServerMiddleware = (instance: ServerConfig, logger: Logger, seed?: Pr
     logger.warning(`[${getDate()}] ${hostname} is served over http: its control path only accepts requests that a trusted proxy received over HTTPS.`);
   }
 
-  const store = createTargetStore({ persistPath: options.persistPath, secure, ca, logger }, seed);
+  const store = createTargetStore({ persistPath: options.persistPath, secure, ca, logger, shared }, seed);
   const control = proxyControl({ ...options, hostname, token, store, logger });
 
   const handler: RequestHandler = (request, response, next) => {

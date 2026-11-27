@@ -113,4 +113,67 @@ describe('createTargetStore', () => {
       expect(readFileSync(persistPath, 'utf8')).toBe(content);
     }
   );
+
+  describe('in a front', () => {
+    const unsubscribe = jest.fn();
+    const targets = { get: jest.fn(), publish: jest.fn(async () => undefined), subscribe: jest.fn(() => unsubscribe) };
+    const shared = { targets, key: 'https a' };
+    const told = () => jest.mocked(targets.subscribe).mock.calls[0] as unknown as [string, (change: object) => void];
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      targets.get.mockReturnValue(undefined);
+    });
+
+    it('tells the other fronts what is registered, and leaves the file to the primary', async () => {
+      const store = createTargetStore({ logger, persistPath, shared });
+
+      const set = store.set(new URL('http://203.0.113.7:8080'), Date.now() + 60000);
+      await store.published();
+      store.unset();
+
+      expect(targets.publish.mock.calls).toEqual([
+        [{ key: 'https a', persistPath, target: set.url.href, setAt: set.setAt, expiresAt: set.expiresAt }],
+        [{ key: 'https a', persistPath, setAt: expect.any(Number) }],
+      ]);
+      await store.saved();
+      expect(existsSync(persistPath)).toBe(false);
+    });
+
+    it('takes what the other fronts registered, keeping the connections to the same target, and forgets what they removed', () => {
+      const store = createTargetStore({ logger, shared });
+      const [key, listener] = told();
+
+      listener({ key, target: 'http://203.0.113.7:8080/', setAt: 1 });
+      const first = store.get();
+      listener({ key, target: 'http://203.0.113.7:8080/', setAt: 2 });
+      expect(store.get()).toMatchObject({ setAt: 2, agent: first?.agent });
+      listener({ key, setAt: 3 });
+
+      expect(key).toBe('https a');
+      expect(store.get()).toBeUndefined();
+    });
+
+    it('starts with what the fronts have, over the file and the server it replaces', () => {
+      writeFileSync(persistPath, JSON.stringify({ target: 'http://203.0.113.9/', setAt: 1 }));
+      targets.get.mockReturnValue({ key: 'https a', target: 'http://203.0.113.8/', setAt: 2 });
+
+      expect(createTargetStore({ logger, persistPath, shared }).get()?.url.href).toBe('http://203.0.113.8/');
+    });
+
+    it('does not bring back from the file what the fronts removed, and has nothing to tell then', () => {
+      writeFileSync(persistPath, JSON.stringify({ target: 'http://203.0.113.9/', setAt: 1 }));
+      targets.get.mockReturnValue({ key: 'https a', setAt: 2 });
+      const seed = createTargetStore({ logger }).set(new URL('http://203.0.113.7'));
+
+      expect(createTargetStore({ logger, persistPath, shared }, seed).get()).toBeUndefined();
+      expect(targets.publish).not.toHaveBeenCalled();
+    });
+
+    it('stops listening once it is closed', () => {
+      createTargetStore({ logger, shared }).close();
+
+      expect(unsubscribe).toHaveBeenCalled();
+    });
+  });
 });

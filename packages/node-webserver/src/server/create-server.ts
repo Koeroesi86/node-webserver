@@ -14,9 +14,10 @@ import { createHttpsServer } from '../tls';
 import { createLogger, registerServerMetrics, setupStatsHandler } from '../observability';
 import { createServerReloader, getLoadFingerprint } from '../reload';
 import { findFrontProblems, reportProblems } from '../problems';
+import { getTargetKey } from '../proxy';
 import { createServerStop, setupProcessHooks } from '../lifecycle';
 import loadInstances from './load-instances';
-import type { AcmeChallenges, Configuration, FrontShare, LoadReport, Logger, PreparedServers, SignalSource } from '../types';
+import type { AcmeChallenges, Configuration, FrontShare, LoadReport, Logger, PreparedServers, SharedTargets, SignalSource } from '../types';
 
 const listen = (server: net.Server, port: number) => new Promise<void>((resolve) => server.listen(port, () => resolve()));
 
@@ -30,6 +31,8 @@ export interface ServerOptions {
   stoppable?: boolean;
   /** for a server that is not to load its servers on its own, as a primary has all fronts do it together: asks for it. Such a server watches no file. */
   requestReload?: () => void;
+  /** set in a front process: the registered targets of the dynamic `proxy` servers, which all fronts have */
+  sharedTargets?: SharedTargets;
 }
 
 export interface RunningServer {
@@ -49,7 +52,7 @@ export interface RunningServer {
 const createServer = async (
   configuration: Partial<Configuration>,
   logger?: Logger,
-  { processHooks = true, front, signals, stoppable = false, requestReload }: ServerOptions = {}
+  { processHooks = true, front, signals, stoppable = false, requestReload, sharedTargets }: ServerOptions = {}
 ): Promise<RunningServer> => {
   // one set for each call, so that a second server in the process does not share the middlewares of the first
   const httpApp = express();
@@ -80,7 +83,7 @@ const createServer = async (
     servers,
     configuration,
     watchServers && !requestReload,
-    (previous) => loadInstances(servers, previous, log, { workerBudget, lambdaStats, compressionBudget, configuration, front }),
+    (previous) => loadInstances(servers, previous, log, { workerBudget, lambdaStats, compressionBudget, configuration, front, sharedTargets }),
     log
   );
   const { watch } = reloader;
@@ -140,6 +143,7 @@ const createServer = async (
     files: reloader.getWatchedFiles(),
     fingerprint: getLoadFingerprint(servers?.instances ?? reloader.getLoaded(), configuration.unknownHostPage),
     singleFrontOnly: reloader.getLoaded().some(({ instance }) => findFrontProblems(instance, instance.hostname).length > 0),
+    targets: reloader.getLoaded().flatMap(({ instance }) => getTargetKey(instance) ?? []),
   });
 
   return {

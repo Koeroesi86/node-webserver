@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import { once } from 'events';
 import fs from 'fs';
+import http from 'http';
 import net from 'net';
 import os from 'os';
 import path from 'path';
@@ -36,6 +37,35 @@ const launch = (folder: ServerFolder) => {
     describe: () => `The launcher ended with ${JSON.stringify(ended)}. The output of the server:\n${output}`,
   };
 };
+
+/** a server whose application only one front can start, on a port of its own. The application ends with the process that started it, which nothing else ends it after a failed start. */
+const childServer = (port: number) => ({
+  hostname: 'app.localhost',
+  protocol: 'http',
+  type: 'child',
+  childOptions: {
+    command: process.execPath,
+    args: [
+      '-e',
+      "process.stdin.on('end', () => process.exit()).resume(); require('http').createServer((_, res) => res.end()).listen(+process.argv[1])",
+      `${port}`,
+    ],
+  },
+  proxyOptions: { port },
+  serverOptions: { protocol: 'http', proxyTarget: `http://localhost:${port}` },
+});
+
+/** registers the target of `proxy.localhost`, and tells what the server answered */
+const register = (portHttp: number, port: number) =>
+  new Promise<number | undefined>((resolve, reject) => {
+    const headers = { Host: 'proxy.localhost', Authorization: 'Bearer a', 'X-Forwarded-Proto': 'https' };
+    const outgoing = http.request({ host: '127.0.0.1', port: portHttp, path: '/.well-known/node-webserver/proxy', method: 'PUT', headers }, (response) => {
+      response.resume();
+      response.on('end', () => resolve(response.statusCode));
+    });
+    outgoing.on('error', reject);
+    outgoing.end(JSON.stringify({ port }));
+  });
 
 describe('the server of the command line', () => {
   let folder: ServerFolder;
@@ -122,6 +152,26 @@ describe('the server of the command line', () => {
     expect(server.ended()).toBeUndefined();
   });
 
+  it('keeps the target that was registered with a proxy server when new fronts take over', async () => {
+    const upstream = http.createServer((_, response) => response.end('upstream'));
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    cleanups.push(() => new Promise((resolve) => upstream.close(resolve)));
+    const proxy = { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'a', allowPrivate: true } } };
+    // the loopback address stands in for a load balancer that ended TLS, which the control path asks for
+    const settings = { trustedProxies: ['loopback'] };
+    await start(settings, [proxy]);
+    const [before] = await answering();
+    expect(await register(folder.portHttp, (upstream.address() as net.AddressInfo).port)).toBe(200);
+
+    folder.configure(settings, [proxy, folder.server('added.localhost')]);
+
+    await serving('added.localhost');
+    await eventually(() => !isAlive(before.front ?? 0));
+    expect((await folder.get('proxy.localhost')).status).toBe(200);
+    expect(server.output()).not.toContain('The server restarts');
+  });
+
   it('keeps the old front for a configuration that cannot be loaded, has a problem or does not start', async () => {
     await start();
     const [before] = await answering();
@@ -157,12 +207,12 @@ describe('the server of the command line', () => {
 
   it('restarts, with a pause, for a setup that cannot run twice, and comes back', async () => {
     await start();
-    const proxy = { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'a-token' } } };
+    const { port, free } = await takePort();
+    await free();
 
-    folder.configure({}, [proxy]);
+    folder.configure({}, [childServer(port)]);
 
-    // the proxy answers 503 until a target is registered with it
-    await serving('proxy.localhost', 503);
+    await serving('app.localhost');
     await serving();
     expect(server.output()).toContain('The server restarts');
     expect(server.output()).toContain('[launcher] Starting the server again');
@@ -201,14 +251,15 @@ describe('the server of the command line', () => {
   it('tries again when the server does not start after a restart', async () => {
     await start();
     const { port, free } = await takePort();
-    const proxy = { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'a-token' } } };
+    const app = await takePort();
+    await app.free();
 
-    folder.configure({ portHttps: port }, [proxy]);
+    folder.configure({ portHttps: port }, [childServer(app.port)]);
     await eventually(() => server.output().includes('did not start after its restart'));
     expect(server.ended()).toBeUndefined();
     await free();
 
-    await serving('proxy.localhost', 503);
+    await serving('app.localhost');
   });
 
   it('ends with an error when its first start fails', async () => {

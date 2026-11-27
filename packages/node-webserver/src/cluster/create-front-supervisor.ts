@@ -1,5 +1,16 @@
 import { FRONT_MIN_UPTIME, FRONT_STOP_MARGIN } from '../constants';
-import type { FrontHandle, FrontListener, FrontMessage, FrontProcess, FrontRelease, Logger, PrimaryMessage } from '../types';
+import type {
+  FrontHandle,
+  FrontListener,
+  FrontMessage,
+  FrontProcess,
+  FrontRelease,
+  FrontReloadMessage,
+  Logger,
+  PrimaryMessage,
+  TargetMember,
+  TargetRegistry,
+} from '../types';
 import { getDate } from '../utils';
 import getRestartDelay from './get-restart-delay';
 import isFrontMessage from './is-front-message';
@@ -15,12 +26,15 @@ interface SupervisorOptions {
   onStale: () => void;
   /** what is told about the fronts */
   listener: FrontListener;
+  /** the registered targets, which every front is told */
+  targets: TargetRegistry;
 }
 
 /** one of the places for a front, which the front that replaces another one takes over with its share of the limits */
 interface Slot {
   index: number;
   handle?: FrontHandle;
+  member?: TargetMember;
   startedAt: number;
   /** how many fronts in a row ended too soon */
   failures: number;
@@ -41,7 +55,7 @@ interface Start {
 const isSameRelease = (first: FrontRelease, second: FrontRelease) => first.configuration === second.configuration && first.version === second.version;
 
 /** Starts the fronts, replaces the ones that end, and stops them. It serves nothing itself. */
-const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener }: SupervisorOptions) => {
+const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener, targets }: SupervisorOptions) => {
   const slots: Slot[] = Array.from({ length: count }, (_, index) => ({ index, startedAt: 0, failures: 0, stale: false }));
   const stopped: Array<() => void> = [];
   /** set until all the first fronts serve */
@@ -86,20 +100,33 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
     resolve();
   };
 
-  const serve = (slot: Slot, { release: found, files, fingerprint, singleFrontOnly }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
+  const serve = (slot: Slot, { release: found, files, fingerprint, singleFrontOnly, targets: keys }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
     logger.system(`[${getDate()}] ${name(slot)} is serving`);
-    listener.serving(slot.index, { files, fingerprint, singleFrontOnly });
+    slot.member?.holds(keys);
+    listener.serving(slot.index, { files, fingerprint, singleFrontOnly, targets: keys });
     starting?.releases.push(found);
     if (starting?.releases.length === count) settleStart(starting);
   };
 
+  /** what a front is told once it listens */
+  const welcome = (slot: Slot) => {
+    slot.member?.hello();
+    // one that is started while the others are stopped
+    if (stopping) slot.handle?.send(stopping);
+  };
+
+  const pass = (slot: Slot, message: FrontReloadMessage) => {
+    if (message.nodeWebserver === 'files') slot.member?.holds(message.targets);
+    listener.message(slot.index, message);
+  };
+
   const receive = (slot: Slot, message: FrontMessage) => {
     if (message.nodeWebserver === 'ready') return serve(slot, message);
-    // a front that is started while the others are stopped is told once it listens
-    if (message.nodeWebserver === 'hello') return stopping && slot.handle?.send(stopping);
+    if (message.nodeWebserver === 'hello') return welcome(slot);
+    if (message.nodeWebserver === 'target') return slot.member?.change(message.change);
     // a plan comes from a process of its own, which is no front
     if (message.nodeWebserver === 'plan') return undefined;
-    if (message.nodeWebserver !== 'failed' && message.nodeWebserver !== 'stale') return listener.message(slot.index, message);
+    if (message.nodeWebserver !== 'failed' && message.nodeWebserver !== 'stale') return pass(slot, message);
 
     slot.reason = message.reason;
     slot.stale = message.nodeWebserver === 'stale';
@@ -118,7 +145,7 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
 
   const launch = (slot: Slot) => {
     const handle = fork({ index: slot.index, count, ...(expected && { expected }) });
-    Object.assign(slot, { handle, startedAt: Date.now(), reason: undefined, stale: false, timer: undefined });
+    Object.assign(slot, { handle, member: targets.join(handle.send), startedAt: Date.now(), reason: undefined, stale: false, timer: undefined });
     logger.system(`[${getDate()}] ${name(slot)} started`);
     handle.onMessage((message) => isFrontMessage(message) && receive(slot, message));
     handle.onExit((code, signal) => exited(slot, String(signal ?? `code ${code}`)));
@@ -133,6 +160,7 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
 
   const exited = (slot: Slot, status: string) => {
     slot.handle = undefined;
+    slot.member?.leave();
     listener.exited(slot.index);
     if (stopping) return finishStop();
     if (starting) return failStart(starting, slot, status);

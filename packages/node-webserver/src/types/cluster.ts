@@ -1,5 +1,6 @@
 import type { Logger } from './logger';
 import type { ConfigurationProblem } from './problem';
+import type { TargetChange } from './proxy';
 
 /** how many front processes serve the ports: a number, or `auto` for as many as the cores allow */
 export type FrontProcesses = number | 'auto';
@@ -42,7 +43,7 @@ export interface ServerPlan {
   frontCount: number;
   /** whether the primary accepts the connections (several fronts are asked for, or it is Windows), which cannot change while it runs */
   balanced: boolean;
-  /** whether there is a server that two fronts must not run at the same time: a `child` server, `acme` or a dynamic proxy target */
+  /** whether there is a server that two fronts must not run at the same time: a `child` server or `acme` */
   singleFrontOnly: boolean;
   release: FrontRelease;
   /** the file of the configuration and the files it loads, none when the primary was not given the file */
@@ -58,6 +59,8 @@ export interface LoadReport {
   fingerprint: string;
   /** whether one of the servers is one that two fronts must not run at the same time */
   singleFrontOnly: boolean;
+  /** what the targets of the servers with a dynamic one are known by */
+  targets: string[];
 }
 
 /** what the primary sends to a front */
@@ -70,7 +73,9 @@ export type PrimaryMessage =
   /** close what was prepared in the round, and keep serving */
   | { nodeWebserver: 'discard'; round: number }
   /** stop softly and end the process, also without process hooks */
-  | { nodeWebserver: 'stop' };
+  | { nodeWebserver: 'stop' }
+  /** registered targets: all of them as the answer to `hello`, which a front waits for before it serves, and afterwards the ones that changed */
+  | { nodeWebserver: 'targets'; changes: TargetChange[] };
 
 /** what a front sends to the primary about the loading of its servers */
 export type FrontReloadMessage =
@@ -78,7 +83,7 @@ export type FrontReloadMessage =
   /** `recount` for servers that would run on another number of fronts, which takes new ones */
   | { nodeWebserver: 'prepare-failed'; round: number; reason: string; recount?: boolean }
   /** the files to watch, after every load */
-  | { nodeWebserver: 'files'; files: string[]; singleFrontOnly: boolean }
+  | { nodeWebserver: 'files'; files: string[]; singleFrontOnly: boolean; targets: string[] }
   /** something in the front asks for the servers to be loaded again */
   | { nodeWebserver: 'reload-request' };
 
@@ -92,6 +97,8 @@ export type FrontMessage =
   /** a replacement that found another configuration or version, and ends */
   | { nodeWebserver: 'stale'; reason: string }
   | { nodeWebserver: 'plan'; plan: ServerPlan }
+  /** what was registered with, or removed from, a server of the front */
+  | { nodeWebserver: 'target'; change: TargetChange }
   | FrontReloadMessage;
 
 /** what is told about the fronts of a server as they serve, say something about their servers, and end */
@@ -110,6 +117,23 @@ export interface FrontHandle {
   kill: () => void;
   onMessage: (listener: (message: unknown) => void) => void;
   onExit: (listener: (code: number | null, signal: string | null) => void) => void;
+}
+
+/** the registered targets of the server, as the primary keeps them for its fronts */
+export interface TargetRegistry {
+  /** for a front that is started, which the messages of the primary reach through `send` */
+  join: (send: (message: PrimaryMessage) => void) => TargetMember;
+}
+
+/** a front as the registry of the targets knows it */
+export interface TargetMember {
+  /** the front listens: tells it all targets */
+  hello: () => void;
+  /** something was registered with, or removed from, a server of the front */
+  change: (change: TargetChange) => void;
+  /** the targets its servers have now */
+  holds: (keys: string[]) => void;
+  leave: () => void;
 }
 
 /** how the launcher started the server: for the first time, or again after the server asked for it */
@@ -172,6 +196,8 @@ export interface FrontSetOptions {
   plan: ServerPlan;
   fork: (front: FrontProcess) => FrontHandle;
   logger: Logger;
+  /** shared with the other sets of fronts */
+  targets: TargetRegistry;
   /** watches the files of the servers, for a set whose configuration asks for it */
   watch?: (files: string[], onChange: () => void) => () => void;
   /** a front could not take the place of another one, as it found something else */

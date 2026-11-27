@@ -33,7 +33,7 @@ What the server does when things get busy, break or change. Defaults are the one
 | A front is at its share of `maxConnections` | its new connections are dropped, even while another front has room |
 | A reload would change the number of fronts | new fronts replace the old ones |
 
-All fronts reload together: the primary watches the files, every front prepares, and they serve the new servers only when all of them loaded the same, otherwise all keep what they run. Metrics and stats are those of the front that answers. `child` servers, `acme` and dynamic proxy targets need one front.
+All fronts reload together: the primary watches the files, every front prepares, and they serve the new servers only when all of them loaded the same, otherwise all keep what they run. Metrics and stats are those of the front that answers. A target registered with a `proxy` server is the same in all fronts. `child` servers and `acme` need one front.
 
 ## On a reload
 
@@ -44,7 +44,7 @@ Unchanged servers keep their workers and processes, changed ones finish their re
 ## On a change of the configuration
 
 With the command line (or `startCluster` with `configurationFile`) the configuration file and the files it loads are watched. The new configuration is checked first, a wrong one keeps the running server. New fronts start next to the old ones, which stop once their requests are answered; limits can be exceeded meanwhile.
-The server restarts instead, refusing new connections meanwhile, when `frontProcesses` changes between one front and several, when it has a `child` server, `acme` or a dynamic proxy target, or when its version changed. A start that fails after a restart is tried again. Changes of environment variables are not seen.
+The server restarts instead, refusing new connections meanwhile, when `frontProcesses` changes between one front and several, when it has a `child` server or `acme`, or when its version changed. A start that fails after a restart is tried again. Changes of environment variables are not seen.
 
 ## On a stop
 

@@ -47,8 +47,8 @@ const versionedServers = (folder) => [
   resolve(folder, 'server.js'),
 ];
 
-// a child server and a proxy with a dynamic target work with one front only
-const worksWithSeveralFronts = ({ type, proxyOptions }) => fronts === 1 || (type !== 'child' && !(proxyOptions && proxyOptions.dynamic));
+// a child server works with one front only
+const worksWithSeveralFronts = ({ type }) => fronts === 1 || type !== 'child';
 
 const configuration = {
   fileLogPath: false,
