@@ -9,11 +9,11 @@ import {
   createPrimaryCertificates,
   createTargetRegistry,
   forkFront,
-  getLauncherMode,
   readServerVersion,
   requestPlan,
   watchRelease,
 } from '../cluster';
+import { getLauncherMode } from '../launcher';
 import { setupPrimaryHooks } from '../lifecycle';
 import { reportProblems } from '../problems';
 import { readFingerprint, watchFiles } from '../reload';

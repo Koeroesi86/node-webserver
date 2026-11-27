@@ -4,7 +4,7 @@ const prettierPlugin = require('eslint-plugin-prettier');
 
 // the folders with a barrel: FUNCTION_FOLDERS of tools/src/constants/function-folders.ts (eslint cannot import it) and the other folders that have an index.ts
 const BARREL_FOLDERS = [
-  ...['utils', 'acme', 'children', 'cluster', 'compression', 'configuration', 'lifecycle', 'observability', 'problems', 'proxy', 'reload', 'request', 'routing', 'tls'],
+  ...['utils', 'acme', 'children', 'cluster', 'compression', 'configuration', 'launcher', 'lifecycle', 'observability', 'problems', 'proxy', 'reload', 'request', 'routing', 'tls'],
   ...['hand-off', 'metrics', 'static', 'websocket', 'worker', 'event', 'lambda', 'response'],
   ...['cli', 'service', 'service-files'],
   ...['child', 'errors', 'channel', 'pooling'],

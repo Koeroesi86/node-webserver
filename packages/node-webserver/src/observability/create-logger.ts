@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'fs';
 import type { Logger, LoggerConfiguration, LogLevels } from '../types';
 import createConsoleBatcher from './create-console-batcher';
 import createFileSink from './create-file-sink';
-import { getFrontProcess } from '../cluster';
+import { getFrontProcess } from '../launcher';
 
 const getFrontName = () => {
   const front = getFrontProcess();

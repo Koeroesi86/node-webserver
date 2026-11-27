@@ -12,8 +12,8 @@ import type {
   FrontMember,
   FrontService,
 } from '../types';
+import { getRestartDelay } from '../launcher';
 import { getDate } from '../utils';
-import getRestartDelay from './get-restart-delay';
 import isFrontMessage from './is-front-message';
 
 interface SupervisorOptions {

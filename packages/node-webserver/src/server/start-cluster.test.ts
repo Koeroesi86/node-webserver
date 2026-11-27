@@ -2,13 +2,13 @@ import startCluster from './start-cluster';
 import startFront from './start-front';
 import startPlan from './start-plan';
 import startPrimary from './start-primary';
-import { getFrontProcess } from '../cluster';
+import { getFrontProcess } from '../launcher';
 import createMockLogger from '../observability/mock-logger.test-helper';
 
 jest.mock('./start-front', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('./start-plan', () => ({ __esModule: true, default: jest.fn() }));
 jest.mock('./start-primary', () => ({ __esModule: true, default: jest.fn() }));
-jest.mock('../cluster', () => ({ ...jest.requireActual('../cluster'), getFrontProcess: jest.fn() }));
+jest.mock('../launcher', () => ({ ...jest.requireActual('../launcher'), getFrontProcess: jest.fn() }));
 
 describe('startCluster', () => {
   const logger = createMockLogger();

@@ -10,6 +10,7 @@ export const FUNCTION_FOLDERS = [
   'cluster',
   'compression',
   'configuration',
+  'launcher',
   'lifecycle',
   'observability',
   'problems',
