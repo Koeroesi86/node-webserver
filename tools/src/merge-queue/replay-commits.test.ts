@@ -1,37 +1,51 @@
 import { createPullRequest } from '../test-helpers/fake-github';
-import { createStack } from '../test-helpers/stacked-repository';
-import { createRemoteGit } from './create-remote-git';
 import { replayCommits } from './replay-commits';
 
+jest.useFakeTimers();
+
 describe('replayCommits', () => {
-  let stack: ReturnType<typeof createStack>;
-  const replay = (headRefOid = stack.child) =>
-    replayCommits(createRemoteGit(stack.clone, 'secret'), createPullRequest(2, { headRefName: 'child', headRefOid }), stack.lower, 'master');
+  const git = jest.fn<Promise<void>, string[]>();
+  const replay = () => replayCommits(git, createPullRequest(2, { headRefName: 'child', headRefOid: 'head' }), 'old', 'master');
+  const upToRebase = [
+    ['fetch', 'origin', 'master', 'child'],
+    ['switch', '--detach', 'head'],
+    ['rebase', '--onto', 'origin/master', 'old'],
+  ];
+  const push = ['push', '--force-with-lease=refs/heads/child:head', 'origin', 'HEAD:refs/heads/child'];
+  /** git fails for the command, and for no other one */
+  const failFor = (failing: string) =>
+    git.mockImplementation(async (command) => {
+      if (command === failing) throw new Error(`git ${failing} failed`);
+    });
 
-  afterEach(() => stack.remove());
-
-  it('pushes the own commits of the branch onto the base', async () => {
-    stack = createStack();
-
-    await expect(replay()).resolves.toBe(true);
-    expect(stack.origin.git('log', '--format=%s', `${stack.master}..child`)).toBe('child');
-    expect(stack.origin.git('diff', '--name-only', stack.master, 'child')).toBe('child.txt');
+  beforeEach(() => {
+    git.mockReset().mockResolvedValue(undefined);
   });
 
-  it('pushes nothing when the own commits conflict', async () => {
-    stack = createStack({ 'shared.txt': 'child' });
+  it('replays the commits after the old base onto the base and pushes them over the head that was seen', async () => {
+    await expect(replay()).resolves.toBe(true);
+    expect(git.mock.calls).toEqual([...upToRebase, push]);
+  });
+
+  it('aborts the rebase and pushes nothing when the commits conflict', async () => {
+    git.mockImplementation(async (...args) => {
+      if (args[1] === '--onto') throw new Error('conflict');
+    });
 
     await expect(replay()).resolves.toBe(false);
-    expect(stack.origin.git('rev-parse', 'child')).toBe(stack.child);
+    expect(git.mock.calls).toEqual([...upToRebase, ['rebase', '--abort']]);
   });
 
-  it('does not overwrite a branch that moved', async () => {
-    stack = createStack();
-    stack.origin.git('switch', '-q', 'child');
-    const moved = stack.origin.commit({ 'more.txt': 'more' });
-    stack.origin.git('switch', '-q', 'master');
+  it('fails when git refuses the push', async () => {
+    failFor('push');
 
-    await expect(replay()).rejects.toThrow('stale info');
-    expect(stack.origin.git('rev-parse', 'child')).toBe(moved);
+    await expect(replay()).rejects.toThrow('git push failed');
+  });
+
+  it('rebases and pushes nothing when the branches cannot be fetched', async () => {
+    failFor('fetch');
+
+    await expect(replay()).rejects.toThrow('git fetch failed');
+    expect(git).toHaveBeenCalledTimes(1);
   });
 });
