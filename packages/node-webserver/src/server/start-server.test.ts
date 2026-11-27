@@ -34,6 +34,7 @@ describe('startServer', () => {
     [2, 1],
     ['auto' as const, 1],
     [1, 0],
+    [undefined, 0],
   ])('warns that it runs one front when frontProcesses asks for more: %s', async (frontProcesses, warnings) => {
     // enough cores for what is asked for, on any machine
     jest.spyOn(os, 'availableParallelism').mockReturnValue(8);

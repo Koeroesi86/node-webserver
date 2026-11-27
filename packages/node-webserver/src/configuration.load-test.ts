@@ -163,7 +163,7 @@ const frontProcesses = Number(process.env.FRONT_PROCESSES ?? 1);
  * WORKERS_PER_PATH overrides the number of workers started per path.
  * HAND_OFF_RESPONSES overrides the size in bytes from which the worker writes a response to the client itself (0 turns it off), to compare the server with and without it.
  * HAND_OFF_REQUESTS overrides the size in bytes from which the worker reads a request body from the client itself (0 turns it off), 8 MiB by default here.
- * FRONT_PROCESSES runs that many front processes (`frontProcesses`, 1 by default).
+ * FRONT_PROCESSES runs that many front processes (`frontProcesses`, 1 here unlike the default of the server, so that the comparisons measure one front).
  * ACCESS_LOGS=1 turns the access logs on (the info and success levels), so that the logger is measured on the path of every request.
  */
 const configuration = {

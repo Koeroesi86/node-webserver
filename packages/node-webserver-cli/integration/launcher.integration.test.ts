@@ -170,6 +170,17 @@ describe('the server of the command line', () => {
     expect(server.output()).not.toContain('The server restarts');
   });
 
+  it('runs as many fronts as the machine allows without the setting', async () => {
+    const fronts = Math.min(4, os.availableParallelism());
+
+    // `undefined` leaves the setting out of the file
+    await start({ frontProcesses: undefined });
+
+    expect(server.output()).toContain(`Starting the front processes: ${fronts}`);
+    // with more than one front the requests spread over them
+    await eventually(async () => frontsOf(await answering()).length >= Math.min(fronts, 2));
+  });
+
   it('keeps the old front for a configuration that cannot be loaded, has a problem or does not start', async () => {
     await start();
     const [before] = await answering();

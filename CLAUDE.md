@@ -70,7 +70,7 @@ Before saying something is done, run `pnpm lint`, `pnpm build`, `pnpm quality` (
 - Prefer native Node APIs to packages (`fetch`, `node:*`, `crypto.randomInt`). `fetch` does not throw on non-2xx: check `response.ok` and throw.
 - Keep conditions and loops flat (early returns, `filter().map()`); no variable used once unless its name explains something.
 - Comments say why, not what, in lower case sentences like the ones around them. No commented-out code.
-- The front is a cheap proxy (design in `README.md`), one process or up to four with `frontProcesses` (`node:cluster`, see #296). Do nothing per request there that can be done behind it, and measure with the load test when you touch that path. Do not propose more fronts or another way to share the ports without new measurements, nor several servers behind a balancer, and do not serve files from it: that is the static worker's job. Rank performance work by what was measured, not guessed.
+- The front is a cheap proxy (design in `README.md`), up to four processes behind a primary, as many as the cores allow unless `frontProcesses` says otherwise (`node:cluster`, see #296). Do nothing per request there that can be done behind it, and measure with the load test when you touch that path. Do not propose more fronts or another way to share the ports without new measurements, nor several servers behind a balancer, and do not serve files from it: that is the static worker's job. Rank performance work by what was measured, not guessed.
 - After a refactor or dependency swap, check changed files for lost behaviour before calling it done.
 
 ## Context

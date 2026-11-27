@@ -81,6 +81,8 @@ export const createServerFolder = async () => {
       portHttp,
       portHttps,
       statsDomain: false,
+      // one unless a test asks for something else, whatever the machine of the tests has
+      frontProcesses: 1,
       ...settings,
       servers: [server('web.localhost'), ...servers],
     };

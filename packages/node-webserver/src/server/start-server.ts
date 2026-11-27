@@ -20,7 +20,8 @@ const startServer = async (
   const hydratedConfiguration = hydrateConfiguration(configuration);
   const log = logger ?? createLogger(hydratedConfiguration);
 
-  if (getRequestedFronts(hydratedConfiguration) > 1) {
+  // only for one that was set: `auto`, the default, is what `startCluster` runs
+  if (configuration.frontProcesses !== undefined && getRequestedFronts(hydratedConfiguration) > 1) {
     log.warning(
       `[${getDate()}] frontProcesses is ${hydratedConfiguration.frontProcesses}, but startServer runs one front process: use startCluster to run several.`
     );

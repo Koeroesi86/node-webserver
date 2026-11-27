@@ -26,11 +26,15 @@ describe('createServerPlan', () => {
     ['only for several fronts, also when a limit brings them down to one', 'linux', [false, true]],
     ['for one front too on Windows, where a front that stops listening would take a connection with it', 'win32', [true, true]],
   ])('has the primary accept %s', (_, platform, expected) => {
-    const configurations = [{}, { frontProcesses: 4, workerLimit: 1 }];
+    const configurations = [{ frontProcesses: 1 }, { frontProcesses: 4, workerLimit: 1 }];
 
     const balanced = configurations.map((configuration) => createServerPlan({ servers: [], ...configuration }, undefined, platform).balanced);
 
     expect(balanced).toEqual(expected);
+  });
+
+  it('runs as many fronts as the cores allow without the setting, with the primary accepting', () => {
+    expect(createServerPlan({ servers: [] }, undefined, 'linux')).toMatchObject({ frontCount: 4, balanced: true });
   });
 
   it('fingerprints the files of the configuration', () => {
