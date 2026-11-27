@@ -36,7 +36,7 @@
       "$ref": "#/definitions/port"
     },
     "frontProcesses": {
-      "description": "how many front processes serve the ports, from 1 to 4 or the available cores, whichever is lower, or auto for that maximum",
+      "description": "how many front processes serve the ports, from 1 to 4 or the available cores, whichever is lower, or auto, the default, for that maximum",
       "anyOf": [
         {
           "type": "integer",

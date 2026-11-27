@@ -1,8 +1,8 @@
 import getRequestedFronts from './get-requested-fronts';
 
 describe('getRequestedFronts', () => {
-  it('is one without the setting', () => {
-    expect(getRequestedFronts({}, 8)).toBe(1);
+  it('is the most the cores allow without the setting, as for auto', () => {
+    expect([1, 2, 8].map((cores) => getRequestedFronts({}, cores))).toEqual([1, 2, 4]);
   });
 
   it('is the number of the setting', () => {

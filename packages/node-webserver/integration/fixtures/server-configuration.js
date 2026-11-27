@@ -50,7 +50,8 @@ const versionedServers = (folder) => [
 
 const configuration = {
   fileLogPath: false,
-  ...(process.env.FRONT_PROCESSES && { frontProcesses: fronts }),
+  // one unless a test asks for more, whatever the machine of the tests has
+  frontProcesses: fronts,
   ...(process.env.MAX_CONNECTIONS && { maxConnections: Number(process.env.MAX_CONNECTIONS) }),
   // the tests of the reload read the lines of the system log
   logLevels: { system: process.env.SYSTEM_LOGS === 'true', info: false, success: false, error: true, warning: true },

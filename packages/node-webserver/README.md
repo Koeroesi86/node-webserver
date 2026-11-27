@@ -497,8 +497,15 @@ which the `connections:*` metrics count. Both are in the top level of the config
 ### Front processes
 
 The front (parsing, TLS, routing, the messages to the workers, compression, access logs) runs on one core of one process. `frontProcesses`, at the top level of the configuration as the ports are shared, runs more of them
-with [`node:cluster`](https://nodejs.org/api/cluster.html): a number from 1 to the smaller of 4 and the available cores (anything above is an error), or `"auto"` for that maximum. It is 1 by default.
-Measure before turning it on: on a machine where the front was not the limit, more fronts only cost memory.
+with [`node:cluster`](https://nodejs.org/api/cluster.html): a number from 1 to the smaller of 4 and the available cores (anything above is an error), or `"auto"` for that maximum, which is the default. A single core runs one front.
+
+**On a machine with several cores** the command line therefore runs more than one front unless the configuration says otherwise, which is worth it where the front was the limit and costs something everywhere else:
+- processes and memory: every front is a Node.js process of its own, about 90 MB before its first request, with its own worker and lambda pools, caches and warm workers,
+- the [limits](#front-processes) are split between the fronts, so one front can be full while another has room, and a path or a lambda that may run few processes has fewer fronts run,
+- connections are handed over by the primary, and a long lived one (a websocket, HTTP/2) stays on its front,
+- log files, metrics and the stats domain are per front, and code of the configuration (callbacks such as `onStdout`, what runs when it is loaded) runs in every front.
+
+`frontProcesses: 1` runs one front, as before this was the default. Measure which is better: on a small machine the fronts compete with the workers for the same cores.
 
 `nws-cli` starts them, as does `startCluster(configuration, logger?, { processHooks, configurationFile })` for a program; `startServer` always runs one front, in its own process, and warns when `frontProcesses` asks for more.
 

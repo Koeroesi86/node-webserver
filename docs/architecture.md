@@ -11,7 +11,7 @@ client ──► front server (a Node process)   ──┬─► worker pool    
 
 The front server listens on the http and the https port (HTTP/2 and SNI optional), finds the server definition for the `Host` of a request, and hands the request to what runs behind it.
 
-`startServer` runs it in one process. The command line runs it behind a primary and a launcher, one front by default and several with `frontProcesses`, with `node:cluster`:
+`startServer` runs it in one process. The command line runs it behind a primary and a launcher, with as many front processes as the cores allow, up to four, unless `frontProcesses` says another number, with `node:cluster`:
 
 ```
 launcher             starts the server again when it asks for that, otherwise ends the way it ends

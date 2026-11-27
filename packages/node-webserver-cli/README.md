@@ -20,7 +20,7 @@ npx nws-cli --config </path/to/config> --check
 
 It prints every problem with its server and setting, and exits with 1 when there is an error. What is checked is in the [README of the server](../node-webserver/README.md#checking-the-configuration).
 
-The command is a small launcher: it runs the server as a process of its own, a primary with its [front processes](../node-webserver/README.md#front-processes) (one, unless `frontProcesses` says more). A change of the configuration file, and of the
+The command is a small launcher: it runs the server as a process of its own, a primary with its [front processes](../node-webserver/README.md#front-processes) (as many as the cores allow, up to four, unless `frontProcesses` says otherwise). A change of the configuration file, and of the
 files it loads, is applied while the server runs, [without a pause for most changes](../node-webserver/README.md#changes-of-the-configuration), unless `watchServers` is `false`. `SIGINT`, `SIGTERM` and `SIGHUP` to the command reach the server, which
 ends the command the way it ends.
 

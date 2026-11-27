@@ -18,7 +18,7 @@ One Node.js server sits in front and acts as a lightweight, cheap proxy to other
 | `proxy` | an application that runs on its own, at a fixed address or at one it registers itself, like a dyndns update |
 
 The front server does as little as possible for every request, and the work, the memory and the isolation live in the processes behind it: a worker that crashes or leaks takes only itself down,
-and CPU heavy handlers spread over the cores through their own pools. It is one process unless it is told otherwise. Where that one core is what limits the server, `frontProcesses` runs up to four of them on the same ports
+and CPU heavy handlers spread over the cores through their own pools. Behind the command line there are as many of it as the machine has cores, up to four, on the same ports (`frontProcesses`), as one core limits a single one
 ([front processes](packages/node-webserver/README.md#front-processes)): each is the same front, with its share of the limits, and a small primary hands them the connections. What this means for the code:
 
 - The cost of a request on the front process is what limits the throughput of the whole server, so everything that is done for every request there (resolving the path, the messages to the worker, logging) is kept small and measured, see [the load test](tools/README.md#load-tests).

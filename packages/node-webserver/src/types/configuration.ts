@@ -20,7 +20,7 @@ export interface Configuration {
   portHttp: number;
   portHttps: number;
   /**
-   * how many front processes serve the ports, with `node:cluster`: from 1 to 4 or the available cores, whichever is lower, or `auto` for that maximum. Defaults to 1.
+   * how many front processes serve the ports, with `node:cluster`: from 1 to 4 or the available cores, whichever is lower, or `auto` for that maximum, the default.
    * `startCluster`, which the CLI uses, starts them; `startServer` always runs one. The limits (`workerLimit`, `limitPerPath`, `limit`, `maxConnections`) are the totals of the
    * server, split between the fronts, and no more fronts run than the smallest of them.
    */
