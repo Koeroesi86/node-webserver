@@ -11,12 +11,14 @@ describe('startFront', () => {
   const logger = createMockLogger();
   const signals = { on: jest.fn(), once: jest.fn(), off: jest.fn(), detach: jest.fn(), receive: jest.fn() };
   const prepared = { instances: [], commit: jest.fn(), discard: jest.fn() };
-  const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [], certificates: [] };
+  const report = { files: ['a.js'], fingerprint: 'running', targets: [], certificates: [] };
   const running = { stop: jest.fn(async () => undefined), removeProcessHooks: jest.fn(), prepare: jest.fn(() => prepared), report: () => report };
   const configuration = { portHttp: 80 };
   const release = { configuration: fingerprintConfiguration(configuration), version: readServerVersion() };
   const originalSend = process.send;
   let channel: EventEmitter;
+  /** kept here, so that the process of the tests gets none */
+  let exitListeners: Array<() => void>;
   let send: jest.Mock;
   let exit: jest.SpyInstance;
   // a test process can have a channel of its own, to the one that runs the tests
@@ -26,6 +28,7 @@ describe('startFront', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     channel = new EventEmitter();
+    exitListeners = [];
     send = jest.fn((message: { nodeWebserver: string }, _handle, _options, callback: () => void) => {
       callback();
       // as the primary answers
@@ -33,7 +36,12 @@ describe('startFront', () => {
     });
     process.send = send;
     const on = process.on.bind(process);
-    jest.spyOn(process, 'on').mockImplementation((event, listener) => (event === 'message' ? channel.on(event, listener) && process : on(event, listener)));
+    jest.spyOn(process, 'on').mockImplementation((event, listener) => {
+      if (event === 'message') return channel.on(event, listener) && process;
+      if (event !== 'exit') return on(event, listener);
+      exitListeners.push(listener as () => void);
+      return process;
+    });
     exit = jest.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     jest.mocked(createMergedSignals).mockReturnValue(signals);
     jest.mocked(createServer).mockResolvedValue(running as never);
@@ -60,6 +68,7 @@ describe('startFront', () => {
       requestReload: expect.any(Function),
       sharedTargets: expect.any(Object),
       acmeChallenges: expect.any(Map),
+      sharedApps: expect.any(Object),
     });
     expect(sent()).toEqual([{ nodeWebserver: 'hello' }, { nodeWebserver: 'ready', release, ...report }]);
     expect(front).toMatchObject({ role: 'front', frontCount: 2 });
@@ -106,6 +115,34 @@ describe('startFront', () => {
 
     expect(challenges?.size).toBe(0);
     expect(sent().slice(2)).toEqual([{ nodeWebserver: 'challenge-taken', token: 'a' }]);
+  });
+
+  it('hears from the primary the port of an application it claimed', async () => {
+    await startFront({ index: 0, count: 2 }, configuration, logger, {});
+    const apps = jest.mocked(createServer).mock.calls[0][2]?.sharedApps;
+    const port = apps?.claim('a', {});
+
+    channel.emit('message', { nodeWebserver: 'app-port', key: 'a', port: 4000 });
+
+    await expect(port).resolves.toBe(4000);
+    expect(sent()).toContainEqual({ nodeWebserver: 'app-claim', key: 'a', port: undefined, lookup: undefined });
+  });
+
+  it.each([
+    [false, 1],
+    [true, 0],
+  ])('ends the applications when it ends and the primary is gone (connected: %s)', async (connected, kills) => {
+    const kill = jest.spyOn(process, 'kill').mockImplementation(() => true);
+    const original = Object.getOwnPropertyDescriptor(process, 'connected');
+    Object.defineProperty(process, 'connected', { configurable: true, value: connected });
+    await startFront({ index: 0, count: 2 }, configuration, logger, {});
+    channel.emit('message', { nodeWebserver: 'apps', pids: [4321] });
+
+    exitListeners.forEach((listener) => listener());
+
+    expect(kill).toHaveBeenCalledTimes(kills);
+    if (original) Object.defineProperty(process, 'connected', original);
+    else Reflect.deleteProperty(process, 'connected');
   });
 
   it('does what the primary tells it', async () => {

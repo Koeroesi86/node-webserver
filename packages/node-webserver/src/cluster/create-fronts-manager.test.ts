@@ -22,7 +22,6 @@ describe('createFrontsManager', () => {
     stop: jest.fn(async () => undefined),
     reload: jest.fn(),
     isEmpty: jest.fn(() => false),
-    isSingleFrontOnly: jest.fn(() => false),
   });
 
   beforeEach(() => {

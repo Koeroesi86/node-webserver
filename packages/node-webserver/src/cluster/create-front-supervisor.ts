@@ -6,6 +6,7 @@ import type {
   FrontProcess,
   FrontRelease,
   FrontReloadMessage,
+  FrontServiceMessage,
   Logger,
   PrimaryMessage,
   FrontMember,
@@ -51,6 +52,10 @@ interface Start {
   resolve: () => void;
   reject: (error: Error) => void;
 }
+
+const RELOAD_MESSAGES: string[] = ['prepared', 'prepare-failed', 'files', 'reload-request'] satisfies FrontReloadMessage['nodeWebserver'][];
+
+const isReloadMessage = (message: FrontReloadMessage | FrontServiceMessage): message is FrontReloadMessage => RELOAD_MESSAGES.includes(message.nodeWebserver);
 
 const isSameRelease = (first: FrontRelease, second: FrontRelease) => first.configuration === second.configuration && first.version === second.version;
 
@@ -100,11 +105,8 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
     resolve();
   };
 
-  const serve = (
-    slot: Slot,
-    { release: found, files, fingerprint, singleFrontOnly, targets, certificates }: Extract<FrontMessage, { nodeWebserver: 'ready' }>
-  ) => {
-    const report = { files, fingerprint, singleFrontOnly, targets, certificates };
+  const serve = (slot: Slot, { release: found, files, fingerprint, targets, certificates }: Extract<FrontMessage, { nodeWebserver: 'ready' }>) => {
+    const report = { files, fingerprint, targets, certificates };
     logger.system(`[${getDate()}] ${name(slot)} is serving`);
     slot.member?.serves(report);
     listener.serving(slot.index, report);
@@ -119,15 +121,16 @@ const createFrontSupervisor = ({ count, release, fork, logger, onStale, listener
     if (stopping) slot.handle?.send(stopping);
   };
 
-  const pass = (slot: Slot, message: FrontReloadMessage) => {
+  /** to the rounds of the reloads, or to the service it is for */
+  const pass = (slot: Slot, message: FrontReloadMessage | FrontServiceMessage) => {
     if (message.nodeWebserver === 'files') slot.member?.serves(message);
-    listener.message(slot.index, message);
+    if (isReloadMessage(message)) return listener.message(slot.index, message);
+    slot.member?.receive(message);
   };
 
   const receive = (slot: Slot, message: FrontMessage) => {
     if (message.nodeWebserver === 'ready') return serve(slot, message);
     if (message.nodeWebserver === 'hello') return welcome(slot);
-    if (message.nodeWebserver === 'target' || message.nodeWebserver === 'challenge-taken') return slot.member?.receive(message);
     // a plan comes from a process of its own, which is no front
     if (message.nodeWebserver === 'plan') return undefined;
     if (message.nodeWebserver !== 'failed' && message.nodeWebserver !== 'stale') return pass(slot, message);

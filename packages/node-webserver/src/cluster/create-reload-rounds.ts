@@ -33,7 +33,7 @@ interface Round {
  */
 const createReloadRounds = ({ logger, send, kill, watch, onRecount = () => {} }: RoundOptions) => {
   /** the fronts that serve, with what they said last about their files and servers */
-  const serving = new Map<number, Pick<LoadReport, 'files' | 'singleFrontOnly'>>();
+  const serving = new Map<number, Pick<LoadReport, 'files'>>();
   /** what the first fronts loaded, which can differ when files changed while they started */
   const loaded = new Set<string>();
   let current: Round | undefined;
@@ -133,8 +133,8 @@ const createReloadRounds = ({ logger, send, kill, watch, onRecount = () => {} }:
   };
 
   const listener: FrontListener = {
-    serving: (index: number, { files, fingerprint, singleFrontOnly }: LoadReport) => {
-      serving.set(index, { files, singleFrontOnly });
+    serving: (index: number, { files, fingerprint }: LoadReport) => {
+      serving.set(index, { files });
       rewatch();
       // a front that replaces another one may have loaded something newer than the others run
       if (active) request();
@@ -144,7 +144,7 @@ const createReloadRounds = ({ logger, send, kill, watch, onRecount = () => {} }:
       if (message.nodeWebserver === 'reload-request') return request();
       if (message.nodeWebserver !== 'files') return answer(index, message);
 
-      serving.set(index, { files: message.files, singleFrontOnly: message.singleFrontOnly });
+      serving.set(index, { files: message.files });
       rewatch();
     },
     exited: (index) => {
@@ -160,8 +160,6 @@ const createReloadRounds = ({ logger, send, kill, watch, onRecount = () => {} }:
   return {
     ...listener,
     request,
-    /** whether a server of one of the fronts must not run twice */
-    isSingleFrontOnly: () => Array.from(serving.values()).some(({ singleFrontOnly }) => singleFrontOnly),
     /** to call once the first fronts serve: rounds are run from here on */
     start: () => {
       active = true;

@@ -47,9 +47,6 @@ const versionedServers = (folder) => [
   resolve(folder, 'server.js'),
 ];
 
-// a child server works with one front only
-const worksWithSeveralFronts = ({ type }) => fronts === 1 || type !== 'child';
-
 const configuration = {
   fileLogPath: false,
   ...(process.env.FRONT_PROCESSES && { frontProcesses: fronts }),
@@ -105,4 +102,4 @@ const configuration = {
   ],
 };
 
-module.exports = { ...configuration, servers: configuration.servers.filter((server) => typeof server === 'string' || worksWithSeveralFronts(server)) };
+module.exports = configuration;

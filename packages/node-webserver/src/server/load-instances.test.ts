@@ -284,11 +284,4 @@ describe('the servers of a front', () => {
 
     expect(() => loadInstances([lambda], [], createMockLogger(), shared)).toThrow('2 front processes instead of 4, which takes new ones');
   });
-
-  it('are refused when one of them works with one front only', () => {
-    const child: ServerConfig = { hostname: 'child.localhost', protocol: 'http', type: 'child' };
-    const shared = { configuration: { frontProcesses: 2 }, front: { index: 0, count: 2 } };
-
-    expect(() => loadInstances([child], [], createMockLogger(), shared)).toThrow('works with one front process only');
-  });
 });

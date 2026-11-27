@@ -7,6 +7,7 @@ import {
   lambda as lambdaMiddleware,
   proxy as proxyMiddleware,
   proxyServer as proxyServerMiddleware,
+  sharedChild,
 } from '../middlewares';
 import { createErrorPagesHandler, createRulesHandler } from '../routing';
 import { createHstsHandler } from '../tls';
@@ -14,7 +15,17 @@ import { getDate } from '../utils';
 import { getTargetKey } from '../proxy';
 import { trackRequests } from '../observability';
 import { untilIdle } from '../lifecycle';
-import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime, SharedTargets } from '../types';
+import type {
+  CompressionBudget,
+  Configuration,
+  InstanceHandler,
+  LoadedInstance,
+  Logger,
+  ServerConfig,
+  ServerRuntime,
+  SharedApps,
+  SharedTargets,
+} from '../types';
 
 interface Context {
   logger: Logger;
@@ -28,6 +39,11 @@ interface Context {
   previous?: LoadedInstance;
   /** set in a front process: the registered targets, which all fronts have */
   sharedTargets?: SharedTargets;
+  /** set in a front process: the applications of the `child` servers, which the primary runs */
+  sharedApps?: SharedApps;
+  /** of the files of the server */
+  fingerprint?: string;
+  configuration?: Partial<Configuration>;
 }
 
 function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudget?: WorkerBudget) {
@@ -56,20 +72,31 @@ function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudge
   });
 }
 
-function getMiddleware(
-  instance: ServerConfig,
-  runtime: ServerRuntime,
-  { logger, workerBudget, lambdaStats, previous, sharedTargets }: Context
-): InstanceHandler {
+/** the application of a `child` server: one that this process starts, or one that the primary starts for all its fronts */
+function startChild(instance: ServerConfig, runtime: ServerRuntime, { logger, sharedApps, fingerprint, configuration }: Context) {
+  if (sharedApps) return sharedChild(instance, { apps: sharedApps, fingerprint, portLookup: configuration?.portLookup, logger });
+
+  const handler = proxyMiddleware(instance, runtime, logger);
+  return {
+    handler,
+    close: () => {
+      runtime.child?.kill('SIGTERM');
+      runtime.proxy?.close();
+    },
+  };
+}
+
+function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, context: Context): InstanceHandler {
+  const { logger, workerBudget, lambdaStats, previous, sharedTargets } = context;
   if (instance.type === 'child') {
+    const child = startChild(instance, runtime, context);
     // the requests are counted for the child servers only, as the pools of the workers and the lambdas know which of theirs are busy themselves
-    const { handler, idle } = trackRequests(proxyMiddleware(instance, runtime, logger));
+    const { handler, idle } = trackRequests(child.handler);
     return {
       handler,
       close: async (timeout) => {
         await untilIdle(idle, timeout);
-        runtime.child?.kill('SIGTERM');
-        runtime.proxy?.close();
+        child.close();
       },
     };
   }

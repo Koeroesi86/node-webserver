@@ -18,7 +18,6 @@ describe('createFrontReload', () => {
       report: jest.fn((servers?: object) => ({
         files: ['a.js'],
         fingerprint: servers ? 'new' : 'running',
-        singleFrontOnly: false,
         targets: [],
         certificates: [],
       })),
@@ -44,7 +43,7 @@ describe('createFrontReload', () => {
     reload[how](1);
 
     expect(prepared[0][how]).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false, targets: [], certificates: [] }]]);
+    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'files', files: ['a.js'], targets: [], certificates: [] }]]);
   });
 
   it('leaves the round it holds alone for another one', () => {
@@ -77,7 +76,7 @@ describe('createFrontReload', () => {
 
     expect(send.mock.calls).toEqual([
       [{ nodeWebserver: 'prepare-failed', round: 3, reason: 'broken' }],
-      [{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false, targets: [], certificates: [] }],
+      [{ nodeWebserver: 'files', files: ['a.js'], targets: [], certificates: [] }],
     ]);
     expect(logger.error).toHaveBeenCalled();
   });

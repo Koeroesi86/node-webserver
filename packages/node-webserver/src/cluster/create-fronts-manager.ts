@@ -116,7 +116,7 @@ const createFrontsManager = ({ logger, version, createSet, requestPlan, watch, f
     const plan = await requestPlan();
     if (stopped) return false;
 
-    const decision = decideChange({ running: previous.plan, singleFrontOnly: previous.set.isSingleFrontOnly(), next: plan, version, force });
+    const decision = decideChange({ running: previous.plan, next: plan, version, force });
 
     if (decision.action === 'switch') return switchTo(plan, previous);
     if (decision.action === 'restart') return restartServer(decision.reason, previous);

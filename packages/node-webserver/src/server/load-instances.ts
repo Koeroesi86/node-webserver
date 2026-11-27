@@ -9,7 +9,7 @@ import { setupSecureContexts } from '../tls';
 import { validateServers } from '../configuration';
 import type { LambdaStats } from '@koeroesi86/node-lambda-invoke';
 import type { WorkerBudget } from '@koeroesi86/node-worker-express';
-import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger, ServerConfig, SharedTargets } from '../types';
+import type { CompressionBudget, Configuration, FrontShare, LoadedInstance, Logger, ServerConfig, SharedApps, SharedTargets } from '../types';
 
 type Candidate = Omit<LoadedInstance, 'handler' | 'close'> | LoadedInstance;
 
@@ -67,6 +67,8 @@ interface Shared {
   /** set in a front process, which runs its share of the limits of the servers */
   front?: FrontShare;
   sharedTargets?: SharedTargets;
+  /** set in a front process: the applications of the `child` servers, which the primary runs */
+  sharedApps?: SharedApps;
 }
 
 const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger, shared: Shared): LoadedInstance => ({
@@ -75,21 +77,22 @@ const start = (candidate: Candidate, previous: LoadedInstance[], logger: Logger,
   ...createInstanceHandler(shared.front ? splitServerLimits(candidate.instance, shared.front) : candidate.instance, candidate.runtime, {
     logger,
     ...shared,
+    fingerprint: candidate.fingerprint,
     previous: previous.find(({ source }) => source === candidate.source),
   }),
 });
 
 /** checks the servers, and in a front that they still run on as many fronts as the server was started with */
 const check = (candidates: Candidate[], logger: Logger, { configuration = {}, front }: Shared) => {
-  const instances = candidates.map(({ instance }) => instance);
-  const frontCount = front ? getFrontCount(configuration, instances) : 1;
-
   // all the problems at once, before a certificate is read or anything is started
-  reportProblems(validateServers(candidates, configuration, frontCount), logger);
+  reportProblems(validateServers(candidates, configuration), logger);
+  if (!front) return;
 
-  if (front && frontCount !== front.count) {
-    throw new FrontCountError(frontCount, front.count);
-  }
+  const frontCount = getFrontCount(
+    configuration,
+    candidates.map(({ instance }) => instance)
+  );
+  if (frontCount !== front.count) throw new FrontCountError(frontCount, front.count);
 };
 
 /**

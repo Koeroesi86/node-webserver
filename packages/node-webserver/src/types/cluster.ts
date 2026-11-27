@@ -1,6 +1,7 @@
 import type { Logger } from './logger';
 import type { CertificateServer, ChallengeStore } from './acme';
 import type { ConfigurationProblem } from './problem';
+import type { PortLookup } from './configuration';
 import type { TargetChange } from './proxy';
 
 /** how many front processes serve the ports: a number, or `auto` for as many as the cores allow */
@@ -44,8 +45,6 @@ export interface ServerPlan {
   frontCount: number;
   /** whether the primary accepts the connections (several fronts are asked for, or it is Windows), which cannot change while it runs */
   balanced: boolean;
-  /** whether there is a server that two fronts must not run at the same time: a `child` server */
-  singleFrontOnly: boolean;
   release: FrontRelease;
   /** the file of the configuration and the files it loads, none when the primary was not given the file */
   files: string[];
@@ -58,8 +57,6 @@ export interface ServerPlan {
 export interface LoadReport {
   files: string[];
   fingerprint: string;
-  /** whether one of the servers is one that two fronts must not run at the same time */
-  singleFrontOnly: boolean;
   /** what the targets of the servers with a dynamic one are known by */
   targets: string[];
   /** the `acme` servers */
@@ -80,7 +77,11 @@ export type PrimaryMessage =
   /** registered targets: all of them as the answer to `hello`, which a front waits for before it serves, and afterwards the ones that changed */
   | { nodeWebserver: 'targets'; changes: TargetChange[] }
   /** the answer to a challenge of the certificate authority, which every front gives until the message without one */
-  | { nodeWebserver: 'challenge'; token: string; answer?: string };
+  | { nodeWebserver: 'challenge'; token: string; answer?: string }
+  /** the port of an application of a `child` server that the front claimed, or why it has none */
+  | { nodeWebserver: 'app-port'; key: string; port?: number; error?: string }
+  /** the processes of the applications that run, which a front ends when it finds the primary gone */
+  | { nodeWebserver: 'apps'; pids: number[] };
 
 /** what a front sends to the primary about the loading of its servers */
 export type FrontReloadMessage =
@@ -97,7 +98,13 @@ export type FrontServiceMessage =
   /** what was registered with, or removed from, a server of the front */
   | { nodeWebserver: 'target'; change: TargetChange }
   /** the front has the challenge it was told */
-  | { nodeWebserver: 'challenge-taken'; token: string };
+  | { nodeWebserver: 'challenge-taken'; token: string }
+  /** a server of the front wants the application, on the port of its configuration or one the primary picks from `lookup` */
+  | { nodeWebserver: 'app-claim'; key: string; port?: number; lookup?: PortLookup }
+  /** what to start for the application, on the port the front was told */
+  | { nodeWebserver: 'app-start'; key: string; command: string; args: string[] }
+  /** no server of the front wants the application any more */
+  | { nodeWebserver: 'app-release'; key: string };
 
 /** what a front sends to the primary */
 export type FrontMessage =
@@ -153,6 +160,20 @@ export interface CertificateRegistry extends FrontService {
   getServers: () => CertificateServer[];
   /** every front gets what is set */
   challenges: ChallengeStore;
+}
+
+/** the applications of the `child` servers, as the primary runs them for its fronts */
+export interface AppRegistry extends FrontService {
+  /** ends all of them, for good */
+  stop: () => void;
+}
+
+/** the applications of the `child` servers that all fronts of a server share, as one of them sees them */
+export interface SharedApps {
+  /** resolves with the port the application is to be reached on */
+  claim: (key: string, wanted: { port?: number; lookup?: PortLookup }) => Promise<number>;
+  start: (key: string, command: string, args: string[]) => void;
+  release: (key: string) => void;
 }
 
 /** how the launcher started the server: for the first time, or again after the server asked for it */
@@ -231,8 +252,6 @@ export interface ManagedSet {
   stop: (message: PrimaryMessage, timeout: number) => Promise<void>;
   reload: () => void;
   isEmpty: () => boolean;
-  /** whether a server of the fronts must not run twice */
-  isSingleFrontOnly: () => boolean;
 }
 
 export interface ClusterOptions {

@@ -2,7 +2,6 @@ import path from 'path';
 import type { ConfigurationProblem, Configuration } from '../types';
 import { loadInstanceModule } from '../children';
 import { getFrontCount } from '../cluster';
-import { findFrontProblems } from '../problems';
 import validateConfiguration from './validate-configuration';
 import validateServers from './validate-servers';
 
@@ -25,10 +24,10 @@ const loadEntry = (source: string): { entry?: Entry; problems: ConfigurationProb
 };
 
 /**
- * Everything wrong with a configuration and the server files it names, how many fronts `startCluster` would run for it, and whether one of the servers must not run twice.
+ * Everything wrong with a configuration and the server files it names, and how many fronts `startCluster` would run for it.
  * The server files are loaded, which runs them. A file that cannot be loaded is a problem of its own and the others are still checked.
  */
-const inspectConfiguration = (configuration: Partial<Configuration>): { problems: ConfigurationProblem[]; frontCount: number; singleFrontOnly: boolean } => {
+const inspectConfiguration = (configuration: Partial<Configuration>): { problems: ConfigurationProblem[]; frontCount: number } => {
   const { servers = [] } = configuration;
   const loaded = Array.isArray(servers)
     ? servers.map((source) => (typeof source === 'string' ? loadEntry(source) : { entry: { source, instance: source }, problems: [] }))
@@ -40,9 +39,8 @@ const inspectConfiguration = (configuration: Partial<Configuration>): { problems
   );
 
   return {
-    problems: [...validateConfiguration(configuration), ...loaded.flatMap(({ problems }) => problems), ...validateServers(entries, configuration, frontCount)],
+    problems: [...validateConfiguration(configuration), ...loaded.flatMap(({ problems }) => problems), ...validateServers(entries, configuration)],
     frontCount,
-    singleFrontOnly: entries.some(({ instance }) => findFrontProblems(instance, '').length > 0),
   };
 };
 

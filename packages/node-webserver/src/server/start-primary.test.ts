@@ -1,7 +1,15 @@
 import cluster from 'cluster';
 import os from 'os';
 import startPrimary from './start-primary';
-import { connectLauncher, createFrontSet, createFrontsManager, createPrimaryCertificates, getLauncherMode, readServerVersion } from '../cluster';
+import {
+  connectLauncher,
+  createFrontSet,
+  createAppRegistry,
+  createFrontsManager,
+  createPrimaryCertificates,
+  getLauncherMode,
+  readServerVersion,
+} from '../cluster';
 import { setupPrimaryHooks } from '../lifecycle';
 import { watchFiles } from '../reload';
 import createMockLogger from '../observability/mock-logger.test-helper';
@@ -14,6 +22,7 @@ jest.mock('../cluster', () => ({
   createFrontSet: jest.fn(),
   createFrontsManager: jest.fn(),
   createPrimaryCertificates: jest.fn(),
+  createAppRegistry: jest.fn(),
   getLauncherMode: jest.fn(),
 }));
 jest.mock('../lifecycle', () => ({ ...jest.requireActual('../lifecycle'), setupPrimaryHooks: jest.fn() }));
@@ -22,6 +31,7 @@ describe('startPrimary', () => {
   const logger = createMockLogger();
   const manager = { start: jest.fn(), stop: jest.fn(), reload: jest.fn(), reloadFronts: jest.fn(), getPlan: jest.fn() };
   const certificates = { service: { join: jest.fn() }, start: jest.fn(), stop: jest.fn() };
+  const apps = { join: jest.fn(), stop: jest.fn() };
   const launcher = { signals: {} as never, serving: jest.fn(async () => undefined) };
   const removeHooks = jest.fn();
   const configuration = { frontProcesses: 2, servers: [], portHttp: 0, portHttps: 0, shutdownTimeout: 100 };
@@ -37,6 +47,7 @@ describe('startPrimary', () => {
     manager.getPlan.mockReturnValue(undefined);
     jest.mocked(createFrontsManager).mockReturnValue(manager);
     jest.mocked(createPrimaryCertificates).mockReturnValue(certificates as never);
+    jest.mocked(createAppRegistry).mockReturnValue(apps);
     jest.mocked(setupPrimaryHooks).mockReturnValue(removeHooks);
     jest.mocked(connectLauncher).mockReturnValue(launcher);
     jest.mocked(getLauncherMode).mockReturnValue(undefined);
@@ -91,11 +102,9 @@ describe('startPrimary', () => {
   });
 
   it('says what is wrong with the configuration before a front is started', async () => {
-    const child = { hostname: 'child.localhost', protocol: 'http', type: 'child' as const, childOptions: { command: 'node', args: ['%PORT%'] } };
+    const worker = { hostname: 'worker.localhost', protocol: 'http', type: 'worker' as const };
 
-    await expect(
-      startPrimary({ ...configuration, servers: [{ ...child, proxyOptions: {}, serverOptions: { protocol: 'http' } }] }, logger, {})
-    ).rejects.toThrow('a child server works with one front process only');
+    await expect(startPrimary({ ...configuration, servers: [worker] }, logger, {})).rejects.toThrow('options');
     expect(createFrontsManager).not.toHaveBeenCalled();
   });
 
@@ -129,6 +138,18 @@ describe('startPrimary', () => {
     await hooks().stop({ nodeWebserver: 'stop' }, 1);
     await running.stop();
     expect(certificates.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('ends the applications once the fronts stopped, and when it ends for a restart', async () => {
+    jest.mocked(getLauncherMode).mockReturnValue('start');
+    const running = await startPrimary(configuration, logger, {});
+
+    await running.stop();
+    expect(apps.stop.mock.invocationCallOrder[0]).toBeGreaterThan(manager.stop.mock.invocationCallOrder[0]);
+    options().restart?.();
+    options().onLost();
+
+    expect(apps.stop).toHaveBeenCalledTimes(3);
   });
 
   it('cannot restart without a launcher', async () => {

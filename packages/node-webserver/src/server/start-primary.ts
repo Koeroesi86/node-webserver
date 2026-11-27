@@ -2,6 +2,7 @@ import cluster from 'cluster';
 import createServerPlan from './create-server-plan';
 import {
   connectLauncher,
+  createAppRegistry,
   createFrontServices,
   createFrontSet,
   createFrontsManager,
@@ -35,13 +36,17 @@ const startPrimary = async (
   // handed to the fronts in turn, left to the system they would pile up on a few of several. Set before the first front, also for Windows, and for as long as the primary runs
   cluster.schedulingPolicy = plan.balanced ? cluster.SCHED_RR : cluster.SCHED_NONE;
   const launcher = getLauncherMode() ? connectLauncher() : undefined;
+  const apps = createAppRegistry(logger);
+  // also when the process ends for a reason of its own, as when its launcher is gone
+  if (processHooks) process.on('exit', apps.stop);
   const exit = (code: number) => {
+    apps.stop();
     logger.flush();
     process.exit(code);
   };
   const certificates = createPrimaryCertificates({ logger, reload: () => manager.reloadFronts() });
   // one for all the sets of fronts, so that new ones have what was registered with the ones they replace. The targets last, as a front starts once it has them.
-  const services = createFrontServices([certificates.service, createTargetRegistry(logger)]);
+  const services = createFrontServices([certificates.service, apps, createTargetRegistry(logger)]);
   const manager = createFrontsManager({
     logger,
     version: plan.release.version,
@@ -52,6 +57,7 @@ const startPrimary = async (
     restart: launcher && (() => exit(RESTART_EXIT_CODE)),
     onLost: () => {
       logger.error(`[${getDate()}] No front is left to serve.`);
+      apps.stop();
       logger.flush();
       process.exitCode = 1;
       // with an error, so that a service manager starts the server again
@@ -61,7 +67,8 @@ const startPrimary = async (
   const settings = () => (manager.getPlan() ?? plan).settings;
   const stop = (message: PrimaryMessage, timeout: number) => {
     certificates.stop();
-    return manager.stop(message, timeout);
+    // the applications end after the fronts, which still have requests to answer with them
+    return manager.stop(message, timeout).then(apps.stop);
   };
   const removeProcessHooks = setupPrimaryHooks(processHooks, {
     signals: launcher?.signals,

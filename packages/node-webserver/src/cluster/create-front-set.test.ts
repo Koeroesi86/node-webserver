@@ -23,7 +23,6 @@ describe('createFrontSet', () => {
     release: createPlan().release,
     files: ['a.js'],
     fingerprint: 'a',
-    singleFrontOnly: false,
     targets: [],
     certificates: [],
   };
@@ -77,15 +76,6 @@ describe('createFrontSet', () => {
 
     expect(fronts.map(({ sent }) => sent)).toEqual([[{ nodeWebserver: 'stop' }], [{ nodeWebserver: 'stop' }]]);
     expect(set.isEmpty()).toBe(true);
-  });
-
-  it('says whether a server of its fronts must not run twice', async () => {
-    const { set, fronts } = await started();
-    expect(set.isSingleFrontOnly()).toBe(false);
-
-    fronts[1].say({ nodeWebserver: 'files', files: [], singleFrontOnly: true, targets: [], certificates: [] });
-
-    expect(set.isSingleFrontOnly()).toBe(true);
   });
 
   it('rejects when a front does not start', async () => {

@@ -251,8 +251,6 @@ how the throughput scales with the fronts does not show on the runners, which ha
 
 The load test server runs behind a primary also with one front, the default of every other scenario, so the comparison with a base that ran it in one process shows what the primary costs.
 
-With more than one front the load test configuration leaves out the `child` server, which works with one front only, so nothing is behind `proxied.localhost`.
-
 ```sh
 FRONT_PROCESSES=2 pnpm --filter @koeroesi86/node-webserver start:load-test &
 k6 run -e HTTPS_PORT=8443 tools/src/k6/fronts.ts

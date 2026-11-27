@@ -3,7 +3,7 @@ import { createPlan } from './server-plan.test-helper';
 
 describe('decideChange', () => {
   const decide = (next: Parameters<typeof createPlan>[0] = {}, extra: Partial<Parameters<typeof decideChange>[0]> = {}) =>
-    decideChange({ running: createPlan(), singleFrontOnly: false, next: createPlan(next), version: '1.0.0', force: false, ...extra });
+    decideChange({ running: createPlan(), next: createPlan(next), version: '1.0.0', force: false, ...extra });
 
   it('keeps the fronts when nothing changed', () => {
     expect(decide()).toEqual({ action: 'keep' });
@@ -29,8 +29,6 @@ describe('decideChange', () => {
   it.each([
     ['another version of the server', { release: { configuration: 'a', version: '2.0.0' } }, {}, 'version 2.0.0'],
     ['one front where there were several', { filesFingerprint: 'new', balanced: false }, {}, 'between one front and several'],
-    ['a server that must not run twice in the new one', { filesFingerprint: 'new', singleFrontOnly: true }, {}, 'two sets'],
-    ['a server that must not run twice in the running one', { filesFingerprint: 'new' }, { singleFrontOnly: true }, 'two sets'],
   ])('restarts for %s', (_, change, extra, reason) => {
     expect(decide(change, extra)).toEqual({ action: 'restart', reason: expect.stringContaining(reason) });
   });

@@ -6,3 +6,4 @@ export { default as proxy } from './proxy';
 export { default as proxyControl } from './proxy-control';
 export { default as proxyServer } from './proxy-server';
 export type { ProxyServerMiddleware } from './proxy-server';
+export { default as sharedChild } from './shared-child';
