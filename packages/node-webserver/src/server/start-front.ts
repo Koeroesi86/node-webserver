@@ -1,7 +1,15 @@
 import createServer from './create-server';
 import createFrontReload from './create-front-reload';
 import type { RunningServer } from './create-server';
-import { createMergedSignals, fingerprintConfiguration, getReleaseChange, isPrimaryMessage, readServerVersion, sendMessage as send } from '../cluster';
+import {
+  createFrontTargets,
+  createMergedSignals,
+  fingerprintConfiguration,
+  getReleaseChange,
+  isPrimaryMessage,
+  readServerVersion,
+  sendMessage as send,
+} from '../cluster';
 import { getDate } from '../utils';
 import type { Cluster, ClusterOptions, Configuration, FrontMessage, FrontProcess, Logger, PrimaryMessage } from '../types';
 
@@ -31,12 +39,21 @@ const startFront = async (
     process.exit(0);
   };
   const stop = () => (running ? running.stop() : Promise.resolve());
+  const targets = createFrontTargets((message) => void send(message));
+  let welcome = () => {};
+  /** resolves once the primary told the registered targets, which the servers start with */
+  const welcomed = new Promise<void>((resolve) => (welcome = resolve));
   const obey: Record<PrimaryMessage['nodeWebserver'], (message: PrimaryMessage) => unknown> = {
     signal: (message) => message.nodeWebserver === 'signal' && signals?.receive(message.signal),
     prepare: (message) => message.nodeWebserver === 'prepare' && rounds?.prepare(message.round),
     commit: (message) => message.nodeWebserver === 'commit' && rounds?.commit(message.round),
     discard: (message) => message.nodeWebserver === 'discard' && rounds?.discard(message.round),
     stop: () => stop().then(exit),
+    targets: (message) => {
+      if (message.nodeWebserver !== 'targets') return;
+      targets.receive(message.changes);
+      welcome();
+    },
   };
   // from here on the channel keeps the front running, which it does not until the server starts. Node does not take it back by itself once it was let go, and nothing else
   // may be there while a port is waited for
@@ -58,7 +75,8 @@ const startFront = async (
   };
   // a port that cannot be listened on is an error of the server that nothing catches
   process.once('uncaughtException', fail);
-  running = await createServer(configuration, logger, { processHooks, front, signals, stoppable: true, requestReload }).catch(fail);
+  await welcomed;
+  running = await createServer(configuration, logger, { processHooks, front, signals, stoppable: true, requestReload, sharedTargets: targets }).catch(fail);
   process.off('uncaughtException', fail);
   rounds = createFrontReload(running, send, logger);
   await send({ nodeWebserver: 'ready', release, ...running.report() });

@@ -286,9 +286,9 @@ describe('the servers of a front', () => {
   });
 
   it('are refused when one of them works with one front only', () => {
-    const proxy: ServerConfig = { hostname: 'proxy.localhost', protocol: 'http', type: 'proxy', proxyOptions: { dynamic: { token: 'a' } } };
+    const child: ServerConfig = { hostname: 'child.localhost', protocol: 'http', type: 'child' };
     const shared = { configuration: { frontProcesses: 2 }, front: { index: 0, count: 2 } };
 
-    expect(() => loadInstances([proxy], [], createMockLogger(), shared)).toThrow('works with one front process only');
+    expect(() => loadInstances([child], [], createMockLogger(), shared)).toThrow('works with one front process only');
   });
 });

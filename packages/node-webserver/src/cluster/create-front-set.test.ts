@@ -1,4 +1,5 @@
 import createFrontSet from './create-front-set';
+import createTargetRegistry from './create-target-registry';
 import createMockLogger from '../observability/mock-logger.test-helper';
 import { createFakeFork } from './fake-front.test-helper';
 import { createPlan } from './server-plan.test-helper';
@@ -15,7 +16,7 @@ describe('createFrontSet', () => {
   const create = (change: Parameters<typeof createPlan>[0] = {}, extra: Partial<FrontSetOptions> = {}) => {
     const { fork, fronts } = createFakeFork();
     const plan = createPlan(change);
-    return { fronts, set: createFrontSet({ plan, fork, logger, watch, onStale, onRecount, ...extra }) };
+    return { fronts, set: createFrontSet({ plan, fork, logger, targets: createTargetRegistry(logger), watch, onStale, onRecount, ...extra }) };
   };
   const ready = {
     nodeWebserver: 'ready' as const,
@@ -23,6 +24,7 @@ describe('createFrontSet', () => {
     files: ['a.js'],
     fingerprint: 'a',
     singleFrontOnly: false,
+    targets: [],
   };
   const started = async (change: Parameters<typeof createPlan>[0] = {}) => {
     const created = create(change);
@@ -80,7 +82,7 @@ describe('createFrontSet', () => {
     const { set, fronts } = await started();
     expect(set.isSingleFrontOnly()).toBe(false);
 
-    fronts[1].say({ nodeWebserver: 'files', files: [], singleFrontOnly: true });
+    fronts[1].say({ nodeWebserver: 'files', files: [], singleFrontOnly: true, targets: [] });
 
     expect(set.isSingleFrontOnly()).toBe(true);
   });

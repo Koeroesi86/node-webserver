@@ -168,6 +168,44 @@ describeWithCores('the server with several front processes', () => {
     expect(used).toBeLessThan(500);
   });
 
+  it('has every front pass the requests on to the target registered with one of them, a front that replaces another one too', async () => {
+    const upstream = http.createServer((_, response) => response.end('upstream'));
+    upstream.listen(0, '127.0.0.1');
+    await once(upstream, 'listening');
+    cleanups.push(() => new Promise((resolve) => upstream.close(resolve)));
+    const { port } = upstream.address() as net.AddressInfo;
+    const server = await start({ SYSTEM_LOGS: 'true' });
+    await processesOf(server);
+    /** what requests on connections of their own are answered with, enough of them for every front to get some */
+    const statuses = async () => {
+      const replies = await Promise.all(Array.from({ length: 8 }, () => server.get('proxy.localhost', '/', { signal: AbortSignal.timeout(5000) })));
+      upstream.closeIdleConnections();
+      return Array.from(new Set(replies.map(({ status }) => status)));
+    };
+    const control = (method: string, body?: object) =>
+      server.get('proxy.localhost', '/.well-known/node-webserver/proxy', {
+        method,
+        body: body && JSON.stringify(body),
+        headers: { Authorization: 'Bearer integration-token', 'X-Forwarded-Proto': 'https' },
+      });
+    expect(await statuses()).toEqual([503]);
+
+    expect((await control('PUT', { port })).status).toBe(200);
+    // at once, as the answer is only given once every front was told
+    expect(await statuses()).toEqual([200]);
+
+    const [killed] = frontsOf(await answering(server));
+    process.kill(killed, 'SIGKILL');
+    await until(server, async () => {
+      const fronts = frontsOf(await answering(server));
+      return fronts.length === 2 && !fronts.includes(killed);
+    });
+    expect(await statuses()).toEqual([200]);
+
+    expect((await control('DELETE')).status).toBe(204);
+    expect(await statuses()).toEqual([503]);
+  });
+
   it('loads the servers again in every front', async () => {
     const server = await start({ SYSTEM_LOGS: 'true' });
 

@@ -22,7 +22,7 @@ export interface Configuration {
   /**
    * how many front processes serve the ports, with `node:cluster`: from 1 to 4 or the available cores, whichever is lower, or `auto` for that maximum. Defaults to 1.
    * `startCluster`, which the CLI uses, starts them; `startServer` always runs one. The limits (`workerLimit`, `limitPerPath`, `limit`, `maxConnections`) are the totals of the
-   * server, split between the fronts, and no more fronts run than the smallest of them. `child` servers, `acme` and dynamic proxy targets only work with one front for now.
+   * server, split between the fronts, and no more fronts run than the smallest of them. `child` servers and `acme` only work with one front for now.
    */
   frontProcesses?: FrontProcesses;
   /** serve HTTP/2 on the https port to the clients that offer it, the others keep getting HTTP/1.1 (and websockets) on the same port. Off by default. */

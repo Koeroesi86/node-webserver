@@ -11,7 +11,7 @@ describe('startFront', () => {
   const logger = createMockLogger();
   const signals = { on: jest.fn(), once: jest.fn(), off: jest.fn(), detach: jest.fn(), receive: jest.fn() };
   const prepared = { instances: [], commit: jest.fn(), discard: jest.fn() };
-  const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false };
+  const report = { files: ['a.js'], fingerprint: 'running', singleFrontOnly: false, targets: [] };
   const running = { stop: jest.fn(async () => undefined), removeProcessHooks: jest.fn(), prepare: jest.fn(() => prepared), report: () => report };
   const configuration = { portHttp: 80 };
   const release = { configuration: fingerprintConfiguration(configuration), version: readServerVersion() };
@@ -26,7 +26,11 @@ describe('startFront', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     channel = new EventEmitter();
-    send = jest.fn((_message, _handle, _options, callback: () => void) => callback());
+    send = jest.fn((message: { nodeWebserver: string }, _handle, _options, callback: () => void) => {
+      callback();
+      // as the primary answers
+      if (message.nodeWebserver === 'hello') process.nextTick(() => channel.emit('message', { nodeWebserver: 'targets', changes: [] }));
+    });
     process.send = send;
     const on = process.on.bind(process);
     jest.spyOn(process, 'on').mockImplementation((event, listener) => (event === 'message' ? channel.on(event, listener) && process : on(event, listener)));
@@ -54,6 +58,7 @@ describe('startFront', () => {
       signals,
       stoppable: true,
       requestReload: expect.any(Function),
+      sharedTargets: expect.any(Object),
     });
     expect(sent()).toEqual([{ nodeWebserver: 'hello' }, { nodeWebserver: 'ready', release, ...report }]);
     expect(front).toMatchObject({ role: 'front', frontCount: 2 });
@@ -72,6 +77,22 @@ describe('startFront', () => {
     await startFront({ index: 0, count: 2 }, configuration, logger, {});
 
     expect(ref.mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(createServer).mock.invocationCallOrder[0]);
+  });
+
+  it('starts its servers with the registered targets, once the primary told them, and hears of changes', async () => {
+    send.mockImplementation((_message, _handle, _options, callback: () => void) => callback());
+    const change = { key: 'https a', target: 'http://203.0.113.7/', setAt: 1 };
+    const started = startFront({ index: 0, count: 2 }, configuration, logger, {});
+
+    await new Promise(process.nextTick);
+    expect(createServer).not.toHaveBeenCalled();
+    channel.emit('message', { nodeWebserver: 'targets', changes: [change] });
+    await started;
+    const targets = jest.mocked(createServer).mock.calls[0][2]?.sharedTargets;
+    expect(targets?.get('https a')).toEqual(change);
+
+    void targets?.publish({ ...change, setAt: 2 });
+    expect(sent()).toContainEqual({ nodeWebserver: 'target', change: { ...change, setAt: 2 } });
   });
 
   it('does what the primary tells it', async () => {

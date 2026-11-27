@@ -15,7 +15,7 @@ describe('createFrontReload', () => {
         prepared.push({ instances: [], commit: jest.fn(), discard: jest.fn() });
         return prepared[prepared.length - 1];
       }),
-      report: jest.fn((servers?: object) => ({ files: ['a.js'], fingerprint: servers ? 'new' : 'running', singleFrontOnly: false })),
+      report: jest.fn((servers?: object) => ({ files: ['a.js'], fingerprint: servers ? 'new' : 'running', singleFrontOnly: false, targets: [] })),
     };
     return { reload: createFrontReload(server, send, logger), server, prepared };
   };
@@ -38,7 +38,7 @@ describe('createFrontReload', () => {
     reload[how](1);
 
     expect(prepared[0][how]).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false }]]);
+    expect(send.mock.calls).toEqual([[{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false, targets: [] }]]);
   });
 
   it('leaves the round it holds alone for another one', () => {
@@ -71,7 +71,7 @@ describe('createFrontReload', () => {
 
     expect(send.mock.calls).toEqual([
       [{ nodeWebserver: 'prepare-failed', round: 3, reason: 'broken' }],
-      [{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false }],
+      [{ nodeWebserver: 'files', files: ['a.js'], singleFrontOnly: false, targets: [] }],
     ]);
     expect(logger.error).toHaveBeenCalled();
   });

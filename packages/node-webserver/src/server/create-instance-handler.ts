@@ -11,9 +11,10 @@ import {
 import { createErrorPagesHandler, createRulesHandler } from '../routing';
 import { createHstsHandler } from '../tls';
 import { getDate } from '../utils';
+import { getTargetKey } from '../proxy';
 import { trackRequests } from '../observability';
 import { untilIdle } from '../lifecycle';
-import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime } from '../types';
+import type { CompressionBudget, InstanceHandler, LoadedInstance, Logger, ServerConfig, ServerRuntime, SharedTargets } from '../types';
 
 interface Context {
   logger: Logger;
@@ -25,6 +26,8 @@ interface Context {
   compressionBudget?: CompressionBudget;
   /** the server of the same entry that runs now, which this one replaces */
   previous?: LoadedInstance;
+  /** set in a front process: the registered targets, which all fronts have */
+  sharedTargets?: SharedTargets;
 }
 
 function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudget?: WorkerBudget) {
@@ -53,7 +56,11 @@ function getWorkerMiddleware(instance: ServerConfig, logger: Logger, workerBudge
   });
 }
 
-function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, { logger, workerBudget, lambdaStats, previous }: Context): InstanceHandler {
+function getMiddleware(
+  instance: ServerConfig,
+  runtime: ServerRuntime,
+  { logger, workerBudget, lambdaStats, previous, sharedTargets }: Context
+): InstanceHandler {
   if (instance.type === 'child') {
     // the requests are counted for the child servers only, as the pools of the workers and the lambdas know which of theirs are busy themselves
     const { handler, idle } = trackRequests(proxyMiddleware(instance, runtime, logger));
@@ -69,7 +76,9 @@ function getMiddleware(instance: ServerConfig, runtime: ServerRuntime, { logger,
   if (instance.type === 'proxy') {
     // a target that was registered stays, as long as the server is still the one of the same host
     const samePlace = previous?.instance.hostname === instance.hostname && previous.instance.protocol === instance.protocol;
-    const handler = proxyServerMiddleware(instance, logger, samePlace ? previous.registeredTarget?.() : undefined);
+    const key = getTargetKey(instance);
+    const shared = sharedTargets && key ? { targets: sharedTargets, key } : undefined;
+    const handler = proxyServerMiddleware(instance, logger, samePlace ? previous.registeredTarget?.() : undefined, shared);
     // the requests on the connections to the target are let finish by the agent, the proxy does not count them
     return { handler, close: async () => handler.close(), registeredTarget: handler.registeredTarget };
   }
