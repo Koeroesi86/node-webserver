@@ -4,7 +4,7 @@ import createMockLogger from '../observability/mock-logger.test-helper';
 import setupChildListener from './setup-child-listener';
 
 const createChild = () => {
-  const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+  const child = Object.assign(new EventEmitter(), { spawnfile: 'app', stdout: new EventEmitter(), stderr: new EventEmitter() });
   return { child, process: child as unknown as ChildProcess };
 };
 
@@ -45,6 +45,15 @@ describe('setupChildListener', () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('exited with code 3'));
   });
 
+  it('logs why the command could not be started', () => {
+    const { child, process } = createChild();
+    const error = new Error('spawn app ENOENT');
+    setupChildListener(process, logger);
+    child.emit('error', error);
+
+    expect(logger.error).toHaveBeenCalledWith(expect.stringMatching(/^\[.+\] app could not be started:$/), error);
+  });
+
   it('copes with a child without output streams', () => {
     expect(() => setupChildListener(new EventEmitter() as unknown as ChildProcess, logger)).not.toThrow();
   });
@@ -54,7 +63,9 @@ describe('setupChildListener', () => {
     setupChildListener(process, logger);
     setupChildListener(process, logger);
     child.stdout.emit('data', 'once');
+    child.emit('error', new Error('once'));
 
     expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
