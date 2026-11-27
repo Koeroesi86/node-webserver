@@ -9,6 +9,7 @@ Internal tooling of the workspace (`@koeroesi86/tools`, never published). The sc
 | [Pull request description](#pull-request-description) | holds the description of a pull request to the template | `node tools/dist/scripts/check-pull-request.js description.md` |
 | [Layout of added files](#layout-of-added-files) | holds the files a pull request adds to the layout rules of `CLAUDE.md` | `node tools/dist/scripts/check-layout.js origin/master` |
 | [Merge queue](#merge-queue) | turns auto-merge on for labelled pull requests and rebases the first one in line | `node tools/dist/scripts/automerge-label.js`, `node tools/dist/scripts/rebase-auto-merge.js` |
+| [Merged local branches](#merged-local-branches) | deletes the local branches whose pull request is merged | `node tools/dist/scripts/close-merged-branches.js` |
 | [Coverage report](#coverage-report) | merges the unit test coverage of the packages into one markdown and json report | `pnpm test:coverage` |
 | [Load tests](#load-tests) | k6 scenarios, the comparison with the base of a pull request, the job summary | `pnpm load-test`, `node tools/dist/scripts/compare-with-base.js`, `node tools/dist/scripts/summary.js` |
 
@@ -18,9 +19,9 @@ Everything is in `src/`, the tests (`*.test.ts`) are next to the code they test:
 
 | Folder | What is in it |
 | --- | --- |
-| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `automerge-label.ts`, `rebase-auto-merge.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
+| `scripts/` | the entries, one file for every command: `version.ts`, `load-test.ts`, `compare.ts`, `compare-with-base.ts`, `summary.ts`, `runner.ts`, `check-pull-request.ts`, `check-layout.ts`, `automerge-label.ts`, `rebase-auto-merge.ts`, `close-merged-branches.ts`, `channel-bench.ts` (and `channel-bench-child.ts`, the process it measures against). They read the arguments and the environment and call the utils, their tests run the compiled script from `dist/scripts/` |
 | `k6/` | the k6 scenarios (`example.ts`, `cpu.ts`, `download.ts` and the others), which k6 runs itself and which have their own `tsconfig.k6.json` (in the root of `tools`) for the k6 types. `pnpm build` type checks them |
-| `utils/` and `checks/`, `compare/`, `coverage-report/`, `load-test/`, `merge-queue/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
+| `utils/` and `branches/`, `checks/`, `compare/`, `coverage-report/`, `load-test/`, `merge-queue/`, `report/`, `versions/` | the functions the scripts are made of, one per file; `utils/` holds what belongs to none of the domains |
 | `types/` | the interfaces shared by the scripts and the utils |
 | `constants/` | the limits and defaults of the scripts |
 | `test-helpers/` | what several tests share (summaries to compare, servers on a free port, git repositories), not compiled |
@@ -91,6 +92,22 @@ Both run when `master` moves, when the checks of a pull request end, when they a
 Both need the repository secret `GH_REBASE_TOKEN`: a fine-grained personal access token of the owner for this repository with read and write access to Contents, Pull requests and Workflows (a rebase can move changes of `.github/workflows/`). `GITHUB_TOKEN` does not do, as what it pushes or merges starts no workflow. When the token expires, the runs fail with a 401 until the secret is replaced. The tools are built in a job without the secret (`tools-dist.yml`), and nothing of a pull request is installed or run.
 
 Both scripts read `GH_TOKEN`, `GITHUB_REPOSITORY` (`owner/name`) and `GITHUB_API_URL` (defaults to https://api.github.com), and take the base branch as their argument (defaults to `master`). `rebase-auto-merge` runs in a checkout with the history of the repository.
+
+## Merged local branches
+
+`scripts/close-merged-branches.ts` lists the local branches whose pull request is merged, and deletes them with `--delete`; the `close-merged-branches` skill of Claude Code runs it. Pull requests are squash or rebase merged, so `git branch --merged` misses them. A branch goes only when all of this holds:
+
+- GitHub has a merged pull request whose branch had the same name;
+- the commit that merging it made is on `origin/<base>` (a stacked pull request that was only merged into the branch below does not count);
+- every commit of the local branch is in the head of that pull request, or has an equal change there (`git cherry`), as after a rebase on GitHub; a merge commit of its own keeps the branch.
+
+Everything else stays, with the reason: also the base, a branch checked out in a worktree, one that was pushed under another name and one without a pull request. Every deleted branch is printed with its commit, `git branch <name> <commit>` brings it back. It fetches with `--prune` first, and deletes nothing when a request fails.
+
+```sh
+GH_TOKEN="$(gh auth token)" GITHUB_REPOSITORY=owner/name node tools/dist/scripts/close-merged-branches.js [--delete] [base]
+```
+
+The environment is the one of the [merge queue](#merge-queue) scripts, the base defaults to `master`.
 
 ## Load tests
 
