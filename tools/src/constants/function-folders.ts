@@ -43,6 +43,7 @@ export const FUNCTION_FOLDERS = [
   'compare',
   'coverage-report',
   'load-test',
+  'merge-queue',
   'report',
   'versions',
 ];

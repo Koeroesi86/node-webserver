@@ -1,0 +1,53 @@
+name: Rebase auto-merge
+
+# master requires up to date branches, so every merge leaves the other pull requests with auto-merge behind. Only the pull request whose auto-merge was
+# enabled first is rebased, when it is behind, and the ones after it wait. When it cannot be rebased because the pull request below it was squash merged, its
+# own commits are replayed onto master. It runs again when master moves, when auto-merge is switched on or off and when the checks of a pull request end
+# (tools/README.md#merge-queue)
+on:
+  push:
+    branches: [master]
+  # pull_request_target and workflow_run have the secret, and nothing of a pull request is run: the script calls the API and moves commits with git
+  pull_request_target:
+    types: [auto_merge_enabled, auto_merge_disabled]
+    branches: [master]
+  workflow_run:
+    workflows: [Pull request checks]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# one run at a time, and a running one is finished: it may be rebasing
+concurrency:
+  group: rebase-auto-merge
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/tools-dist.yml
+
+  # installs nothing, so only what the build made runs with the token
+  rebase:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # the replay of a pull request whose base was squash merged needs the history
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tools-dist
+          path: tools/dist
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # a push with GITHUB_TOKEN starts no workflow, so the rebased pull request would get no checks: GH_REBASE_TOKEN is a token of the owner
+      - name: Rebase the first pull request with auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GH_REBASE_TOKEN }}
+        run: node tools/dist/scripts/rebase-auto-merge.js

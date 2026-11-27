@@ -2,3 +2,8 @@ rules:
   # the workflows call each other with relative paths, which is the same repository at the same commit
   self-repository:
     disable: true
+  # these two need these triggers to have GH_REBASE_TOKEN. They run tools/ of master only, and of a pull request they only read the API and move its commits
+  dangerous-triggers:
+    ignore:
+      - automerge-label.yml
+      - rebase-auto-merge.yml
