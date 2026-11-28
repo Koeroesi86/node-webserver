@@ -199,6 +199,25 @@ describe('createAppRegistry', () => {
     expect(front.send).toHaveBeenLastCalledWith({ nodeWebserver: 'app-port', key: 'a', port: 4000 });
   });
 
+  it('logs the unfinished lines of the applications when it is stopped, of the ones that were told to end earlier too', async () => {
+    const { registry, children, join } = create();
+    const front = join();
+    front.serves(report);
+    front.receive(claim);
+    front.receive({ ...claim, key: 'b' });
+    await settle();
+    front.receive(run);
+    front.receive({ ...run, key: 'b', hostname: 'b.localhost' });
+    front.receive(release);
+    children[0].stdout.emit('data', 'closing');
+    children[1].stderr.emit('data', 'running');
+
+    registry.stop();
+
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('[a.localhost] closing'));
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[b.localhost] running'));
+  });
+
   it('ends all applications when it is stopped, and starts none after', async () => {
     const { registry, children, start, join } = create();
     const front = join();

@@ -42,14 +42,14 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
   const apps = new Map<string, App>();
   /** the ports of the applications that run */
   const busy = new Set<number>();
-  /** the processes of the applications that run, with their key, the ones that are told to end too */
-  const started = new Map<ChildProcess, string>();
+  /** the processes of the applications that run, the ones that are told to end too, with their key and what logs their unfinished lines */
+  const started = new Map<ChildProcess, { key: string; flushOutput: () => void }>();
   let stopped = false;
 
   /** the processes that run, for the stats of the fronts, and for them to end should the primary be gone, which cannot end them then */
   const running = (): PrimaryMessage => ({
     nodeWebserver: 'apps',
-    running: Array.from(started).flatMap(([{ pid }, key]) => (pid === undefined ? [] : [{ key, pid }])),
+    running: Array.from(started).flatMap(([{ pid }, { key }]) => (pid === undefined ? [] : [{ key, pid }])),
   });
   const tell = () => members.forEach(({ send }) => send(running()));
 
@@ -73,10 +73,9 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
 
     busy.add(port);
     app.child = child;
-    started.set(child, key);
-    tell();
     // reads what it writes, which would otherwise fill the pipe, and logs why it could not be started
-    setupChildListener(child, waiting.hostname, logger);
+    started.set(child, { key, flushOutput: setupChildListener(child, waiting.hostname, logger) });
+    tell();
     child.once('close', () => {
       app.child = undefined;
       busy.delete(port);
@@ -178,6 +177,8 @@ const createAppRegistry = (logger: Logger, { ports = createPortPool(), start = s
     stop: () => {
       stopped = true;
       apps.forEach(({ child }) => child?.kill('SIGTERM'));
+      // the process may end before their output does, that of the ones that were told to end earlier too
+      started.forEach(({ flushOutput }) => flushOutput());
     },
   };
 };

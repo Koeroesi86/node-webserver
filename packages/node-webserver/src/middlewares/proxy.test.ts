@@ -59,6 +59,18 @@ describe('proxyMiddleware', () => {
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('broken'));
   });
 
+  it('keeps how to log the unfinished lines of the child, for the stop of the process', () => {
+    addPort(3006);
+    const logger = createMockLogger();
+    const runtime: ServerRuntime = {};
+    proxyMiddleware(instance(), runtime, logger);
+    runtime.child?.stdout?.emit('data', 'bye');
+
+    runtime.flushChildOutput?.();
+
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('[child.localhost] bye'));
+  });
+
   it('logs why the child could not be started, instead of ending the process', () => {
     addPort(3005);
     const logger = createMockLogger();
